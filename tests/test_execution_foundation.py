@@ -160,7 +160,121 @@ class ExecutionFoundationTest(unittest.TestCase):
         self.assertFalse(hasattr(self.service, "reject"))
         self.assertFalse(hasattr(self.service, "modify"))
 
-    def _create_failed_execution(self) -> UnitExecutionId:
+    def test_completed_execution_rejects_additional_results(self) -> None:
+        execution_id = self._create_completed_execution()
+        before = self.service.get_unit_execution(execution_id)
+        with self.assertRaisesRegex(ValueError, "completed state"):
+            self.service.record_results(
+                execution_id,
+                (DomainResultReference(DomainResultId("result-2"), "raw_transcript"),),
+            )
+        self.assertEqual(before, self.service.get_unit_execution(execution_id))
+        self.assertIsNone(self.service.get_result_reference(DomainResultId("result-2")))
+
+    def test_failed_execution_rejects_results(self) -> None:
+        execution_id = self._create_failed_execution()
+        before = self.service.get_unit_execution(execution_id)
+        with self.assertRaisesRegex(ValueError, "failed state"):
+            self.service.record_results(
+                execution_id,
+                (DomainResultReference(DomainResultId("result-1"), "raw_transcript"),),
+            )
+        self.assertEqual(before, self.service.get_unit_execution(execution_id))
+
+    def test_cancelled_execution_rejects_results(self) -> None:
+        execution_id = self._create_cancelled_execution()
+        with self.assertRaisesRegex(ValueError, "cancelled state"):
+            self.service.record_results(
+                execution_id,
+                (DomainResultReference(DomainResultId("result-1"), "raw_transcript"),),
+            )
+
+    def test_completed_execution_rejects_failure(self) -> None:
+        execution_id = self._create_completed_execution()
+        failure = self._failure(execution_id, "late-failure")
+        with self.assertRaisesRegex(ValueError, "completed state"):
+            self.service.record_failure(execution_id, failure)
+
+    def test_cancelled_execution_rejects_failure(self) -> None:
+        execution_id = self._create_cancelled_execution()
+        failure = self._failure(execution_id, "late-failure")
+        with self.assertRaisesRegex(ValueError, "cancelled state"):
+            self.service.record_failure(execution_id, failure)
+
+    def test_completed_execution_cannot_be_cancelled(self) -> None:
+        execution_id = self._create_completed_execution()
+        with self.assertRaisesRegex(ValueError, "completed state"):
+            self.service.cancel_unit_execution(execution_id)
+
+    def test_failed_execution_cannot_be_cancelled(self) -> None:
+        execution_id = self._create_failed_execution()
+        with self.assertRaisesRegex(ValueError, "failed state"):
+            self.service.cancel_unit_execution(execution_id)
+
+    def test_cancelled_execution_cannot_be_cancelled_again(self) -> None:
+        execution_id = self._create_cancelled_execution()
+        before = self.service.get_unit_execution(execution_id)
+        with self.assertRaisesRegex(ValueError, "cancelled state"):
+            self.service.cancel_unit_execution(execution_id)
+        self.assertEqual(before, self.service.get_unit_execution(execution_id))
+        self.assertIsNone(before.outcome)
+
+    def test_non_retryable_failure_cannot_be_retried(self) -> None:
+        failed_id = self._create_failed_execution(retryable=False)
+        before = self.service.get_unit_execution(failed_id)
+        with self.assertRaisesRegex(ValueError, "no retryable failure"):
+            self.service.retry_unit_execution(
+                execution_id=UnitExecutionId("execution-retry"),
+                failed_execution_id=failed_id,
+            )
+        self.assertEqual(before, self.service.get_unit_execution(failed_id))
+        self.assertIsNone(self.service.get_unit_execution(UnitExecutionId("execution-retry")))
+
+    def test_retryable_failure_creates_distinct_execution(self) -> None:
+        failed_id = self._create_failed_execution(retryable=True)
+        retry_id = UnitExecutionId("execution-retry")
+        self.service.retry_unit_execution(
+            execution_id=retry_id,
+            failed_execution_id=failed_id,
+        )
+        retry = self.service.get_unit_execution(retry_id)
+        self.assertEqual(failed_id, retry.retry_of)
+        self.assertEqual(ProcessingState.RUNNING, retry.state)
+
+    def test_rejected_transition_preserves_terminal_execution(self) -> None:
+        execution_id = self._create_completed_execution()
+        before = self.service.get_unit_execution(execution_id)
+        with self.assertRaises(ValueError):
+            self.service.record_failure(execution_id, self._failure(execution_id, "rejected"))
+        self.assertEqual(before, self.service.get_unit_execution(execution_id))
+
+    def test_rejected_failure_is_not_persisted(self) -> None:
+        execution_id = self._create_completed_execution()
+        failure = self._failure(execution_id, "rejected")
+        with self.assertRaises(ValueError):
+            self.service.record_failure(execution_id, failure)
+        self.assertIsNone(self.service.get_failure(failure.identity))
+
+    def _create_completed_execution(self) -> UnitExecutionId:
+        execution_id = UnitExecutionId("execution-completed")
+        self.service.start_unit_execution(
+            execution_id=execution_id, run_id=self.run_id, unit_id=self.unit.identity
+        )
+        self.service.record_results(
+            execution_id,
+            (DomainResultReference(DomainResultId("result-completed"), "raw_transcript"),),
+        )
+        return execution_id
+
+    def _create_cancelled_execution(self) -> UnitExecutionId:
+        execution_id = UnitExecutionId("execution-cancelled")
+        self.service.start_unit_execution(
+            execution_id=execution_id, run_id=self.run_id, unit_id=self.unit.identity
+        )
+        self.service.cancel_unit_execution(execution_id)
+        return execution_id
+
+    def _create_failed_execution(self, *, retryable: bool = True) -> UnitExecutionId:
         execution_id = UnitExecutionId("execution-failed")
         self.service.start_unit_execution(
             execution_id=execution_id, run_id=self.run_id, unit_id=self.unit.identity
@@ -172,10 +286,19 @@ class ExecutionFoundationTest(unittest.TestCase):
                 category=FailureCategory.PROCESSING,
                 run_id=self.run_id,
                 unit_execution_id=execution_id,
-                retryable=True,
+                retryable=retryable,
             ),
         )
         return execution_id
+
+    def _failure(self, execution_id: UnitExecutionId, identity: str) -> Failure:
+        return Failure(
+            identity=FailureId(identity),
+            category=FailureCategory.PROCESSING,
+            run_id=self.run_id,
+            unit_execution_id=execution_id,
+            retryable=True,
+        )
 
 
 if __name__ == "__main__":

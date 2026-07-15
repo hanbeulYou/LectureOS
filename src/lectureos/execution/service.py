@@ -100,10 +100,17 @@ class ExecutionService:
         partial: bool = False,
     ) -> None:
         execution = self._require_execution(execution_id)
+        self._require_running(execution, "record results")
+        if not results:
+            raise ValueError("at least one domain result is required")
+        result_ids = tuple(result.identity for result in results)
+        if len(set(result_ids)) != len(result_ids):
+            raise ValueError("domain result identities must be unique")
+        if any(self.results.get(result_id) is not None for result_id in result_ids):
+            raise ValueError("domain result identity already exists")
         run = self._require_run(execution.run_id)
         for result in results:
             self.results.save(result)
-        result_ids = tuple(result.identity for result in results)
         outcome_kind = OutcomeKind.PARTIAL_RESULT if partial else OutcomeKind.DOMAIN_RESULT_GENERATED
         self.executions.save(
             replace(
@@ -117,10 +124,13 @@ class ExecutionService:
 
     def record_failure(self, execution_id: UnitExecutionId, failure: Failure) -> None:
         execution = self._require_execution(execution_id)
+        self._require_running(execution, "record failure")
         if failure.unit_execution_id != execution_id:
             raise ValueError("failure must reference the affected unit execution")
         if failure.run_id is not None and failure.run_id != execution.run_id:
             raise ValueError("failure run must match the affected unit execution")
+        if self.failures.get(failure.identity) is not None:
+            raise ValueError("failure identity already exists")
         run = self._require_run(execution.run_id)
         self.failures.save(failure)
         outcome = (
@@ -149,6 +159,11 @@ class ExecutionService:
         previous = self._require_execution(failed_execution_id)
         if previous.state is not ProcessingState.FAILED:
             raise ValueError("only a failed unit execution can be retried")
+        if not previous.failure_references:
+            raise ValueError("failed unit execution has no failure record")
+        failures = tuple(self.failures.get(failure_id) for failure_id in previous.failure_references)
+        if not any(failure is not None and failure.retryable for failure in failures):
+            raise ValueError("failed unit execution has no retryable failure")
         accepted = self.start_unit_execution(
             execution_id=execution_id,
             run_id=previous.run_id,
@@ -178,6 +193,7 @@ class ExecutionService:
 
     def cancel_unit_execution(self, execution_id: UnitExecutionId) -> None:
         execution = self._require_execution(execution_id)
+        self._require_running(execution, "cancel")
         self.executions.save(replace(execution, state=ProcessingState.CANCELLED))
 
     def get_run(self, run_id: ProcessingRunId) -> ProcessingRun | None:
@@ -209,3 +225,10 @@ class ExecutionService:
         if execution is None:
             raise KeyError(f"unknown unit execution: {execution_id.value}")
         return execution
+
+    @staticmethod
+    def _require_running(execution: UnitExecution, action: str) -> None:
+        if execution.state is not ProcessingState.RUNNING:
+            raise ValueError(
+                f"cannot {action} for unit execution in {execution.state.value} state"
+            )
