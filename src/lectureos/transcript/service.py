@@ -70,7 +70,12 @@ class TranscriptService:
             raise ValueError("raw transcript run must match provider result")
         if transcript.unit_execution_id != provider_result.unit_execution_id:
             raise ValueError("raw transcript unit execution must match provider result")
-        self._validate_segments(transcript.identity, transcript.source_timeline_id, transcript.segment_ids, segments)
+        self._validate_segments(
+            transcript.identity,
+            transcript.source_timeline_id,
+            transcript.segment_ids,
+            segments,
+        )
 
         for segment in segments:
             self.segments.save(segment)

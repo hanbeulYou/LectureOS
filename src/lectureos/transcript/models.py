@@ -81,6 +81,8 @@ class TranscriptSegment:
         if self.start is not None and self.end is not None:
             if not isfinite(self.start) or not isfinite(self.end):
                 raise ValueError("segment time range must be finite")
+            if self.start < 0 or self.end < 0:
+                raise ValueError("segment time range must not be negative")
             if self.start > self.end:
                 raise ValueError("segment start must not be after end")
 
@@ -133,10 +135,15 @@ class CorrectionCandidate:
     evidence: tuple[str, ...] = ()
     confidence: float | None = None
     uncertainty: float | None = None
+    capability: CapabilityReference | None = None
+    plugin_reference: PluginReference | None = None
+    provider_reference: str | None = None
 
     def __post_init__(self) -> None:
         if not self.rationale.strip():
             raise ValueError("correction candidate rationale must not be empty")
+        if self.provider_reference is not None and not self.provider_reference.strip():
+            raise ValueError("provider reference must not be empty")
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,6 +157,7 @@ class TranscriptValidation:
     target_transcript_id: TranscriptId | None = None
     target_revision_id: TranscriptRevisionId | None = None
     ordering_valid: bool | None = None
+    time_ranges_valid: bool | None = None
     overlap_detected: bool | None = None
     diagnostic_references: tuple[DiagnosticId, ...] = ()
 

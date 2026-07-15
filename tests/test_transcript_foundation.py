@@ -3,6 +3,7 @@ import unittest
 from lectureos.execution.identities import (
     CapabilityReference,
     DomainResultId,
+    PluginReference,
     ProcessingRunId,
     ProcessingUnitId,
     SourceMediaId,
@@ -67,11 +68,24 @@ class TranscriptFoundationTest(unittest.TestCase):
             self.service.get_provider_result(self.provider_result.identity),
         )
 
+    def test_duplicate_provider_result_identity_is_rejected(self) -> None:
+        self.service.register_provider_result(self.provider_result)
+        with self.assertRaisesRegex(
+            ValueError, "provider transcript result identity already exists"
+        ):
+            self.service.register_provider_result(self.provider_result)
+
     def test_provider_result_and_raw_transcript_identities_are_distinct(self) -> None:
         raw, segments = self._register_and_build_raw()
         self.assertNotEqual(self.provider_result.identity, raw.identity)
         self.assertNotEqual(self.provider_result.identity.value, raw.identity.value)
         self.service.create_raw_transcript(raw, segments)
+
+    def test_provider_result_is_not_a_canonical_raw_transcript(self) -> None:
+        self.service.register_provider_result(self.provider_result)
+        self.assertIsInstance(self.provider_result, ProviderTranscriptResult)
+        self.assertNotIsInstance(self.provider_result, RawTranscript)
+        self.assertEqual((), self.service.domain_results.all())
 
     def test_raw_transcript_references_source_media_and_timeline(self) -> None:
         raw = self._create_raw()
@@ -89,6 +103,22 @@ class TranscriptFoundationTest(unittest.TestCase):
     def test_segment_rejects_start_after_end(self) -> None:
         with self.assertRaisesRegex(ValueError, "start must not be after end"):
             self._segment(start=2.0, end=1.0)
+
+    def test_segment_rejects_negative_time_range(self) -> None:
+        with self.assertRaisesRegex(ValueError, "time range must not be negative"):
+            self._segment(start=-0.1, end=1.0)
+
+    def test_segment_rejects_negative_source_order(self) -> None:
+        with self.assertRaisesRegex(ValueError, "source order must not be negative"):
+            TranscriptSegment(
+                identity=TranscriptSegmentId("segment-negative-order"),
+                transcript_id=TranscriptId("raw-transcript-1"),
+                source_timeline_id=self.source_timeline_id,
+                text="잘못된 순서",
+                source_order=-1,
+                start=0.0,
+                end=1.0,
+            )
 
     def test_timed_segment_requires_source_timeline(self) -> None:
         with self.assertRaisesRegex(ValueError, "requires a source timeline"):
@@ -116,6 +146,32 @@ class TranscriptFoundationTest(unittest.TestCase):
         self.service.create_corrected_revision(revision, segments)
         self.assertEqual(before, self.service.get_raw_transcript(raw.identity))
 
+    def test_later_revision_does_not_change_previous_revision(self) -> None:
+        raw = self._create_raw()
+        first, first_segments = self._build_revision(raw)
+        self.service.create_corrected_revision(first, first_segments)
+        before = self.service.get_corrected_revision(first.identity)
+        second_segments = (
+            self._segment(
+                identity="segment-corrected-2",
+                transcript_id=raw.identity,
+                text="안녕하세요!",
+            ),
+        )
+        second = CorrectedTranscriptRevision(
+            identity=TranscriptRevisionId("revision-2"),
+            transcript_id=raw.identity,
+            domain_result_id=DomainResultId("corrected-result-2"),
+            run_id=self.run_id,
+            unit_execution_id=self.execution_id,
+            segment_ids=tuple(segment.identity for segment in second_segments),
+            parent_revision_id=first.identity,
+        )
+
+        self.service.create_corrected_revision(second, second_segments)
+
+        self.assertEqual(before, self.service.get_corrected_revision(first.identity))
+
     def test_new_revision_is_not_automatically_current_or_approved(self) -> None:
         raw = self._create_raw()
         revision, segments = self._build_revision(raw)
@@ -131,6 +187,44 @@ class TranscriptFoundationTest(unittest.TestCase):
         candidate = self._candidate(raw, segment_id)
         self.service.create_correction_candidate(candidate)
         self.assertEqual(before, self.service.get_segment(segment_id))
+
+    def test_candidate_preserves_optional_provider_provenance(self) -> None:
+        raw = self._create_raw()
+        candidate = CorrectionCandidate(
+            identity=CorrectionCandidateId("candidate-with-provenance"),
+            domain_result_id=DomainResultId("candidate-result-with-provenance"),
+            transcript_id=raw.identity,
+            segment_id=raw.segment_ids[0],
+            proposed_text="안녕하세요.",
+            rationale="문장 부호 후보",
+            run_id=self.run_id,
+            unit_execution_id=self.execution_id,
+            capability=CapabilityReference("transcript.correction"),
+            plugin_reference=PluginReference("correction-plugin"),
+            provider_reference="test-correction-provider",
+        )
+
+        self.service.create_correction_candidate(candidate)
+
+        stored = self.service.get_candidate(candidate.identity)
+        self.assertEqual(candidate.capability, stored.capability)
+        self.assertEqual(candidate.plugin_reference, stored.plugin_reference)
+        self.assertEqual(candidate.provider_reference, stored.provider_reference)
+
+    def test_candidate_rejects_empty_provider_reference(self) -> None:
+        raw = self._create_raw()
+        with self.assertRaisesRegex(ValueError, "provider reference must not be empty"):
+            CorrectionCandidate(
+                identity=CorrectionCandidateId("candidate-empty-provider"),
+                domain_result_id=DomainResultId("candidate-result-empty-provider"),
+                transcript_id=raw.identity,
+                segment_id=raw.segment_ids[0],
+                proposed_text="안녕하세요.",
+                rationale="문장 부호 후보",
+                run_id=self.run_id,
+                unit_execution_id=self.execution_id,
+                provider_reference="   ",
+            )
 
     def test_candidate_is_not_revision_or_review_decision(self) -> None:
         raw = self._create_raw()
@@ -155,8 +249,41 @@ class TranscriptFoundationTest(unittest.TestCase):
         self.service.record_validation(validation)
         stored = self.service.get_validation(validation.identity)
         self.assertTrue(stored.structural_valid)
+        self.assertTrue(stored.time_ranges_valid)
         self.assertFalse(hasattr(stored, "approved"))
         self.assertFalse(hasattr(self.service, "accept"))
+
+    def test_raw_validation_failure_leaves_no_partial_records(self) -> None:
+        self.service.register_provider_result(self.provider_result)
+        raw, _ = self._build_raw()
+        invalid_segment = TranscriptSegment(
+            identity=TranscriptSegmentId("segment-wrong-timeline"),
+            transcript_id=raw.identity,
+            source_timeline_id=SourceTimelineId("another-timeline"),
+            text="잘못 연결된 발화",
+            source_order=0,
+            start=0.0,
+            end=1.0,
+        )
+        invalid_raw = RawTranscript(
+            identity=raw.identity,
+            domain_result_id=raw.domain_result_id,
+            source_media_id=raw.source_media_id,
+            source_timeline_id=raw.source_timeline_id,
+            provider_result_id=raw.provider_result_id,
+            run_id=raw.run_id,
+            unit_execution_id=raw.unit_execution_id,
+            segment_ids=(invalid_segment.identity,),
+        )
+
+        with self.assertRaisesRegex(ValueError, "source timeline must match"):
+            self.service.create_raw_transcript(invalid_raw, (invalid_segment,))
+
+        self.assertIsNone(self.service.get_raw_transcript(invalid_raw.identity))
+        self.assertIsNone(self.service.get_segment(invalid_segment.identity))
+        self.assertIsNone(
+            self.service.get_domain_result_reference(invalid_raw.domain_result_id)
+        )
 
     def test_duplicate_raw_transcript_identity_is_rejected(self) -> None:
         raw = self._create_raw()
@@ -316,6 +443,7 @@ class TranscriptFoundationTest(unittest.TestCase):
             timeline_traceable=True,
             provenance_complete=True,
             ordering_valid=True,
+            time_ranges_valid=True,
         )
 
 
