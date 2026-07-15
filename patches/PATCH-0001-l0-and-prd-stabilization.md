@@ -2,7 +2,7 @@
 
 Patch ID: PATCH-0001
 Title: L0 and PRD Stabilization
-Status: Review
+Status: Completed
 Priority: High
 Owner: Product Owner
 Trigger: Blueprint Review
@@ -544,26 +544,22 @@ Final Cut 책임:
 
 # Completion Checklist
 
-- [x] Blueprint Review completed
+- [x] Blueprint review completed
 - [x] Review findings captured
-- [x] Patch approved by Product Owner
-- [x] Patch applied by Codex
+- [x] Blueprint changes completed
 - [x] Self-review completed
-- [ ] ChatGPT review completed
-- [ ] Product Owner approval completed
-- [ ] Changes committed
-- [ ] Patch marked Merged
+- [x] Merge approved
+- [x] Related Blueprint documents committed
+- [x] PATCH-0001 final review completed
+- [x] PATCH-0001 marked Completed
 
 ---
 
 # Result
 
-- Applied By: Codex
-- Applied At: 2026-07-13
-- Changed Files: docs/001_PRODUCT.md, docs/002_FAQ.md, docs/020_PRODUCT_REQUIREMENTS.md, patches/PATCH-0001-l0-and-prd-stabilization.md
-- Review Result: Self-review passed; minor review changes applied; ready for ChatGPT review
-- Commit:
-- Notes: PATCH-0001 was applied within scope. Minor Review Interface and approved edit decision export clarifications were added without defining a UI framework, schema, or FCPXML. git diff --check passed. docs/020_PRODUCT_REQUIREMENTS.md remains untracked until an approved commit.
+- Status: Completed
+- Changed Blueprint Files: `docs/001_PRODUCT.md`, `docs/002_FAQ.md`, `docs/020_PRODUCT_REQUIREMENTS.md`
+- Notes: L0 Product·FAQ와 Product Requirements의 책임 경계, Text Pipeline과 Edit Pipeline의 동등성, 통합 Review와 사용자 결정 흐름이 안정화되어 PATCH-0001이 완료되었다.
 
 ---
 
