@@ -1,6 +1,6 @@
 # Implementation Design Guide
 
-- Status: Draft
+- Status: Approved
 - Baseline: LectureOS Blueprint v1
 - Baseline Commit: `b0251cf56628f012891e39eebe7f57c2be63c684`
 - Last Updated: 2026-07-15
