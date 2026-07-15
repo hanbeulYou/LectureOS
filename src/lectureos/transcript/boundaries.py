@@ -2,7 +2,11 @@
 
 from typing import Protocol
 
-from lectureos.execution.identities import DomainResultId
+from lectureos.execution.identities import (
+    DomainResultId,
+    ProcessingRunId,
+    UnitExecutionId,
+)
 from lectureos.execution.models import DomainResultReference
 
 from .identities import (
@@ -12,6 +16,7 @@ from .identities import (
     TranscriptRevisionId,
     TranscriptSegmentId,
     TranscriptValidationId,
+    TranscriptValidationFindingId,
 )
 from .models import (
     CorrectionCandidate,
@@ -20,6 +25,7 @@ from .models import (
     RawTranscript,
     TranscriptSegment,
     TranscriptValidation,
+    TranscriptValidationFinding,
 )
 
 
@@ -67,3 +73,39 @@ class TranscriptQueryBoundary(Protocol):
     def get_lineage(
         self, transcript_id: TranscriptId
     ) -> tuple[RawTranscript, tuple[CorrectedTranscriptRevision, ...]] | None: ...
+
+
+class TranscriptValidationStoreBoundary(TranscriptQueryBoundary, Protocol):
+    """Shared query and persistence boundary for computed Validation Results."""
+
+    def record_validation(self, validation: TranscriptValidation) -> None: ...
+
+
+class TranscriptStructuralValidationBoundary(Protocol):
+    def validate_raw_transcript(
+        self,
+        *,
+        validation_id: TranscriptValidationId,
+        transcript_id: TranscriptId,
+        run_id: ProcessingRunId,
+        unit_execution_id: UnitExecutionId,
+    ) -> TranscriptValidation: ...
+
+    def validate_corrected_revision(
+        self,
+        *,
+        validation_id: TranscriptValidationId,
+        revision_id: TranscriptRevisionId,
+        run_id: ProcessingRunId,
+        unit_execution_id: UnitExecutionId,
+    ) -> TranscriptValidation: ...
+
+
+class TranscriptValidationQueryBoundary(Protocol):
+    def get_validation(
+        self, identity: TranscriptValidationId
+    ) -> TranscriptValidation | None: ...
+
+    def get_validation_finding(
+        self, identity: TranscriptValidationFindingId
+    ) -> TranscriptValidationFinding | None: ...

@@ -23,6 +23,7 @@ from .identities import (
     TranscriptRevisionId,
     TranscriptSegmentId,
     TranscriptValidationId,
+    TranscriptValidationFindingId,
 )
 
 
@@ -148,6 +149,8 @@ class CorrectionCandidate:
 
 @dataclass(frozen=True, slots=True)
 class TranscriptValidation:
+    """Structural result; findings are distinct from execution diagnostics."""
+
     identity: TranscriptValidationId
     run_id: ProcessingRunId
     unit_execution_id: UnitExecutionId
@@ -157,11 +160,41 @@ class TranscriptValidation:
     target_transcript_id: TranscriptId | None = None
     target_revision_id: TranscriptRevisionId | None = None
     ordering_valid: bool | None = None
+    source_order_valid: bool | None = None
+    timeline_order_valid: bool | None = None
     time_ranges_valid: bool | None = None
     overlap_detected: bool | None = None
+    segment_references_complete: bool | None = None
+    source_consistent: bool | None = None
+    parent_consistent: bool | None = None
+    finding_ids: tuple[TranscriptValidationFindingId, ...] = ()
+    has_warnings: bool = False
     diagnostic_references: tuple[DiagnosticId, ...] = ()
 
     def __post_init__(self) -> None:
         targets = (self.target_transcript_id, self.target_revision_id)
         if sum(target is not None for target in targets) != 1:
             raise ValueError("transcript validation requires exactly one target")
+
+
+@dataclass(frozen=True, slots=True)
+class TranscriptValidationFinding:
+    """Transcript-specific structural evidence, not an Execution Diagnostic."""
+
+    identity: TranscriptValidationFindingId
+    validation_id: TranscriptValidationId
+    rule: str
+    description: str
+    blocking: bool
+    transcript_id: TranscriptId
+    revision_id: TranscriptRevisionId | None = None
+    segment_id: TranscriptSegmentId | None = None
+    start: float | None = None
+    end: float | None = None
+    source_order: int | None = None
+
+    def __post_init__(self) -> None:
+        if not self.rule.strip():
+            raise ValueError("validation finding rule must not be empty")
+        if not self.description.strip():
+            raise ValueError("validation finding description must not be empty")

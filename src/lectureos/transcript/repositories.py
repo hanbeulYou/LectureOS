@@ -9,6 +9,7 @@ from .identities import (
     TranscriptRevisionId,
     TranscriptSegmentId,
     TranscriptValidationId,
+    TranscriptValidationFindingId,
 )
 from .models import (
     CorrectionCandidate,
@@ -17,6 +18,7 @@ from .models import (
     RawTranscript,
     TranscriptSegment,
     TranscriptValidation,
+    TranscriptValidationFinding,
 )
 
 ProviderTranscriptResultRepository = Repository[
@@ -29,6 +31,9 @@ CorrectedTranscriptRevisionRepository = Repository[
 TranscriptSegmentRepository = Repository[TranscriptSegmentId, TranscriptSegment]
 CorrectionCandidateRepository = Repository[CorrectionCandidateId, CorrectionCandidate]
 TranscriptValidationRepository = Repository[TranscriptValidationId, TranscriptValidation]
+TranscriptValidationFindingRepository = Repository[
+    TranscriptValidationFindingId, TranscriptValidationFinding
+]
 
 __all__ = [
     "CorrectionCandidateRepository",
@@ -38,4 +43,5 @@ __all__ = [
     "RawTranscriptRepository",
     "TranscriptSegmentRepository",
     "TranscriptValidationRepository",
+    "TranscriptValidationFindingRepository",
 ]

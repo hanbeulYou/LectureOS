@@ -8,8 +8,10 @@ from .models import (
     TranscriptApplicability,
     TranscriptSegment,
     TranscriptValidation,
+    TranscriptValidationFinding,
 )
 from .service import TranscriptService
+from .validation import TranscriptValidationService
 
 __all__ = [
     "CorrectionCandidate",
@@ -20,4 +22,6 @@ __all__ = [
     "TranscriptSegment",
     "TranscriptService",
     "TranscriptValidation",
+    "TranscriptValidationFinding",
+    "TranscriptValidationService",
 ]
