@@ -11,11 +11,22 @@ from lectureos.review.models import (
     ReviewItem,
     StaleCandidateRecord,
 )
-from lectureos.subtitle.identities import SubtitleCandidateId
+from lectureos.subtitle.identities import (
+    SubtitleCandidateId,
+    SubtitleCueId,
+    SubtitleRevisionId,
+)
 from lectureos.transcript.identities import TranscriptRevisionId, TranscriptSegmentId
 
-from .identities import TranscriptCorrectionApplicationResultId
-from .models import TranscriptCorrectionApplicationResult
+from .identities import (
+    SubtitleDecisionApplicationResultId,
+    TranscriptCorrectionApplicationResultId,
+)
+from .models import (
+    SubtitleDecisionApplicationResult,
+    SubtitleTextReplacement,
+    TranscriptCorrectionApplicationResult,
+)
 
 
 class TranscriptCorrectionApplicationCommandBoundary(Protocol):
@@ -66,3 +77,28 @@ class SubtitleReviewIntegrationQueryBoundary(Protocol):
     def get_subtitle_candidate_review_history(
         self, candidate_id: SubtitleCandidateId
     ) -> tuple[ReviewHistoryEntry, ...]: ...
+
+
+class SubtitleDecisionApplicationCommandBoundary(Protocol):
+    def apply_approved_subtitle_decision(
+        self,
+        *,
+        approved_decision_id: ApprovedDecisionId,
+        application_result_id: SubtitleDecisionApplicationResultId,
+        revision_id: SubtitleRevisionId,
+        revision_domain_result_id: DomainResultId,
+        run_id: ProcessingRunId,
+        unit_execution_id: UnitExecutionId,
+        text_replacement: SubtitleTextReplacement | None = None,
+        replacement_cue_id: SubtitleCueId | None = None,
+    ) -> SubtitleDecisionApplicationResult: ...
+
+
+class SubtitleDecisionApplicationQueryBoundary(Protocol):
+    def get_subtitle_application_result(
+        self, identity: SubtitleDecisionApplicationResultId
+    ) -> SubtitleDecisionApplicationResult | None: ...
+
+    def get_subtitle_application_result_for_approved_decision(
+        self, approved_decision_id: ApprovedDecisionId
+    ) -> SubtitleDecisionApplicationResult | None: ...

@@ -51,6 +51,7 @@ class SubtitleCue:
     speaker_label: str | None = None
     line_count: int | None = None
     reading_rate: float | None = None
+    replaces_cue_id: SubtitleCueId | None = None
 
     def __post_init__(self) -> None:
         if self.source_timeline_id is None:

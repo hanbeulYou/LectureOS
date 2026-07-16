@@ -8,3 +8,13 @@ from lectureos.execution.identities import OpaqueIdentity
 @dataclass(frozen=True, slots=True)
 class TranscriptCorrectionApplicationResultId(OpaqueIdentity):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class SubtitleDecisionApplicationResultId(OpaqueIdentity):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class SubtitleTextReplacementId(OpaqueIdentity):
+    pass
