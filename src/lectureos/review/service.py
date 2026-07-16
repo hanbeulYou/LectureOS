@@ -276,6 +276,36 @@ class ReviewService:
     ) -> CandidateReconciliation | None:
         return self.reconciliations.get(identity)
 
+    def get_stale_records_for_candidate(
+        self, candidate_id: CandidateReferenceId
+    ) -> tuple[StaleCandidateRecord, ...]:
+        return tuple(
+            record
+            for record in self.stale_records.all()
+            if record.candidate_id == candidate_id
+        )
+
+    def get_conflicts_for_review_item(
+        self, review_item_id: ReviewItemId
+    ) -> tuple[ReviewConflict, ...]:
+        return tuple(
+            conflict
+            for conflict in self.conflicts.all()
+            if conflict.review_item_id == review_item_id
+        )
+
+    def get_reconciliations_for_candidate(
+        self, candidate_id: CandidateReferenceId
+    ) -> tuple[CandidateReconciliation, ...]:
+        return tuple(
+            reconciliation
+            for reconciliation in self.reconciliations.all()
+            if candidate_id in (
+                reconciliation.previous_candidate_id,
+                reconciliation.new_candidate_id,
+            )
+        )
+
     def _prepare_decision(
         self,
         decision_id: ReviewDecisionId,

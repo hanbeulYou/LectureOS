@@ -70,6 +70,7 @@ class TranscriptSegment:
     speaker_label: str | None = None
     confidence: float | None = None
     uncertainty: float | None = None
+    replaces_segment_id: TranscriptSegmentId | None = None
 
     def __post_init__(self) -> None:
         if self.source_order < 0:

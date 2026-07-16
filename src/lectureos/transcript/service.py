@@ -75,6 +75,7 @@ class TranscriptService:
             transcript.source_timeline_id,
             transcript.segment_ids,
             segments,
+            allow_existing=False,
         )
 
         for segment in segments:
@@ -141,10 +142,12 @@ class TranscriptService:
             raw.source_timeline_id,
             revision.segment_ids,
             segments,
+            allow_existing=True,
         )
 
         for segment in segments:
-            self.segments.save(segment)
+            if self.segments.get(segment.identity) is None:
+                self.segments.save(segment)
         self.revisions.save(revision)
         self.domain_results.save(
             DomainResultReference(
@@ -224,6 +227,8 @@ class TranscriptService:
         source_timeline_id,
         expected_ids: tuple[TranscriptSegmentId, ...],
         segments: tuple[TranscriptSegment, ...],
+        *,
+        allow_existing: bool,
     ) -> None:
         actual_ids = tuple(segment.identity for segment in segments)
         if actual_ids != expected_ids:
@@ -236,7 +241,9 @@ class TranscriptService:
         if source_orders != tuple(sorted(source_orders)):
             raise ValueError("transcript segments must preserve source order")
         for segment in segments:
-            self._require_new(self.segments, segment.identity, "transcript segment")
+            existing = self.segments.get(segment.identity)
+            if existing is not None and (not allow_existing or existing != segment):
+                raise ValueError("transcript segment identity already exists")
             if segment.transcript_id != transcript_id:
                 raise ValueError("segment must belong to transcript lineage")
             if segment.source_timeline_id not in (None, source_timeline_id):
