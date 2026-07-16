@@ -1,0 +1,19 @@
+"""Transport-independent boundaries for Minimal SRT Export."""
+
+from typing import Protocol
+
+
+class ExportCommandBoundary(Protocol):
+    def export_final_subtitle_to_srt(self, **kwargs): ...
+
+
+class ExportQueryBoundary(Protocol):
+    def get_export_request(self, identity): ...
+
+    def get_export_artifact(self, identity): ...
+
+    def get_artifact_for_request(self, request_id): ...
+
+    def list_artifacts_for_final_selection(self, final_selection_id): ...
+
+    def list_artifacts_for_revision(self, revision_id): ...
