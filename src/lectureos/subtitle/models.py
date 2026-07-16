@@ -1,6 +1,7 @@
 """Immutable Subtitle candidates, revisions, cues, and validation records."""
 
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 from math import isfinite
 
@@ -15,6 +16,7 @@ from lectureos.execution.identities import (
     SourceMediaId,
     SourceTimelineId,
     UnitExecutionId,
+    WorkingContextReference,
 )
 from lectureos.transcript.identities import (
     TranscriptId,
@@ -128,6 +130,11 @@ class SubtitleValidation:
     finding_ids: tuple[SubtitleValidationFindingId, ...] = ()
     has_warnings: bool = False
     diagnostic_references: tuple[DiagnosticId, ...] = ()
+    working_context: WorkingContextReference | None = None
+    target_cue_ids: tuple[SubtitleCueId, ...] = ()
+    recorded_at: datetime | None = None
+    sequence: int | None = None
+    previous_validation_id: SubtitleValidationId | None = None
 
     def __post_init__(self) -> None:
         if sum(
@@ -135,6 +142,8 @@ class SubtitleValidation:
             for target in (self.target_candidate_id, self.target_revision_id)
         ) != 1:
             raise ValueError("subtitle validation requires exactly one target")
+        if self.sequence is not None and self.sequence < 0:
+            raise ValueError("subtitle validation sequence must not be negative")
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,6 +154,7 @@ class SubtitleValidationFinding:
     description: str
     blocking: bool
     cue_id: SubtitleCueId | None = None
+    revision_id: SubtitleRevisionId | None = None
 
     def __post_init__(self) -> None:
         if not self.rule.strip() or not self.description.strip():

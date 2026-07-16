@@ -1,9 +1,16 @@
 """Independent structural validation for persisted Subtitle records."""
 
+from dataclasses import replace
+from datetime import datetime, timezone
 from math import isfinite
 
 from lectureos.execution.boundaries import ExecutionQueryBoundary
-from lectureos.execution.identities import ProcessingRunId, UnitExecutionId
+from lectureos.execution.identities import (
+    ProcessingRunId,
+    UnitExecutionId,
+    WorkingContextReference,
+)
+from lectureos.execution.models import ProcessingState
 from lectureos.transcript.boundaries import TranscriptQueryBoundary
 
 from .identities import (
@@ -57,7 +64,81 @@ class SubtitleValidationService:
             validation_id, revision, run_id, unit_execution_id
         )
 
-    def _validate(self, validation_id, target, run_id, execution_id):
+    def validate_revision_in_context(
+        self,
+        *,
+        validation_id: SubtitleValidationId,
+        revision_id: SubtitleRevisionId,
+        working_context: WorkingContextReference,
+        run_id: ProcessingRunId,
+        unit_execution_id: UnitExecutionId,
+    ) -> SubtitleValidation:
+        revision = self._store.get_revision(revision_id)
+        if revision is None:
+            raise KeyError("unknown subtitle revision")
+        self._require_validation_execution(
+            working_context, run_id, unit_execution_id
+        )
+        cues = self._resolve_revision_request(revision, working_context)
+        history = self.get_revision_validation_history(revision_id)
+        return self._validate(
+            validation_id,
+            revision,
+            run_id,
+            unit_execution_id,
+            working_context=working_context,
+            resolved_cues=cues,
+            sequence=len(history),
+            previous_validation_id=history[-1].identity if history else None,
+        )
+
+    def get_validation_findings(
+        self, validation_id: SubtitleValidationId
+    ) -> tuple[SubtitleValidationFinding, ...]:
+        validation = self._store.get_validation(validation_id)
+        if validation is None:
+            return ()
+        return tuple(
+            finding
+            for finding_id in validation.finding_ids
+            if (finding := self._store.get_validation_finding(finding_id)) is not None
+        )
+
+    def get_revision_validation_history(
+        self, revision_id: SubtitleRevisionId
+    ) -> tuple[SubtitleValidation, ...]:
+        return tuple(
+            sorted(
+                (
+                    validation
+                    for validation in self._store.get_validations_for_revision(
+                        revision_id
+                    )
+                    if validation.target_revision_id == revision_id
+                    and validation.sequence is not None
+                ),
+                key=lambda validation: validation.sequence,
+            )
+        )
+
+    def get_latest_revision_validation(
+        self, revision_id: SubtitleRevisionId
+    ) -> SubtitleValidation | None:
+        history = self.get_revision_validation_history(revision_id)
+        return history[-1] if history else None
+
+    def _validate(
+        self,
+        validation_id,
+        target,
+        run_id,
+        execution_id,
+        *,
+        working_context=None,
+        resolved_cues=None,
+        sequence=None,
+        previous_validation_id=None,
+    ):
         if self._store.get_validation(validation_id) is not None:
             raise ValueError("subtitle validation identity already exists")
         findings = []
@@ -77,6 +158,11 @@ class SubtitleValidationService:
             )
 
         cues = []
+        resolved = (
+            {cue.identity: cue for cue in resolved_cues}
+            if resolved_cues is not None
+            else None
+        )
         candidate = target if isinstance(target, SubtitleCandidate) else None
         if isinstance(target, SubtitleRevision):
             try:
@@ -89,7 +175,11 @@ class SubtitleValidationService:
         if len(set(target.cue_ids)) != len(target.cue_ids):
             add("duplicate_cue_reference", "Cue reference is duplicated", True)
         for cue_id in target.cue_ids:
-            cue = self._store.get_cue(cue_id)
+            cue = (
+                resolved.get(cue_id)
+                if resolved is not None
+                else self._store.get_cue(cue_id)
+            )
             if cue is None:
                 add("missing_cue", "Referenced Cue does not exist", True, cue_id)
                 continue
@@ -167,9 +257,107 @@ class SubtitleValidationService:
             else None,
             finding_ids=tuple(item.identity for item in findings),
             has_warnings=any(not item.blocking for item in findings),
+            working_context=working_context,
+            target_cue_ids=target.cue_ids if working_context is not None else (),
+            recorded_at=(
+                datetime.now(timezone.utc) if working_context is not None else None
+            ),
+            sequence=sequence,
+            previous_validation_id=previous_validation_id,
         )
+        if isinstance(target, SubtitleRevision) and working_context is not None:
+            findings = [
+                replace(finding, revision_id=target.identity) for finding in findings
+            ]
         self._store.record_validation(validation, tuple(findings))
         return validation
+
+    def _resolve_revision_request(
+        self,
+        revision: SubtitleRevision,
+        working_context: WorkingContextReference,
+    ):
+        revision_run = self._execution_query.get_run(revision.run_id)
+        revision_execution = self._execution_query.get_unit_execution(
+            revision.unit_execution_id
+        )
+        if (
+            revision_run is None
+            or revision_execution is None
+            or revision_execution.run_id != revision.run_id
+            or revision_run.working_context != working_context
+        ):
+            raise ValueError(
+                "Subtitle Revision and validation Working Context differ"
+            )
+        try:
+            candidate = self._root_candidate(revision)
+        except (KeyError, ValueError):
+            candidate = None
+        if candidate is not None:
+            candidate_run = self._execution_query.get_run(candidate.run_id)
+            candidate_execution = self._execution_query.get_unit_execution(
+                candidate.unit_execution_id
+            )
+            if (
+                candidate_run is None
+                or candidate_execution is None
+                or candidate_execution.run_id != candidate.run_id
+                or candidate_run.working_context != working_context
+            ):
+                raise ValueError("Revision source Cue Working Context differs")
+        cues = []
+        for cue_id in revision.cue_ids:
+            cue = self._store.get_cue(cue_id)
+            if cue is None:
+                raise KeyError("Revision validation request references an unknown Cue")
+            if (
+                cue.subtitle_id != revision.subtitle_id
+                or (
+                    candidate is not None
+                    and (
+                        cue.source_timeline_id != candidate.source_timeline_id
+                        or cue.source_transcript_id
+                        != candidate.source_transcript_id
+                        or cue.source_revision_id != candidate.source_revision_id
+                    )
+                )
+            ):
+                raise ValueError("Revision validation Cue lineage differs")
+            if cue.replaces_cue_id is not None:
+                original = self._store.get_cue(cue.replaces_cue_id)
+                if original is None:
+                    raise KeyError("Replacement Cue original does not exist")
+                if original.identity == cue.identity:
+                    raise ValueError("Replacement Cue must have a distinct identity")
+                if (
+                    original.subtitle_id != cue.subtitle_id
+                    or original.source_timeline_id != cue.source_timeline_id
+                    or original.source_transcript_id != cue.source_transcript_id
+                    or original.source_revision_id != cue.source_revision_id
+                    or original.start != cue.start
+                    or original.end != cue.end
+                    or original.display_order != cue.display_order
+                    or original.source_segment_ids != cue.source_segment_ids
+                ):
+                    raise ValueError("Replacement Cue lineage differs")
+            cues.append(cue)
+        return tuple(cues)
+
+    def _require_validation_execution(
+        self,
+        working_context: WorkingContextReference,
+        run_id: ProcessingRunId,
+        execution_id: UnitExecutionId,
+    ) -> None:
+        run = self._execution_query.get_run(run_id)
+        execution = self._execution_query.get_unit_execution(execution_id)
+        if run is None or execution is None:
+            raise KeyError("unknown Subtitle validation execution provenance")
+        if execution.run_id != run_id or run.working_context != working_context:
+            raise ValueError("Subtitle validation execution provenance differs")
+        if execution.state is not ProcessingState.RUNNING:
+            raise ValueError("Subtitle validation requires a running Unit Execution")
 
     def _validate_provenance(self, target, add) -> None:
         run = self._execution_query.get_run(target.run_id)

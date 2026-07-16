@@ -52,6 +52,10 @@ class SubtitleQueryBoundary(Protocol):
         self, identity: SubtitleValidationFindingId
     ) -> SubtitleValidationFinding | None: ...
 
+    def get_validations_for_revision(
+        self, revision_id: SubtitleRevisionId
+    ) -> tuple[SubtitleValidation, ...]: ...
+
     def get_domain_result_reference(
         self, identity: DomainResultId
     ) -> DomainResultReference | None: ...
@@ -63,6 +67,22 @@ class SubtitleValidationStoreBoundary(
     Protocol,
 ):
     """Persistence boundary used by independent structural validation."""
+
+
+class SubtitleRevisionValidationBoundary(Protocol):
+    def validate_revision_in_context(self, **kwargs) -> SubtitleValidation: ...
+
+    def get_revision_validation_history(
+        self, revision_id: SubtitleRevisionId
+    ) -> tuple[SubtitleValidation, ...]: ...
+
+    def get_latest_revision_validation(
+        self, revision_id: SubtitleRevisionId
+    ) -> SubtitleValidation | None: ...
+
+    def get_validation_findings(
+        self, validation_id: SubtitleValidationId
+    ) -> tuple[SubtitleValidationFinding, ...]: ...
 
 
 class SubtitleApplicabilityCommandBoundary(Protocol):

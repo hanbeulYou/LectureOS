@@ -152,6 +152,13 @@ class SubtitleService:
     def get_validation_finding(self, identity):
         return self.findings.get(identity)
 
+    def get_validations_for_revision(self, revision_id):
+        return tuple(
+            validation
+            for validation in self.validations.all()
+            if validation.target_revision_id == revision_id
+        )
+
     def get_domain_result_reference(self, identity):
         return self.domain_results.get(identity)
 
