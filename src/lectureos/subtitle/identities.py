@@ -26,6 +26,11 @@ class SubtitleRevisionId(OpaqueIdentity):
 
 
 @dataclass(frozen=True, slots=True)
+class SubtitleRevisionApplicabilityId(OpaqueIdentity):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
 class SubtitleValidationId(OpaqueIdentity):
     pass
 
