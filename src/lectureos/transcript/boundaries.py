@@ -1,6 +1,8 @@
 """Transport-independent Transcript boundaries."""
 
-from typing import Protocol
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Protocol
 
 from lectureos.execution.identities import (
     DomainResultId,
@@ -27,6 +29,13 @@ from .models import (
     TranscriptValidation,
     TranscriptValidationFinding,
 )
+
+if TYPE_CHECKING:
+    from .applicability import (
+        CurrentTranscriptSelection,
+        RevisionApplicabilityRecord,
+        RevisionTarget,
+    )
 
 
 class TranscriptProcessingBoundary(Protocol):
@@ -109,3 +118,29 @@ class TranscriptValidationQueryBoundary(Protocol):
     def get_validation_finding(
         self, identity: TranscriptValidationFindingId
     ) -> TranscriptValidationFinding | None: ...
+
+
+class TranscriptApplicabilityCommandBoundary(Protocol):
+    def register_undetermined_revision(self, **kwargs) -> RevisionApplicabilityRecord: ...
+
+    def select_current_revision(self, **kwargs) -> CurrentTranscriptSelection: ...
+
+    def mark_revision_stale(self, **kwargs) -> RevisionApplicabilityRecord: ...
+
+    def supersede_revision(self, **kwargs) -> RevisionApplicabilityRecord: ...
+
+    def mark_historical(self, **kwargs) -> RevisionApplicabilityRecord: ...
+
+
+class TranscriptApplicabilityQueryBoundary(Protocol):
+    def get_current_revision(
+        self,
+        working_context,
+        transcript_id: TranscriptId,
+    ) -> RevisionTarget | None: ...
+
+    def get_applicability_history(
+        self,
+        working_context,
+        transcript_id: TranscriptId,
+    ) -> tuple[RevisionApplicabilityRecord | CurrentTranscriptSelection, ...]: ...

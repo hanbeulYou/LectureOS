@@ -10,6 +10,14 @@ from .models import (
     TranscriptValidation,
     TranscriptValidationFinding,
 )
+from .applicability import (
+    CurrentTranscriptSelection,
+    RevisionApplicabilityRecord,
+    RevisionTarget,
+    TranscriptApplicabilityIntegrityError,
+    TranscriptApplicabilityKind,
+    TranscriptApplicabilityService,
+)
 from .service import TranscriptService
 from .validation import TranscriptValidationService
 
@@ -24,4 +32,10 @@ __all__ = [
     "TranscriptValidation",
     "TranscriptValidationFinding",
     "TranscriptValidationService",
+    "CurrentTranscriptSelection",
+    "RevisionApplicabilityRecord",
+    "RevisionTarget",
+    "TranscriptApplicabilityIntegrityError",
+    "TranscriptApplicabilityKind",
+    "TranscriptApplicabilityService",
 ]
