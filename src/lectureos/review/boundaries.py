@@ -126,3 +126,7 @@ class ReviewQueryBoundary(CandidateQueryBoundary, Protocol):
     def get_reconciliations_for_candidate(
         self, candidate_id: CandidateReferenceId
     ) -> tuple[CandidateReconciliation, ...]: ...
+
+    def get_review_items_for_candidate(
+        self, candidate_id: CandidateReferenceId
+    ) -> tuple[ReviewItem, ...]: ...

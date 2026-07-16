@@ -4,6 +4,14 @@ from typing import Protocol
 
 from lectureos.execution.identities import DomainResultId, ProcessingRunId, UnitExecutionId
 from lectureos.review.identities import ApprovedDecisionId
+from lectureos.review.models import (
+    CandidateReconciliation,
+    ReviewConflict,
+    ReviewHistoryEntry,
+    ReviewItem,
+    StaleCandidateRecord,
+)
+from lectureos.subtitle.identities import SubtitleCandidateId
 from lectureos.transcript.identities import TranscriptRevisionId, TranscriptSegmentId
 
 from .identities import TranscriptCorrectionApplicationResultId
@@ -32,3 +40,29 @@ class TranscriptCorrectionApplicationQueryBoundary(Protocol):
     def get_application_result_for_approved_decision(
         self, approved_decision_id: ApprovedDecisionId
     ) -> TranscriptCorrectionApplicationResult | None: ...
+
+
+class SubtitleReviewIntegrationCommandBoundary(Protocol):
+    def create_subtitle_review_item(self, **kwargs) -> ReviewItem: ...
+
+    def mark_subtitle_candidate_stale(
+        self, record: StaleCandidateRecord
+    ) -> None: ...
+
+    def record_subtitle_review_conflict(
+        self, conflict: ReviewConflict
+    ) -> None: ...
+
+    def reconcile_subtitle_candidates(
+        self, reconciliation: CandidateReconciliation
+    ) -> None: ...
+
+
+class SubtitleReviewIntegrationQueryBoundary(Protocol):
+    def get_review_items_for_subtitle_candidate(
+        self, candidate_id: SubtitleCandidateId
+    ) -> tuple[ReviewItem, ...]: ...
+
+    def get_subtitle_candidate_review_history(
+        self, candidate_id: SubtitleCandidateId
+    ) -> tuple[ReviewHistoryEntry, ...]: ...

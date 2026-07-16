@@ -306,6 +306,13 @@ class ReviewService:
             )
         )
 
+    def get_review_items_for_candidate(
+        self, candidate_id: CandidateReferenceId
+    ) -> tuple[ReviewItem, ...]:
+        return tuple(
+            item for item in self.items.all() if item.candidate_id == candidate_id
+        )
+
     def _prepare_decision(
         self,
         decision_id: ReviewDecisionId,
