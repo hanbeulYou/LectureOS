@@ -19,6 +19,12 @@ from .models import (
     SubtitleValidation,
     SubtitleValidationFinding,
 )
+from .final_selection import (
+    FinalSubtitleSelection,
+    FinalSubtitleSelectionIntegrityError,
+    FinalSubtitleSelectionReason,
+    FinalSubtitleSelectionService,
+)
 from .service import SubtitleService
 from .validation import SubtitleValidationService
 
@@ -40,4 +46,8 @@ __all__ = [
     "SubtitleValidation",
     "SubtitleValidationFinding",
     "SubtitleValidationService",
+    "FinalSubtitleSelection",
+    "FinalSubtitleSelectionIntegrityError",
+    "FinalSubtitleSelectionReason",
+    "FinalSubtitleSelectionService",
 ]
