@@ -16,7 +16,12 @@ from lectureos.subtitle.identities import (
     SubtitleValidationId,
 )
 
-from .identities import ExportRequestId, SystemRequesterReference
+from .identities import (
+    ExportRequestId,
+    MaterializationRequestId,
+    MaterializationResultId,
+    SystemRequesterReference,
+)
 
 
 class ExportFormat(str, Enum):
@@ -91,3 +96,50 @@ class ExportArtifact:
             raise TypeError("SRT Artifact content must be a Unicode string")
         if not self.serializer_version.strip():
             raise ValueError("Export Artifact requires a serializer version")
+
+
+class LocalOverwritePolicy(str, Enum):
+    FAIL_IF_EXISTS = "fail_if_exists"
+    REPLACE_EXISTING = "replace_existing"
+
+
+class LocalEncodingPolicy(str, Enum):
+    UTF8 = "utf-8"
+
+
+class LocalBomPolicy(str, Enum):
+    NONE = "none"
+
+
+class LocalNewlinePolicy(str, Enum):
+    LF = "lf"
+
+
+@dataclass(frozen=True, slots=True)
+class LocalArtifactMaterializationRequest:
+    identity: MaterializationRequestId
+    artifact_id: ArtifactId
+    requester: ExportRequesterReference
+    target_directory: str
+    requested_filename: str
+    final_path: str
+    overwrite_policy: LocalOverwritePolicy
+    requested_at: datetime
+    encoding_policy: LocalEncodingPolicy = LocalEncodingPolicy.UTF8
+    bom_policy: LocalBomPolicy = LocalBomPolicy.NONE
+    newline_policy: LocalNewlinePolicy = LocalNewlinePolicy.LF
+
+
+@dataclass(frozen=True, slots=True)
+class MaterializedFileResult:
+    identity: MaterializationResultId
+    request_id: MaterializationRequestId
+    artifact_id: ArtifactId
+    requester: ExportRequesterReference
+    final_path: str
+    byte_size: int
+    overwrite_policy: LocalOverwritePolicy
+    materialized_at: datetime
+    encoding_policy: LocalEncodingPolicy = LocalEncodingPolicy.UTF8
+    bom_policy: LocalBomPolicy = LocalBomPolicy.NONE
+    newline_policy: LocalNewlinePolicy = LocalNewlinePolicy.LF
