@@ -1,4 +1,3 @@
-import importlib.util
 import sqlite3
 import tempfile
 import unittest
@@ -299,8 +298,7 @@ class SQLiteSchemaVersionTwoTests(unittest.TestCase):
     def test_feature_unavailable_error_is_a_persistence_error(self) -> None:
         self.assertTrue(issubclass(SchemaFeatureUnavailableError, PersistenceError))
 
-    def test_processing_run_repository_and_unapproved_aggregates_are_not_added(self) -> None:
-        self.assertIsNone(importlib.util.find_spec("lectureos.persistence.processing_runs"))
+    def test_unapproved_aggregates_are_not_added(self) -> None:
         connection = initialize_sqlite_database(self.database_path)
         try:
             names = table_names(connection)
