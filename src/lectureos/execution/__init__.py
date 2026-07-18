@@ -2,6 +2,7 @@
 
 from .boundaries import (
     AtomicFailureExecutionPersistence,
+    AtomicRetryExecutionPersistence,
     AtomicStartExecutionPersistence,
     ExecutionQueryBoundary,
     HumanDecisionBoundary,
@@ -26,6 +27,7 @@ from .start_persistence import InMemoryAtomicStartExecutionPersistence
 
 __all__ = [
     "AtomicFailureExecutionPersistence",
+    "AtomicRetryExecutionPersistence",
     "AtomicStartExecutionPersistence",
     "Diagnostic",
     "DomainResultReference",

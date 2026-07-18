@@ -85,6 +85,17 @@ class AtomicFailureExecutionPersistence(Protocol):
     ) -> None: ...
 
 
+class AtomicRetryExecutionPersistence(Protocol):
+    """Application-owned port for storing final Retry command snapshots."""
+
+    def persist_retried_execution(
+        self,
+        *,
+        execution: UnitExecution,
+        run: ProcessingRun,
+    ) -> None: ...
+
+
 class ExecutionQueryBoundary(Protocol):
     def get_run(self, run_id: ProcessingRunId) -> ProcessingRun | None: ...
 

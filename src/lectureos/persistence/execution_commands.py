@@ -116,6 +116,45 @@ class SQLiteExecutionCommandPersistence:
             self._rollback_if_owned(transaction_started)
             raise
 
+    def persist_retried_execution(
+        self,
+        *,
+        execution: UnitExecution,
+        run: ProcessingRun,
+    ) -> None:
+        transaction_started = False
+        try:
+            self._connection.execute("BEGIN IMMEDIATE")
+            transaction_started = True
+            self._validate_retry_linkage(execution, run)
+            if self._execution_exists(execution):
+                raise PersistenceIdentityCollisionError(
+                    "UnitExecution identity already exists"
+                )
+            _insert_unit_execution_snapshot(self._connection, execution)
+            _write_processing_run_snapshot(self._connection, run)
+            self._commit()
+        except PersistenceError:
+            self._rollback_if_owned(transaction_started)
+            raise
+        except sqlite3.IntegrityError as error:
+            self._rollback_if_owned(transaction_started)
+            if self._execution_exists_safely(execution):
+                raise PersistenceIdentityCollisionError(
+                    "UnitExecution identity already exists"
+                ) from error
+            raise PersistenceError(
+                f"could not persist atomic UnitExecution retry: {error}"
+            ) from error
+        except sqlite3.Error as error:
+            self._rollback_if_owned(transaction_started)
+            raise PersistenceError(
+                f"could not persist atomic UnitExecution retry: {error}"
+            ) from error
+        except Exception:
+            self._rollback_if_owned(transaction_started)
+            raise
+
     @staticmethod
     def _validate_linkage(execution: UnitExecution, run: ProcessingRun) -> None:
         if execution.run_id != run.identity:
@@ -139,6 +178,20 @@ class SQLiteExecutionCommandPersistence:
             raise PersistenceError("UnitExecution must reference the Failure")
         if failure.identity not in run.failure_references:
             raise PersistenceError("ProcessingRun must reference the Failure")
+
+    @staticmethod
+    def _validate_retry_linkage(
+        execution: UnitExecution,
+        run: ProcessingRun,
+    ) -> None:
+        if execution.run_id != run.identity:
+            raise PersistenceError("Retry UnitExecution run must match ProcessingRun")
+        if execution.retry_of is None:
+            raise PersistenceError("Retry UnitExecution must reference its source")
+        if run.unit_execution_references.count(execution.identity) != 1:
+            raise PersistenceError(
+                "ProcessingRun must reference the Retry UnitExecution exactly once"
+            )
 
     def _execution_exists(self, execution: UnitExecution) -> bool:
         return self._connection.execute(
