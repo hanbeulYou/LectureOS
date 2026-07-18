@@ -6,6 +6,7 @@ from .errors import (
     SchemaFeatureUnavailableError,
     UnsupportedSchemaVersionError,
 )
+from .execution_commands import SQLiteExecutionCommandPersistence
 from .processing_units import SQLiteProcessingUnitRepository
 from .processing_runs import SQLiteProcessingRunRepository
 from .unit_executions import SQLiteUnitExecutionRepository
@@ -21,6 +22,7 @@ __all__ = [
     "PersistenceIdentityCollisionError",
     "SchemaFeatureUnavailableError",
     "SQLITE_SCHEMA_VERSION",
+    "SQLiteExecutionCommandPersistence",
     "SQLiteProcessingUnitRepository",
     "SQLiteProcessingRunRepository",
     "SQLiteUnitExecutionRepository",

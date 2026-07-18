@@ -59,66 +59,14 @@ class SQLiteProcessingRunRepository:
     def save(self, record: ProcessingRun) -> None:
         try:
             self._connection.execute("BEGIN IMMEDIATE")
-            self._connection.execute(
-                """
-                INSERT INTO processing_runs(
-                    identity, intent_purpose, intent_retry_of,
-                    intent_reprocessing_of, working_context, configuration,
-                    state, reprocessing_of
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(identity) DO UPDATE SET
-                    intent_purpose = excluded.intent_purpose,
-                    intent_retry_of = excluded.intent_retry_of,
-                    intent_reprocessing_of = excluded.intent_reprocessing_of,
-                    working_context = excluded.working_context,
-                    configuration = excluded.configuration,
-                    state = excluded.state,
-                    reprocessing_of = excluded.reprocessing_of
-                """,
-                (
-                    record.identity.value,
-                    record.intent.purpose,
-                    _optional_value(record.intent.retry_of),
-                    _optional_value(record.intent.reprocessing_of),
-                    record.working_context.value,
-                    _optional_value(record.configuration),
-                    record.state.value,
-                    _optional_value(record.reprocessing_of),
-                ),
-            )
-            for table, _ in _CHILD_TABLES:
-                self._connection.execute(
-                    f"DELETE FROM {table} WHERE processing_run_id = ?",
-                    (record.identity.value,),
-                )
-            self._insert_children(
-                "processing_run_inputs", "input_reference", record,
-                tuple(item.value for item in record.input_references),
-            )
-            self._insert_children(
-                "processing_run_upstream_results", "domain_result_id", record,
-                tuple(item.value for item in record.upstream_results),
-            )
-            self._insert_children(
-                "processing_run_units", "processing_unit_id", record,
-                tuple(item.value for item in record.unit_references),
-            )
-            self._insert_children(
-                "processing_run_unit_executions", "unit_execution_id", record,
-                tuple(item.value for item in record.unit_execution_references),
-            )
-            self._insert_children(
-                "processing_run_results", "domain_result_id", record,
-                tuple(item.value for item in record.result_references),
-            )
-            self._insert_children(
-                "processing_run_failures", "failure_id", record,
-                tuple(item.value for item in record.failure_references),
-            )
+            _write_processing_run_snapshot(self._connection, record)
             self._commit()
         except sqlite3.Error as error:
             self._rollback()
             raise PersistenceError(f"could not persist ProcessingRun: {error}") from error
+        except Exception:
+            self._rollback()
+            raise
 
     def all(self) -> tuple[ProcessingRun, ...]:
         try:
@@ -192,24 +140,6 @@ class SQLiteProcessingRunRepository:
             ),
         )
 
-    def _insert_children(
-        self,
-        table: str,
-        value_column: str,
-        record: ProcessingRun,
-        values: tuple[str, ...],
-    ) -> None:
-        self._connection.executemany(
-            f"""
-            INSERT INTO {table}(processing_run_id, ordinal, {value_column})
-            VALUES (?, ?, ?)
-            """,
-            (
-                (record.identity.value, ordinal, value)
-                for ordinal, value in enumerate(values)
-            ),
-        )
-
     def _child_values(
         self, table: str, value_column: str, identity: ProcessingRunId
     ) -> tuple[str, ...]:
@@ -239,3 +169,85 @@ class SQLiteProcessingRunRepository:
 
 def _optional_value(reference: object | None) -> str | None:
     return reference.value if reference is not None else None
+
+
+def _write_processing_run_snapshot(
+    connection: sqlite3.Connection, record: ProcessingRun
+) -> None:
+    """Write one complete snapshot without owning a transaction."""
+
+    connection.execute(
+        """
+        INSERT INTO processing_runs(
+            identity, intent_purpose, intent_retry_of,
+            intent_reprocessing_of, working_context, configuration,
+            state, reprocessing_of
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(identity) DO UPDATE SET
+            intent_purpose = excluded.intent_purpose,
+            intent_retry_of = excluded.intent_retry_of,
+            intent_reprocessing_of = excluded.intent_reprocessing_of,
+            working_context = excluded.working_context,
+            configuration = excluded.configuration,
+            state = excluded.state,
+            reprocessing_of = excluded.reprocessing_of
+        """,
+        (
+            record.identity.value,
+            record.intent.purpose,
+            _optional_value(record.intent.retry_of),
+            _optional_value(record.intent.reprocessing_of),
+            record.working_context.value,
+            _optional_value(record.configuration),
+            record.state.value,
+            _optional_value(record.reprocessing_of),
+        ),
+    )
+    for table, _ in _CHILD_TABLES:
+        connection.execute(
+            f"DELETE FROM {table} WHERE processing_run_id = ?",
+            (record.identity.value,),
+        )
+    _insert_processing_run_children(
+        connection, "processing_run_inputs", "input_reference", record,
+        tuple(item.value for item in record.input_references),
+    )
+    _insert_processing_run_children(
+        connection, "processing_run_upstream_results", "domain_result_id", record,
+        tuple(item.value for item in record.upstream_results),
+    )
+    _insert_processing_run_children(
+        connection, "processing_run_units", "processing_unit_id", record,
+        tuple(item.value for item in record.unit_references),
+    )
+    _insert_processing_run_children(
+        connection, "processing_run_unit_executions", "unit_execution_id", record,
+        tuple(item.value for item in record.unit_execution_references),
+    )
+    _insert_processing_run_children(
+        connection, "processing_run_results", "domain_result_id", record,
+        tuple(item.value for item in record.result_references),
+    )
+    _insert_processing_run_children(
+        connection, "processing_run_failures", "failure_id", record,
+        tuple(item.value for item in record.failure_references),
+    )
+
+
+def _insert_processing_run_children(
+    connection: sqlite3.Connection,
+    table: str,
+    value_column: str,
+    record: ProcessingRun,
+    values: tuple[str, ...],
+) -> None:
+    connection.executemany(
+        f"""
+        INSERT INTO {table}(processing_run_id, ordinal, {value_column})
+        VALUES (?, ?, ?)
+        """,
+        (
+            (record.identity.value, ordinal, value)
+            for ordinal, value in enumerate(values)
+        ),
+    )
