@@ -106,12 +106,53 @@ class DemoRunResult:
     materialization: MaterializedFileResult
 
 
+@dataclass(frozen=True, slots=True)
+class DemoTranscriptSegment:
+    text: str
+    start: float
+    end: float
+
+
+@dataclass(frozen=True, slots=True)
+class DemoTranscriptInput:
+    provider_reference: str
+    original_content: str
+    segments: tuple[DemoTranscriptSegment, ...]
+    correction_text: str
+
+
 def run_end_to_end_demo(
     target_directory: str | Path,
     *,
     filename: str = "lectureos-demo.srt",
 ) -> DemoRunResult:
     """Run the smallest complete approved pipeline in one Python process."""
+
+    return run_demo_from_transcript(
+        target_directory,
+        transcript_input=DemoTranscriptInput(
+            provider_reference="demo-provider-fixture",
+            original_content="안녕 세계",
+            segments=(
+                DemoTranscriptSegment(text="안녕", start=0.0, end=1.0),
+                DemoTranscriptSegment(text="세계", start=1.0, end=2.0),
+            ),
+            correction_text="안녕하세요",
+        ),
+        filename=filename,
+    )
+
+
+def run_demo_from_transcript(
+    target_directory: str | Path,
+    *,
+    transcript_input: DemoTranscriptInput,
+    filename: str,
+) -> DemoRunResult:
+    """Run the existing demo orchestration from normalized transcript input."""
+
+    if not transcript_input.segments:
+        raise ValueError("demo transcript requires at least one timed segment")
 
     execution = ExecutionService()
     unit = ProcessingUnit(
@@ -153,30 +194,22 @@ def run_end_to_end_demo(
         run_id=run_id,
         unit_execution_id=execution_id,
         capability=CapabilityReference("speech.transcription"),
-        provider_reference="demo-provider-fixture",
-        original_content="안녕 세계",
+        provider_reference=transcript_input.provider_reference,
+        original_content=transcript_input.original_content,
     )
     transcript.register_provider_result(provider)
     transcript_id = TranscriptId("demo-transcript")
-    source_segments = (
+    source_segments = tuple(
         TranscriptSegment(
-            identity=TranscriptSegmentId("demo-segment-1"),
+            identity=TranscriptSegmentId(f"demo-segment-{index + 1}"),
             transcript_id=transcript_id,
             source_timeline_id=timeline_id,
-            text="안녕",
-            source_order=0,
-            start=0.0,
-            end=1.0,
-        ),
-        TranscriptSegment(
-            identity=TranscriptSegmentId("demo-segment-2"),
-            transcript_id=transcript_id,
-            source_timeline_id=timeline_id,
-            text="세계",
-            source_order=1,
-            start=1.0,
-            end=2.0,
-        ),
+            text=segment.text,
+            source_order=index,
+            start=segment.start,
+            end=segment.end,
+        )
+        for index, segment in enumerate(transcript_input.segments)
     )
     raw = RawTranscript(
         identity=transcript_id,
@@ -195,8 +228,8 @@ def run_end_to_end_demo(
         domain_result_id=DomainResultId("demo-correction-result"),
         transcript_id=raw.identity,
         segment_id=source_segments[0].identity,
-        proposed_text="안녕하세요",
-        rationale="demo Human correction",
+        proposed_text=transcript_input.correction_text,
+        rationale="demo review of normalized provider transcript",
         run_id=run_id,
         unit_execution_id=execution_id,
     )
