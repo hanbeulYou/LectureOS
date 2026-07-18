@@ -1,6 +1,7 @@
 """Execution-domain contracts derived from the approved implementation design."""
 
 from .boundaries import (
+    AtomicFailureExecutionPersistence,
     AtomicStartExecutionPersistence,
     ExecutionQueryBoundary,
     HumanDecisionBoundary,
@@ -23,6 +24,7 @@ from .service import ExecutionService
 from .start_persistence import InMemoryAtomicStartExecutionPersistence
 
 __all__ = [
+    "AtomicFailureExecutionPersistence",
     "AtomicStartExecutionPersistence",
     "Diagnostic",
     "DomainResultReference",

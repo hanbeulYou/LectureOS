@@ -73,6 +73,18 @@ class AtomicStartExecutionPersistence(Protocol):
     ) -> None: ...
 
 
+class AtomicFailureExecutionPersistence(Protocol):
+    """Application-owned port for storing final Record Failure outputs."""
+
+    def persist_recorded_failure(
+        self,
+        *,
+        failure: Failure,
+        execution: UnitExecution,
+        run: ProcessingRun,
+    ) -> None: ...
+
+
 class ExecutionQueryBoundary(Protocol):
     def get_run(self, run_id: ProcessingRunId) -> ProcessingRun | None: ...
 
