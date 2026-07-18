@@ -7,8 +7,8 @@ from pathlib import Path
 
 from .errors import PersistenceError, UnsupportedSchemaVersionError
 
-SQLITE_SCHEMA_VERSION = 3
-_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3)
+SQLITE_SCHEMA_VERSION = 4
+_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4)
 
 _V1_TABLE_STATEMENTS = (
     """CREATE TABLE schema_metadata (
@@ -180,6 +180,67 @@ _V3_ADDITION_STATEMENTS = (
 )""",
 )
 
+_V4_ADDITION_STATEMENTS = (
+    """CREATE TABLE domain_result_references (
+    identity TEXT PRIMARY KEY,
+    kind TEXT NOT NULL CHECK (length(trim(kind)) > 0),
+    source_media_id TEXT,
+    source_timeline_id TEXT,
+    revision_of TEXT,
+    applicability TEXT
+)""",
+    """CREATE TABLE domain_result_upstream_results (
+    domain_result_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    upstream_domain_result_id TEXT NOT NULL,
+    PRIMARY KEY (domain_result_id, ordinal),
+    FOREIGN KEY (domain_result_id) REFERENCES domain_result_references(identity)
+        ON DELETE CASCADE
+)""",
+    """CREATE TABLE failures (
+    identity TEXT PRIMARY KEY,
+    category TEXT NOT NULL CHECK (
+        category IN (
+            'preparation', 'capability', 'provider_or_plugin', 'processing',
+            'validation', 'persistence', 'review_blocking', 'export',
+            'external_consumer'
+        )
+    ),
+    processing_run_id TEXT,
+    unit_execution_id TEXT,
+    retryable INTEGER NOT NULL CHECK (retryable IN (0, 1)),
+    reprocessing_required INTEGER NOT NULL
+        CHECK (reprocessing_required IN (0, 1)),
+    human_action_required INTEGER NOT NULL
+        CHECK (human_action_required IN (0, 1)),
+    CHECK (processing_run_id IS NOT NULL OR unit_execution_id IS NOT NULL)
+)""",
+    """CREATE TABLE failure_affected_inputs (
+    failure_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    input_reference TEXT NOT NULL,
+    PRIMARY KEY (failure_id, ordinal),
+    FOREIGN KEY (failure_id) REFERENCES failures(identity)
+        ON DELETE CASCADE
+)""",
+    """CREATE TABLE failure_affected_results (
+    failure_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    domain_result_id TEXT NOT NULL,
+    PRIMARY KEY (failure_id, ordinal),
+    FOREIGN KEY (failure_id) REFERENCES failures(identity)
+        ON DELETE CASCADE
+)""",
+    """CREATE TABLE failure_diagnostics (
+    failure_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    diagnostic_id TEXT NOT NULL,
+    PRIMARY KEY (failure_id, ordinal),
+    FOREIGN KEY (failure_id) REFERENCES failures(identity)
+        ON DELETE CASCADE
+)""",
+)
+
 _V1_EXPECTED_COLUMNS = {
     "schema_metadata": (
         ("singleton", "INTEGER", 0, 1),
@@ -297,6 +358,47 @@ _V3_EXPECTED_COLUMNS = {
     ),
 }
 
+_V4_EXPECTED_COLUMNS = {
+    **_V3_EXPECTED_COLUMNS,
+    "domain_result_references": (
+        ("identity", "TEXT", 0, 1),
+        ("kind", "TEXT", 1, 0),
+        ("source_media_id", "TEXT", 0, 0),
+        ("source_timeline_id", "TEXT", 0, 0),
+        ("revision_of", "TEXT", 0, 0),
+        ("applicability", "TEXT", 0, 0),
+    ),
+    "domain_result_upstream_results": (
+        ("domain_result_id", "TEXT", 1, 1),
+        ("ordinal", "INTEGER", 1, 2),
+        ("upstream_domain_result_id", "TEXT", 1, 0),
+    ),
+    "failures": (
+        ("identity", "TEXT", 0, 1),
+        ("category", "TEXT", 1, 0),
+        ("processing_run_id", "TEXT", 0, 0),
+        ("unit_execution_id", "TEXT", 0, 0),
+        ("retryable", "INTEGER", 1, 0),
+        ("reprocessing_required", "INTEGER", 1, 0),
+        ("human_action_required", "INTEGER", 1, 0),
+    ),
+    "failure_affected_inputs": (
+        ("failure_id", "TEXT", 1, 1),
+        ("ordinal", "INTEGER", 1, 2),
+        ("input_reference", "TEXT", 1, 0),
+    ),
+    "failure_affected_results": (
+        ("failure_id", "TEXT", 1, 1),
+        ("ordinal", "INTEGER", 1, 2),
+        ("domain_result_id", "TEXT", 1, 0),
+    ),
+    "failure_diagnostics": (
+        ("failure_id", "TEXT", 1, 1),
+        ("ordinal", "INTEGER", 1, 2),
+        ("diagnostic_id", "TEXT", 1, 0),
+    ),
+}
+
 
 def initialize_sqlite_database(database_path: str | Path) -> sqlite3.Connection:
     """Create the latest schema for a new path; validate existing databases."""
@@ -336,7 +438,7 @@ def migrate_sqlite_database(
 ) -> None:
     """Explicitly perform one approved migration step or validate a no-op target."""
 
-    if target_version not in (2, 3):
+    if target_version not in (2, 3, 4):
         raise PersistenceError(f"unsupported SQLite migration target: {target_version}")
     path = _validate_database_path(database_path)
     if not path.is_file():
@@ -351,6 +453,9 @@ def migrate_sqlite_database(
             return
         if current_version == 2 and target_version == 3:
             _migrate_v2_to_v3(connection)
+            return
+        if current_version == 3 and target_version == 4:
+            _migrate_v3_to_v4(connection)
             return
         raise PersistenceError(
             f"unsupported SQLite migration: {current_version} to {target_version}"
@@ -402,6 +507,7 @@ def _initialize_latest_schema(connection: sqlite3.Connection) -> None:
             *_V1_TABLE_STATEMENTS,
             *_V2_ADDITION_STATEMENTS,
             *_V3_ADDITION_STATEMENTS,
+            *_V4_ADDITION_STATEMENTS,
         ):
             connection.execute(statement)
         connection.execute(
@@ -454,6 +560,24 @@ def _migrate_v2_to_v3(connection: sqlite3.Connection) -> None:
         raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
 
 
+def _migrate_v3_to_v4(connection: sqlite3.Connection) -> None:
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        for statement in _V4_ADDITION_STATEMENTS:
+            connection.execute(statement)
+        connection.execute(
+            "UPDATE schema_metadata SET version = 4 WHERE singleton = 1"
+        )
+        _validate_initialized_connection(connection)
+        _commit(connection)
+    except PersistenceError:
+        _rollback(connection)
+        raise
+    except sqlite3.Error as error:
+        _rollback(connection)
+        raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
+
+
 def _validate_initialized_connection(connection: sqlite3.Connection) -> int:
     try:
         if connection.execute("PRAGMA foreign_keys").fetchone() != (1,):
@@ -489,6 +613,7 @@ def _validate_schema_shape(connection: sqlite3.Connection, version: int) -> None
         1: _V1_EXPECTED_COLUMNS,
         2: _V2_EXPECTED_COLUMNS,
         3: _V3_EXPECTED_COLUMNS,
+        4: _V4_EXPECTED_COLUMNS,
     }[version]
     for table, expected in expected_columns.items():
         actual = tuple(
@@ -500,9 +625,11 @@ def _validate_schema_shape(connection: sqlite3.Connection, version: int) -> None
     _validate_v1_foreign_keys(connection)
     if version == 2:
         _validate_v2_foreign_keys(connection)
-    elif version == 3:
+    elif version >= 3:
         _validate_v2_foreign_keys(connection)
         _validate_v3_foreign_keys(connection)
+        if version == 4:
+            _validate_v4_foreign_keys(connection)
 
 
 def _validate_v1_foreign_keys(connection: sqlite3.Connection) -> None:
@@ -554,6 +681,29 @@ def _validate_v3_foreign_keys(connection: sqlite3.Connection) -> None:
         if not any(
             row[2] == "unit_executions"
             and row[3] == "unit_execution_id"
+            and row[4] == "identity"
+            and row[6].upper() == "CASCADE"
+            for row in foreign_keys
+        ):
+            raise PersistenceError(f"SQLite schema foreign key is missing: {table}")
+
+
+def _validate_v4_foreign_keys(connection: sqlite3.Connection) -> None:
+    expected = (
+        (
+            "domain_result_upstream_results",
+            "domain_result_references",
+            "domain_result_id",
+        ),
+        ("failure_affected_inputs", "failures", "failure_id"),
+        ("failure_affected_results", "failures", "failure_id"),
+        ("failure_diagnostics", "failures", "failure_id"),
+    )
+    for table, parent, parent_column in expected:
+        foreign_keys = connection.execute(f"PRAGMA foreign_key_list({table})").fetchall()
+        if not any(
+            row[2] == parent
+            and row[3] == parent_column
             and row[4] == "identity"
             and row[6].upper() == "CASCADE"
             for row in foreign_keys

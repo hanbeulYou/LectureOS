@@ -149,12 +149,12 @@ class SQLiteSchemaVersionThreeTests(unittest.TestCase):
         with self.assertRaises(PersistenceError):
             open_sqlite_database(self.database_path)
 
-    def test_new_initializer_creates_complete_v3_and_existing_repositories_work(self) -> None:
+    def test_new_initializer_includes_complete_v3_and_existing_repositories_work(self) -> None:
         connection = initialize_sqlite_database(self.database_path)
         try:
             self.assertEqual(
                 connection.execute("SELECT version FROM schema_metadata").fetchone(),
-                (3,),
+                (4,),
             )
             self.assertTrue(V3_TABLES.issubset(table_names(connection)))
             unit = self._unit()
@@ -407,7 +407,6 @@ class SQLiteSchemaVersionThreeTests(unittest.TestCase):
             self.assertNotIn("lectures", names)
             self.assertNotIn("source_media", names)
             self.assertNotIn("domain_results", names)
-            self.assertNotIn("failures", names)
             self.assertNotIn("diagnostics", names)
         finally:
             connection.close()
