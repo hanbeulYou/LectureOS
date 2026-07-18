@@ -1,6 +1,11 @@
 """Execution-domain contracts derived from the approved implementation design."""
 
-from .boundaries import ExecutionQueryBoundary, HumanDecisionBoundary, ProcessingRequestBoundary
+from .boundaries import (
+    AtomicStartExecutionPersistence,
+    ExecutionQueryBoundary,
+    HumanDecisionBoundary,
+    ProcessingRequestBoundary,
+)
 from .models import (
     Diagnostic,
     DomainResultReference,
@@ -15,8 +20,10 @@ from .models import (
     UnitExecution,
 )
 from .service import ExecutionService
+from .start_persistence import InMemoryAtomicStartExecutionPersistence
 
 __all__ = [
+    "AtomicStartExecutionPersistence",
     "Diagnostic",
     "DomainResultReference",
     "ExecutionIntent",
@@ -26,6 +33,7 @@ __all__ = [
     "Failure",
     "FailureCategory",
     "HumanDecisionBoundary",
+    "InMemoryAtomicStartExecutionPersistence",
     "OutcomeKind",
     "ProcessingRequestBoundary",
     "ProcessingRun",

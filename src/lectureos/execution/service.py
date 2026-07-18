@@ -2,7 +2,7 @@
 
 from dataclasses import replace
 
-from .boundaries import RequestAccepted
+from .boundaries import AtomicStartExecutionPersistence, RequestAccepted
 from .identities import (
     ConfigurationReference,
     DomainResultId,
@@ -24,16 +24,41 @@ from .models import (
     ProcessingUnit,
     UnitExecution,
 )
-from .repositories import InMemoryRepository
+from .repositories import (
+    DomainResultReferenceRepository,
+    FailureRepository,
+    InMemoryRepository,
+    ProcessingRunRepository,
+    ProcessingUnitRepository,
+    UnitExecutionRepository,
+)
+from .start_persistence import InMemoryAtomicStartExecutionPersistence
 
 
 class ExecutionService:
-    def __init__(self) -> None:
-        self.runs: InMemoryRepository[ProcessingRunId, ProcessingRun] = InMemoryRepository()
-        self.units: InMemoryRepository[ProcessingUnitId, ProcessingUnit] = InMemoryRepository()
-        self.executions: InMemoryRepository[UnitExecutionId, UnitExecution] = InMemoryRepository()
-        self.results: InMemoryRepository[DomainResultId, DomainResultReference] = InMemoryRepository()
-        self.failures: InMemoryRepository[FailureId, Failure] = InMemoryRepository()
+    def __init__(
+        self,
+        *,
+        runs: ProcessingRunRepository | None = None,
+        units: ProcessingUnitRepository | None = None,
+        executions: UnitExecutionRepository | None = None,
+        results: DomainResultReferenceRepository | None = None,
+        failures: FailureRepository | None = None,
+        atomic_start_persistence: AtomicStartExecutionPersistence | None = None,
+    ) -> None:
+        self.runs = runs if runs is not None else InMemoryRepository()
+        self.units = units if units is not None else InMemoryRepository()
+        self.executions = executions if executions is not None else InMemoryRepository()
+        self.results = results if results is not None else InMemoryRepository()
+        self.failures = failures if failures is not None else InMemoryRepository()
+        self._atomic_start_persistence = (
+            atomic_start_persistence
+            if atomic_start_persistence is not None
+            else InMemoryAtomicStartExecutionPersistence(
+                self.executions,
+                self.runs,
+            )
+        )
 
     def register_unit(self, unit: ProcessingUnit) -> None:
         self.units.save(unit)
@@ -82,13 +107,14 @@ class ExecutionService:
             capabilities=unit.capabilities,
             state=ProcessingState.RUNNING,
         )
-        self.executions.save(execution)
-        self.runs.save(
-            replace(
-                run,
-                state=ProcessingState.RUNNING,
-                unit_execution_references=run.unit_execution_references + (execution_id,),
-            )
+        updated_run = replace(
+            run,
+            state=ProcessingState.RUNNING,
+            unit_execution_references=run.unit_execution_references + (execution_id,),
+        )
+        self._atomic_start_persistence.persist_started_execution(
+            execution=execution,
+            run=updated_run,
         )
         return RequestAccepted(run_id=run_id, unit_execution_id=execution_id)
 

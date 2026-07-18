@@ -62,6 +62,17 @@ class ProcessingRequestBoundary(Protocol):
     def cancel_unit_execution(self, execution_id: UnitExecutionId) -> None: ...
 
 
+class AtomicStartExecutionPersistence(Protocol):
+    """Application-owned port for storing final Start command snapshots."""
+
+    def persist_started_execution(
+        self,
+        *,
+        execution: UnitExecution,
+        run: ProcessingRun,
+    ) -> None: ...
+
+
 class ExecutionQueryBoundary(Protocol):
     def get_run(self, run_id: ProcessingRunId) -> ProcessingRun | None: ...
 
