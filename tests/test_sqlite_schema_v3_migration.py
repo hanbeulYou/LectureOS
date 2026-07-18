@@ -1,4 +1,3 @@
-import importlib.util
 import sqlite3
 import tempfile
 import unittest
@@ -400,8 +399,7 @@ class SQLiteSchemaVersionThreeTests(unittest.TestCase):
         finally:
             connection.close()
 
-    def test_boundary_adds_no_unit_execution_repository_or_aggregates(self) -> None:
-        self.assertIsNone(importlib.util.find_spec("lectureos.persistence.unit_executions"))
+    def test_boundary_adds_no_unapproved_aggregates(self) -> None:
         connection = initialize_sqlite_database(self.database_path)
         try:
             names = table_names(connection)

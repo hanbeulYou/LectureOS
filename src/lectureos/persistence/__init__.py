@@ -8,6 +8,7 @@ from .errors import (
 )
 from .processing_units import SQLiteProcessingUnitRepository
 from .processing_runs import SQLiteProcessingRunRepository
+from .unit_executions import SQLiteUnitExecutionRepository
 from .sqlite import (
     SQLITE_SCHEMA_VERSION,
     initialize_sqlite_database,
@@ -22,6 +23,7 @@ __all__ = [
     "SQLITE_SCHEMA_VERSION",
     "SQLiteProcessingUnitRepository",
     "SQLiteProcessingRunRepository",
+    "SQLiteUnitExecutionRepository",
     "UnsupportedSchemaVersionError",
     "initialize_sqlite_database",
     "migrate_sqlite_database",
