@@ -21,6 +21,7 @@ from .models import (
     UnitExecution,
 )
 from .service import ExecutionService
+from .failure_persistence import InMemoryAtomicFailureExecutionPersistence
 from .start_persistence import InMemoryAtomicStartExecutionPersistence
 
 __all__ = [
@@ -35,6 +36,7 @@ __all__ = [
     "Failure",
     "FailureCategory",
     "HumanDecisionBoundary",
+    "InMemoryAtomicFailureExecutionPersistence",
     "InMemoryAtomicStartExecutionPersistence",
     "OutcomeKind",
     "ProcessingRequestBoundary",

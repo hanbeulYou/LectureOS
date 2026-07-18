@@ -2,7 +2,11 @@
 
 from dataclasses import replace
 
-from .boundaries import AtomicStartExecutionPersistence, RequestAccepted
+from .boundaries import (
+    AtomicFailureExecutionPersistence,
+    AtomicStartExecutionPersistence,
+    RequestAccepted,
+)
 from .identities import (
     ConfigurationReference,
     DomainResultId,
@@ -33,6 +37,7 @@ from .repositories import (
     UnitExecutionRepository,
 )
 from .start_persistence import InMemoryAtomicStartExecutionPersistence
+from .failure_persistence import InMemoryAtomicFailureExecutionPersistence
 
 
 class ExecutionService:
@@ -45,6 +50,7 @@ class ExecutionService:
         results: DomainResultReferenceRepository | None = None,
         failures: FailureRepository | None = None,
         atomic_start_persistence: AtomicStartExecutionPersistence | None = None,
+        atomic_failure_persistence: AtomicFailureExecutionPersistence | None = None,
     ) -> None:
         self.runs = runs if runs is not None else InMemoryRepository()
         self.units = units if units is not None else InMemoryRepository()
@@ -55,6 +61,15 @@ class ExecutionService:
             atomic_start_persistence
             if atomic_start_persistence is not None
             else InMemoryAtomicStartExecutionPersistence(
+                self.executions,
+                self.runs,
+            )
+        )
+        self._atomic_failure_persistence = (
+            atomic_failure_persistence
+            if atomic_failure_persistence is not None
+            else InMemoryAtomicFailureExecutionPersistence(
+                self.failures,
                 self.executions,
                 self.runs,
             )
@@ -158,22 +173,25 @@ class ExecutionService:
         if self.failures.get(failure.identity) is not None:
             raise ValueError("failure identity already exists")
         run = self._require_run(execution.run_id)
-        self.failures.save(failure)
         outcome = (
             OutcomeKind.RECOVERABLE_FAILURE
             if failure.retryable
             else OutcomeKind.NON_RECOVERABLE_CONDITION
         )
-        self.executions.save(
-            replace(
-                execution,
-                state=ProcessingState.FAILED,
-                outcome=ExecutionOutcome(outcome),
-                failure_references=execution.failure_references + (failure.identity,),
-            )
+        failed_execution = replace(
+            execution,
+            state=ProcessingState.FAILED,
+            outcome=ExecutionOutcome(outcome),
+            failure_references=execution.failure_references + (failure.identity,),
         )
-        self.runs.save(
-            replace(run, failure_references=run.failure_references + (failure.identity,))
+        updated_run = replace(
+            run,
+            failure_references=run.failure_references + (failure.identity,),
+        )
+        self._atomic_failure_persistence.persist_recorded_failure(
+            failure=failure,
+            execution=failed_execution,
+            run=updated_run,
         )
 
     def retry_unit_execution(
