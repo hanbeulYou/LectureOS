@@ -35,18 +35,18 @@ class SQLiteLifecycleTests(unittest.TestCase):
                 initialize_sqlite_database(parent / "lectureos.sqlite3")
             self.assertFalse(parent.exists())
 
-    def test_initializer_creates_version_one_and_enables_foreign_keys(self) -> None:
+    def test_initializer_creates_latest_version_and_enables_foreign_keys(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             path = Path(temporary_directory) / "lectureos.sqlite3"
             connection = initialize_sqlite_database(path)
             try:
                 self.assertTrue(path.is_file())
-                self.assertEqual(SQLITE_SCHEMA_VERSION, 1)
+                self.assertEqual(SQLITE_SCHEMA_VERSION, 2)
                 self.assertEqual(
                     connection.execute(
                         "SELECT version FROM schema_metadata WHERE singleton = 1"
                     ).fetchone(),
-                    (1,),
+                    (2,),
                 )
                 self.assertEqual(
                     connection.execute("PRAGMA foreign_keys").fetchone(), (1,)
@@ -67,7 +67,7 @@ class SQLiteLifecycleTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             path = Path(temporary_directory) / "lectureos.sqlite3"
             connection = initialize_sqlite_database(path)
-            connection.execute("UPDATE schema_metadata SET version = 2")
+            connection.execute("UPDATE schema_metadata SET version = 99")
             connection.close()
             with self.assertRaises(UnsupportedSchemaVersionError):
                 open_sqlite_database(path)

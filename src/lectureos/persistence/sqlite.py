@@ -1,4 +1,4 @@
-"""Explicit SQLite lifecycle for the first durable repository slice."""
+"""Explicit, version-aware SQLite lifecycle and the approved v1-to-v2 migration."""
 
 from __future__ import annotations
 
@@ -7,9 +7,10 @@ from pathlib import Path
 
 from .errors import PersistenceError, UnsupportedSchemaVersionError
 
-SQLITE_SCHEMA_VERSION = 1
+SQLITE_SCHEMA_VERSION = 2
+_SUPPORTED_SCHEMA_VERSIONS = (1, 2)
 
-_SCHEMA_STATEMENTS = (
+_V1_TABLE_STATEMENTS = (
     """CREATE TABLE schema_metadata (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
     version INTEGER NOT NULL
@@ -41,10 +42,73 @@ _SCHEMA_STATEMENTS = (
     PRIMARY KEY (processing_unit_id, ordinal),
     FOREIGN KEY (processing_unit_id) REFERENCES processing_units(identity)
 )""",
-    "INSERT INTO schema_metadata(singleton, version) VALUES (1, 1)",
 )
 
-_EXPECTED_COLUMNS = {
+_V2_ADDITION_STATEMENTS = (
+    """CREATE TABLE processing_runs (
+    identity TEXT PRIMARY KEY,
+    intent_purpose TEXT NOT NULL CHECK (length(trim(intent_purpose)) > 0),
+    intent_retry_of TEXT,
+    intent_reprocessing_of TEXT,
+    working_context TEXT NOT NULL,
+    configuration TEXT,
+    state TEXT NOT NULL CHECK (
+        state IN ('pending', 'running', 'completed', 'failed', 'cancelled')
+    ),
+    reprocessing_of TEXT,
+    CHECK (intent_retry_of IS NULL OR intent_reprocessing_of IS NULL)
+)""",
+    """CREATE TABLE processing_run_inputs (
+    processing_run_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    input_reference TEXT NOT NULL,
+    PRIMARY KEY (processing_run_id, ordinal),
+    FOREIGN KEY (processing_run_id) REFERENCES processing_runs(identity)
+        ON DELETE CASCADE
+)""",
+    """CREATE TABLE processing_run_upstream_results (
+    processing_run_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    domain_result_id TEXT NOT NULL,
+    PRIMARY KEY (processing_run_id, ordinal),
+    FOREIGN KEY (processing_run_id) REFERENCES processing_runs(identity)
+        ON DELETE CASCADE
+)""",
+    """CREATE TABLE processing_run_units (
+    processing_run_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    processing_unit_id TEXT NOT NULL,
+    PRIMARY KEY (processing_run_id, ordinal),
+    FOREIGN KEY (processing_run_id) REFERENCES processing_runs(identity)
+        ON DELETE CASCADE
+)""",
+    """CREATE TABLE processing_run_unit_executions (
+    processing_run_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    unit_execution_id TEXT NOT NULL,
+    PRIMARY KEY (processing_run_id, ordinal),
+    FOREIGN KEY (processing_run_id) REFERENCES processing_runs(identity)
+        ON DELETE CASCADE
+)""",
+    """CREATE TABLE processing_run_results (
+    processing_run_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    domain_result_id TEXT NOT NULL,
+    PRIMARY KEY (processing_run_id, ordinal),
+    FOREIGN KEY (processing_run_id) REFERENCES processing_runs(identity)
+        ON DELETE CASCADE
+)""",
+    """CREATE TABLE processing_run_failures (
+    processing_run_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    failure_id TEXT NOT NULL,
+    PRIMARY KEY (processing_run_id, ordinal),
+    FOREIGN KEY (processing_run_id) REFERENCES processing_runs(identity)
+        ON DELETE CASCADE
+)""",
+)
+
+_V1_EXPECTED_COLUMNS = {
     "schema_metadata": (
         ("singleton", "INTEGER", 0, 1),
         ("version", "INTEGER", 1, 0),
@@ -71,9 +135,53 @@ _EXPECTED_COLUMNS = {
     ),
 }
 
+_V2_EXPECTED_COLUMNS = {
+    **_V1_EXPECTED_COLUMNS,
+    "processing_runs": (
+        ("identity", "TEXT", 0, 1),
+        ("intent_purpose", "TEXT", 1, 0),
+        ("intent_retry_of", "TEXT", 0, 0),
+        ("intent_reprocessing_of", "TEXT", 0, 0),
+        ("working_context", "TEXT", 1, 0),
+        ("configuration", "TEXT", 0, 0),
+        ("state", "TEXT", 1, 0),
+        ("reprocessing_of", "TEXT", 0, 0),
+    ),
+    "processing_run_inputs": (
+        ("processing_run_id", "TEXT", 1, 1),
+        ("ordinal", "INTEGER", 1, 2),
+        ("input_reference", "TEXT", 1, 0),
+    ),
+    "processing_run_upstream_results": (
+        ("processing_run_id", "TEXT", 1, 1),
+        ("ordinal", "INTEGER", 1, 2),
+        ("domain_result_id", "TEXT", 1, 0),
+    ),
+    "processing_run_units": (
+        ("processing_run_id", "TEXT", 1, 1),
+        ("ordinal", "INTEGER", 1, 2),
+        ("processing_unit_id", "TEXT", 1, 0),
+    ),
+    "processing_run_unit_executions": (
+        ("processing_run_id", "TEXT", 1, 1),
+        ("ordinal", "INTEGER", 1, 2),
+        ("unit_execution_id", "TEXT", 1, 0),
+    ),
+    "processing_run_results": (
+        ("processing_run_id", "TEXT", 1, 1),
+        ("ordinal", "INTEGER", 1, 2),
+        ("domain_result_id", "TEXT", 1, 0),
+    ),
+    "processing_run_failures": (
+        ("processing_run_id", "TEXT", 1, 1),
+        ("ordinal", "INTEGER", 1, 2),
+        ("failure_id", "TEXT", 1, 0),
+    ),
+}
+
 
 def initialize_sqlite_database(database_path: str | Path) -> sqlite3.Connection:
-    """Create version 1 only for a new path; otherwise validate without migration."""
+    """Create the latest schema for a new path; validate existing databases."""
 
     path = _validate_database_path(database_path)
     is_new = not path.exists()
@@ -82,7 +190,7 @@ def initialize_sqlite_database(database_path: str | Path) -> sqlite3.Connection:
     connection = _connect(path)
     try:
         if is_new:
-            _initialize_schema(connection)
+            _initialize_latest_schema(connection)
         _validate_initialized_connection(connection)
     except Exception:
         connection.close()
@@ -91,7 +199,7 @@ def initialize_sqlite_database(database_path: str | Path) -> sqlite3.Connection:
 
 
 def open_sqlite_database(database_path: str | Path) -> sqlite3.Connection:
-    """Open and validate an explicitly initialized database without creating it."""
+    """Open and validate a supported database without creating or migrating it."""
 
     path = _validate_database_path(database_path)
     if not path.is_file():
@@ -105,10 +213,34 @@ def open_sqlite_database(database_path: str | Path) -> sqlite3.Connection:
     return connection
 
 
-def validate_sqlite_connection(connection: sqlite3.Connection) -> None:
-    """Validate a caller-owned connection before a durable repository uses it."""
+def migrate_sqlite_database(
+    database_path: str | Path, target_version: int = SQLITE_SCHEMA_VERSION
+) -> None:
+    """Explicitly migrate a caller-selected database from version 1 to version 2."""
 
-    _validate_initialized_connection(connection)
+    if target_version != 2:
+        raise PersistenceError(f"unsupported SQLite migration target: {target_version}")
+    path = _validate_database_path(database_path)
+    if not path.is_file():
+        raise PersistenceError("SQLite database must already exist for migration")
+    connection = _connect(path)
+    try:
+        current_version = _validate_initialized_connection(connection)
+        if current_version == 2:
+            return
+        if current_version != 1:
+            raise UnsupportedSchemaVersionError(
+                f"unsupported SQLite schema version: {current_version}"
+            )
+        _migrate_v1_to_v2(connection)
+    finally:
+        connection.close()
+
+
+def validate_sqlite_connection(connection: sqlite3.Connection) -> int:
+    """Validate a caller-owned connection and return its supported schema version."""
+
+    return _validate_initialized_connection(connection)
 
 
 def _validate_database_path(database_path: str | Path) -> Path:
@@ -141,19 +273,44 @@ def _connect(path: Path) -> sqlite3.Connection:
         raise PersistenceError(f"could not open SQLite database: {error}") from error
 
 
-def _initialize_schema(connection: sqlite3.Connection) -> None:
+def _initialize_latest_schema(connection: sqlite3.Connection) -> None:
     try:
         connection.execute("BEGIN")
-        for statement in _SCHEMA_STATEMENTS:
+        for statement in (*_V1_TABLE_STATEMENTS, *_V2_ADDITION_STATEMENTS):
             connection.execute(statement)
+        connection.execute(
+            "INSERT INTO schema_metadata(singleton, version) VALUES (1, ?)",
+            (SQLITE_SCHEMA_VERSION,),
+        )
+        _validate_initialized_connection(connection)
         connection.execute("COMMIT")
+    except PersistenceError:
+        _rollback(connection)
+        raise
     except sqlite3.Error as error:
-        if connection.in_transaction:
-            connection.execute("ROLLBACK")
+        _rollback(connection)
         raise PersistenceError(f"could not initialize SQLite schema: {error}") from error
 
 
-def _validate_initialized_connection(connection: sqlite3.Connection) -> None:
+def _migrate_v1_to_v2(connection: sqlite3.Connection) -> None:
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        for statement in _V2_ADDITION_STATEMENTS:
+            connection.execute(statement)
+        connection.execute(
+            "UPDATE schema_metadata SET version = 2 WHERE singleton = 1"
+        )
+        _validate_initialized_connection(connection)
+        connection.execute("COMMIT")
+    except PersistenceError:
+        _rollback(connection)
+        raise
+    except sqlite3.Error as error:
+        _rollback(connection)
+        raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
+
+
+def _validate_initialized_connection(connection: sqlite3.Connection) -> int:
     try:
         if connection.execute("PRAGMA foreign_keys").fetchone() != (1,):
             raise PersistenceError("SQLite foreign key enforcement must be enabled")
@@ -168,34 +325,44 @@ def _validate_initialized_connection(connection: sqlite3.Connection) -> None:
         if len(versions) != 1 or versions[0][0] != 1:
             raise PersistenceError("SQLite schema version marker is malformed")
         version = versions[0][1]
-        if version != SQLITE_SCHEMA_VERSION:
+        if version not in _SUPPORTED_SCHEMA_VERSIONS:
             raise UnsupportedSchemaVersionError(
                 f"unsupported SQLite schema version: {version}"
             )
-        _validate_schema_shape(connection)
+        _validate_schema_shape(connection, version)
         violations = connection.execute("PRAGMA foreign_key_check").fetchall()
         if violations:
             raise PersistenceError("SQLite database contains foreign key violations")
+        return version
     except (PersistenceError, UnsupportedSchemaVersionError):
         raise
     except sqlite3.Error as error:
         raise PersistenceError(f"could not validate SQLite schema: {error}") from error
 
 
-def _validate_schema_shape(connection: sqlite3.Connection) -> None:
-    for table, expected in _EXPECTED_COLUMNS.items():
+def _validate_schema_shape(connection: sqlite3.Connection, version: int) -> None:
+    expected_columns = (
+        _V1_EXPECTED_COLUMNS if version == 1 else _V2_EXPECTED_COLUMNS
+    )
+    for table, expected in expected_columns.items():
         actual = tuple(
             (row[1], row[2].upper(), row[3], row[5])
             for row in connection.execute(f"PRAGMA table_info({table})").fetchall()
         )
         if actual != expected:
             raise PersistenceError(f"SQLite schema table is malformed: {table}")
-    for table in _EXPECTED_COLUMNS:
-        if table in ("schema_metadata", "processing_units"):
-            continue
-        foreign_keys = connection.execute(
-            f"PRAGMA foreign_key_list({table})"
-        ).fetchall()
+    _validate_v1_foreign_keys(connection)
+    if version == 2:
+        _validate_v2_foreign_keys(connection)
+
+
+def _validate_v1_foreign_keys(connection: sqlite3.Connection) -> None:
+    for table in (
+        "processing_unit_dependencies",
+        "processing_unit_capabilities",
+        "processing_unit_result_kinds",
+    ):
+        foreign_keys = connection.execute(f"PRAGMA foreign_key_list({table})").fetchall()
         if not any(
             row[2] == "processing_units"
             and row[3] == "processing_unit_id"
@@ -203,3 +370,31 @@ def _validate_schema_shape(connection: sqlite3.Connection) -> None:
             for row in foreign_keys
         ):
             raise PersistenceError(f"SQLite schema foreign key is missing: {table}")
+
+
+def _validate_v2_foreign_keys(connection: sqlite3.Connection) -> None:
+    for table in (
+        "processing_run_inputs",
+        "processing_run_upstream_results",
+        "processing_run_units",
+        "processing_run_unit_executions",
+        "processing_run_results",
+        "processing_run_failures",
+    ):
+        foreign_keys = connection.execute(f"PRAGMA foreign_key_list({table})").fetchall()
+        if not any(
+            row[2] == "processing_runs"
+            and row[3] == "processing_run_id"
+            and row[4] == "identity"
+            and row[6].upper() == "CASCADE"
+            for row in foreign_keys
+        ):
+            raise PersistenceError(f"SQLite schema foreign key is missing: {table}")
+
+
+def _rollback(connection: sqlite3.Connection) -> None:
+    if connection.in_transaction:
+        try:
+            connection.execute("ROLLBACK")
+        except sqlite3.Error:
+            pass

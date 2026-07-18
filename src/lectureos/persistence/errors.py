@@ -11,3 +11,7 @@ class PersistenceIdentityCollisionError(PersistenceError):
 
 class UnsupportedSchemaVersionError(PersistenceError):
     pass
+
+
+class SchemaFeatureUnavailableError(PersistenceError):
+    pass
