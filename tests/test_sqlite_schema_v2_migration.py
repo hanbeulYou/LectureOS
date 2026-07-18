@@ -102,15 +102,15 @@ class SQLiteSchemaVersionTwoTests(unittest.TestCase):
         with self.assertRaises(PersistenceError):
             open_sqlite_database(self.database_path)
         with self.assertRaises(PersistenceError):
-            migrate_sqlite_database(self.database_path)
+            migrate_sqlite_database(self.database_path, target_version=2)
 
-    def test_new_initializer_creates_complete_version_two(self) -> None:
+    def test_new_initializer_contains_complete_version_two_foundation(self) -> None:
         connection = initialize_sqlite_database(self.database_path)
         try:
-            self.assertEqual(SQLITE_SCHEMA_VERSION, 2)
+            self.assertEqual(SQLITE_SCHEMA_VERSION, 3)
             self.assertEqual(
                 connection.execute("SELECT version FROM schema_metadata").fetchone(),
-                (2,),
+                (3,),
             )
             self.assertTrue(V2_TABLES.issubset(table_names(connection)))
             unit = self._unit()
@@ -135,7 +135,7 @@ class SQLiteSchemaVersionTwoTests(unittest.TestCase):
         SQLiteProcessingUnitRepository(connection).save(unit)
         connection.close()
 
-        migrate_sqlite_database(self.database_path)
+        migrate_sqlite_database(self.database_path, target_version=2)
         connection = open_sqlite_database(self.database_path)
         try:
             self.assertEqual(
@@ -176,7 +176,7 @@ class SQLiteSchemaVersionTwoTests(unittest.TestCase):
         connection.close()
 
         with self.assertRaises(PersistenceError) as caught:
-            migrate_sqlite_database(self.database_path)
+            migrate_sqlite_database(self.database_path, target_version=2)
         self.assertNotIsInstance(caught.exception, sqlite3.Error)
 
         connection = open_sqlite_database(self.database_path)
@@ -202,7 +202,7 @@ class SQLiteSchemaVersionTwoTests(unittest.TestCase):
         connection.close()
 
         with self.assertRaises(PersistenceError):
-            migrate_sqlite_database(self.database_path)
+            migrate_sqlite_database(self.database_path, target_version=2)
         connection = open_sqlite_database(self.database_path)
         try:
             self.assertEqual(
@@ -226,7 +226,7 @@ class SQLiteSchemaVersionTwoTests(unittest.TestCase):
             sqlite_lifecycle, "_validate_schema_shape", side_effect=fail_v2_validation
         ):
             with self.assertRaises(PersistenceError):
-                migrate_sqlite_database(self.database_path)
+                migrate_sqlite_database(self.database_path, target_version=2)
 
         connection = open_sqlite_database(self.database_path)
         try:
@@ -243,7 +243,7 @@ class SQLiteSchemaVersionTwoTests(unittest.TestCase):
         connection.execute("UPDATE schema_metadata SET version = 99")
         connection.close()
         with self.assertRaises(UnsupportedSchemaVersionError):
-            migrate_sqlite_database(self.database_path)
+            migrate_sqlite_database(self.database_path, target_version=2)
 
         self.database_path.unlink()
         create_legacy_v1_database(self.database_path).close()
@@ -259,14 +259,14 @@ class SQLiteSchemaVersionTwoTests(unittest.TestCase):
         with self.assertRaises(PersistenceError):
             migrate_sqlite_database("file:/tmp/lectureos.sqlite3")
         with self.assertRaises(PersistenceError):
-            migrate_sqlite_database(self.database_path)
+            migrate_sqlite_database(self.database_path, target_version=2)
 
     def test_conflicting_processing_run_shape_blocks_migration(self) -> None:
         connection = create_legacy_v1_database(self.database_path)
         connection.execute("CREATE TABLE processing_runs(identity INTEGER)")
         connection.close()
         with self.assertRaises(PersistenceError):
-            migrate_sqlite_database(self.database_path)
+            migrate_sqlite_database(self.database_path, target_version=2)
         connection = open_sqlite_database(self.database_path)
         self.assertEqual(connection.execute("SELECT version FROM schema_metadata").fetchone(), (1,))
         connection.close()
@@ -282,7 +282,7 @@ class SQLiteSchemaVersionTwoTests(unittest.TestCase):
             return connection
 
         with patch.object(sqlite_lifecycle, "_connect", side_effect=capture_connect):
-            migrate_sqlite_database(self.database_path)
+            migrate_sqlite_database(self.database_path, target_version=2)
         with self.assertRaises(sqlite3.ProgrammingError):
             connections[-1].execute("SELECT 1")
 
