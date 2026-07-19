@@ -81,8 +81,8 @@ milestone must be selected before further persistence scope is introduced.
 - Status: **IN PROGRESS**
 - Completed slices: Transcript Persistence Composition Assessment; Complete
   Transcript Schema and Migration; Provider Provenance Resolution and Segment
-  Repository
-- Immediate next slice: Raw Transcript Atomic Persistence
+  Repository; Raw Transcript Atomic Persistence
+- Immediate next slice: Correction Candidate Persistence
 
 ### Approved Architect Decisions
 
@@ -139,3 +139,17 @@ without treating it as a separate product aggregate. `SQLiteTranscriptSegmentRep
 persists exact timed or untimed immutable Segment records. Both repositories are
 schema-v5 gated, reject every identity reuse, own their standalone transaction,
 preserve caller connections, and reconstruct exact Domain records after restart.
+
+### Atomic Raw Transcript Persistence
+
+`TranscriptService.create_raw_transcript(...)` retains all existing Application
+validation and computes its canonical `DomainResultReference` before invoking
+the Application-owned `AtomicRawTranscriptPersistence` port exactly once. The
+SQLite adapter atomically inserts the RawTranscript, every supplied new Segment,
+and the existing-v4 canonical Result reference using one caller-owned connection.
+All identity collisions, linkage mismatches, write failures, and commit failures
+roll back the complete set. The public RawTranscript repository remains
+independently self-transactional, and Application code imports no SQLite types.
+Focused tests and the complete 624-test suite passed. The Required Claude Review
+returned explicit `Verdict: PASS` with no Blocking Issues or Missing Tests using
+a 20-turn focused rerun after the initial 6-turn run ended without a verdict.

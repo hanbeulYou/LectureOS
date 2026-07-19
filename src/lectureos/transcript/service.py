@@ -3,7 +3,10 @@
 from lectureos.execution.boundaries import ExecutionQueryBoundary
 from lectureos.execution.identities import DomainResultId, ProcessingRunId, UnitExecutionId
 from lectureos.execution.models import DomainResultReference, ProcessingState
-from lectureos.execution.repositories import InMemoryRepository
+from lectureos.execution.repositories import (
+    DomainResultReferenceRepository,
+    InMemoryRepository,
+)
 
 from .identities import (
     CorrectionCandidateId,
@@ -21,32 +24,57 @@ from .models import (
     TranscriptSegment,
     TranscriptValidation,
 )
+from .persistence import (
+    AtomicRawTranscriptPersistence,
+    InMemoryAtomicRawTranscriptPersistence,
+)
+from .repositories import (
+    ProviderTranscriptResultRepository,
+    RawTranscriptRepository,
+    TranscriptSegmentRepository,
+)
 
 
 class TranscriptService:
-    def __init__(self, execution_query: ExecutionQueryBoundary) -> None:
+    def __init__(
+        self,
+        execution_query: ExecutionQueryBoundary,
+        *,
+        provider_results: ProviderTranscriptResultRepository | None = None,
+        raw_transcripts: RawTranscriptRepository | None = None,
+        segments: TranscriptSegmentRepository | None = None,
+        domain_results: DomainResultReferenceRepository | None = None,
+        atomic_raw_persistence: AtomicRawTranscriptPersistence | None = None,
+    ) -> None:
         self._execution_query = execution_query
-        self.provider_results: InMemoryRepository[
-            ProviderTranscriptResultId, ProviderTranscriptResult
-        ] = InMemoryRepository()
-        self.raw_transcripts: InMemoryRepository[TranscriptId, RawTranscript] = (
-            InMemoryRepository()
+        self.provider_results = (
+            provider_results if provider_results is not None else InMemoryRepository()
+        )
+        self.raw_transcripts = (
+            raw_transcripts if raw_transcripts is not None else InMemoryRepository()
         )
         self.revisions: InMemoryRepository[
             TranscriptRevisionId, CorrectedTranscriptRevision
         ] = InMemoryRepository()
-        self.segments: InMemoryRepository[TranscriptSegmentId, TranscriptSegment] = (
-            InMemoryRepository()
-        )
+        self.segments = segments if segments is not None else InMemoryRepository()
         self.candidates: InMemoryRepository[
             CorrectionCandidateId, CorrectionCandidate
         ] = InMemoryRepository()
         self.validations: InMemoryRepository[
             TranscriptValidationId, TranscriptValidation
         ] = InMemoryRepository()
-        self.domain_results: InMemoryRepository[
-            DomainResultId, DomainResultReference
-        ] = InMemoryRepository()
+        self.domain_results = (
+            domain_results if domain_results is not None else InMemoryRepository()
+        )
+        self._atomic_raw_persistence = (
+            atomic_raw_persistence
+            if atomic_raw_persistence is not None
+            else InMemoryAtomicRawTranscriptPersistence(
+                self.raw_transcripts,
+                self.segments,
+                self.domain_results,
+            )
+        )
 
     def register_provider_result(self, result: ProviderTranscriptResult) -> None:
         self._require_new(self.provider_results, result.identity, "provider transcript result")
@@ -78,16 +106,16 @@ class TranscriptService:
             allow_existing=False,
         )
 
-        for segment in segments:
-            self.segments.save(segment)
-        self.raw_transcripts.save(transcript)
-        self.domain_results.save(
-            DomainResultReference(
-                identity=transcript.domain_result_id,
-                kind="raw_transcript",
-                source_media=transcript.source_media_id,
-                source_timeline=transcript.source_timeline_id,
-            )
+        result = DomainResultReference(
+            identity=transcript.domain_result_id,
+            kind="raw_transcript",
+            source_media=transcript.source_media_id,
+            source_timeline=transcript.source_timeline_id,
+        )
+        self._atomic_raw_persistence.persist_raw_transcript(
+            transcript=transcript,
+            segments=segments,
+            result=result,
         )
 
     def create_correction_candidate(self, candidate: CorrectionCandidate) -> None:

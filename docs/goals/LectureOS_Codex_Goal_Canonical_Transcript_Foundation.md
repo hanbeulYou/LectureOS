@@ -1099,17 +1099,27 @@ Slice 2 — Complete Transcript Schema and Migration
   runs ended without verdict)
 
 Slice 3 — Provider Provenance Resolution and Segment Repository
+- commit `4fc8028` — `feat: persist transcript source records in sqlite`
 - `SQLiteProviderTranscriptResultRepository`
 - `SQLiteTranscriptSegmentRepository`
 - exact immutable round-trip, ordered duplicate diagnostic preservation,
   collision rejection, atomic standalone save, restart durability and v5 gate
 - Claude Review: Optional — Skipped (approved isolated repository pattern)
+
+Slice 4 — Raw Transcript Atomic Persistence
+- `AtomicRawTranscriptPersistence` Application port and in-memory adapter
+- `SQLiteRawTranscriptRepository` and reusable non-committing writer
+- `SQLiteTranscriptCommandPersistence.persist_raw_transcript(...)`
+- atomic RawTranscript + all supplied new Segments + DomainResultReference
+- `TranscriptService.create_raw_transcript(...)` exactly-once port wiring
+- collision, linkage, write/commit rollback and restart integration coverage
+- Required Claude Review: PASS (20-turn focused rerun after 6-turn run ended
+  without verdict; no Blocking Issues or Missing Tests)
 ```
 
 ### 16.2 Remaining Milestones
 
 ```text
-4. Raw Transcript Atomic Persistence
 5. Correction Candidate Persistence
 6. Corrected Transcript Revision Persistence
 7. Canonical Transcript Composition and Restart Acceptance
@@ -1118,7 +1128,7 @@ Slice 3 — Provider Provenance Resolution and Segment Repository
 ### 16.3 Immediate Next Slice
 
 ```text
-Raw Transcript Atomic Persistence
+Correction Candidate Persistence
 ```
 
 ### 16.4 Architecture Decision History
