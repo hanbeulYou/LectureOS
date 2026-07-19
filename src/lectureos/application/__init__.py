@@ -22,6 +22,9 @@ from .transcript_correction_generation import (
     CorrectionGenerationRequest,
     CorrectionProposal,
     CorrectionSegmentContext,
+    PreparedCorrectionGeneration,
+    TranscriptCorrectionGenerationError,
+    TranscriptCorrectionGenerationService,
 )
 from .subtitle_review import (
     SUBTITLE_CANDIDATE_KIND,
@@ -41,6 +44,9 @@ __all__ = [
     "CorrectionGenerationRequest",
     "CorrectionProposal",
     "CorrectionSegmentContext",
+    "PreparedCorrectionGeneration",
+    "TranscriptCorrectionGenerationError",
+    "TranscriptCorrectionGenerationService",
     "SUBTITLE_CANDIDATE_KIND",
     "SubtitleReviewIntegrationError",
     "SubtitleReviewIntegrationService",

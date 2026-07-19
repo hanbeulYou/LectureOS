@@ -209,8 +209,8 @@ remain separately deferred according to Blueprint dependency order.
 - Goal: `docs/goals/LectureOS_Codex_Goal_Transcript_Correction_Application_Foundation.md`
 - Status: **IN PROGRESS**
 - Completed slices: Correction Application Composition Assessment; Correction
-  Capability Contract
-- Immediate next slice: Correction Proposal Validation and Canonical Construction
+  Capability Contract; Correction Proposal Validation and Canonical Construction
+- Immediate next slice: Atomic Correction Generation Persistence
 
 ### Approved Architect Decisions
 
@@ -251,3 +251,18 @@ The contract imports no SQLite, network client, credential or concrete provider.
 The one bounded 6-turn required review ended without a verdict and reported no
 concrete critical issue; it is recorded as
 `Inconclusive — no critical findings identified` under the global review policy.
+
+### Correction Proposal Orchestration
+
+`TranscriptCorrectionGenerationService.prepare_correction(...)` loads the canonical
+Raw/parent Revision and running execution before invoking the capability exactly
+once. It constructs immutable ordered Segment context, rejects unsupported,
+unknown, duplicate, blank, non-finite or capability-mismatched proposals, validates
+caller-owned identity cardinality/uniqueness/absence, and computes exact immutable
+Candidates, traceable replacement Segments, one unapproved proposed Revision and
+their Result references. Zero proposals is an explicit no-op. This slice performs
+no canonical write; the complete prepared command is reserved for the next atomic
+persistence boundary.
+The one bounded 6-turn required review ended without a verdict and identified no
+concrete critical issue; it is recorded as
+`Inconclusive — no critical findings identified`.

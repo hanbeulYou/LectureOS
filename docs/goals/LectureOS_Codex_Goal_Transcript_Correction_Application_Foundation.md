@@ -998,6 +998,7 @@ Slice 1 — Correction Application Composition Assessment
 - Claude Review: Optional — Skipped (read-only assessment)
 
 Slice 2 — Correction Capability Contract
+- commit `cc93c4a` — `feat: establish transcript correction capability contract`
 - Application-owned `CorrectionGenerationPort`
 - immutable provider-independent request and Segment context
 - provider-neutral ordered `CorrectionProposal` tuple
@@ -1006,12 +1007,24 @@ Slice 2 — Correction Capability Contract
 - no SQLite, HTTP, concrete provider, credential or provider-runtime dependency
 - Required Claude Review: Inconclusive — no critical findings identified
   (one bounded 6-turn review; no concrete critical issue reported)
+
+Slice 3 — Correction Proposal Validation and Canonical Construction
+- `TranscriptCorrectionGenerationService.prepare_correction(...)`
+- canonical Raw/parent Revision and running-execution precondition loading
+- exactly-once provider-independent capability invocation
+- immutable request and ordered Segment context construction
+- proposal type, target, uniqueness, content, capability and finite-number validation
+- caller identity-plan cardinality, uniqueness and existing-identity validation
+- exact Candidate, replacement Segment, proposed Revision and Result construction
+- zero-proposal no-op and provider/proposal error propagation
+- no canonical write before the Slice 4 command boundary
+- Required Claude Review: Inconclusive — no critical findings identified
+  (one bounded 6-turn review; no concrete critical issue reported)
 ```
 
 ### 17.2 Remaining Milestones
 
 ```text
-3. Correction Proposal Validation and Canonical Construction
 4. Atomic Correction Generation Persistence
 5. Structural Validation Integration
 6. In-Memory Acceptance and Restart Verification
@@ -1020,7 +1033,7 @@ Slice 2 — Correction Capability Contract
 ### 17.3 Immediate Next Slice
 
 ```text
-Correction Proposal Validation and Canonical Construction
+Atomic Correction Generation Persistence
 ```
 
 ### 17.4 Architecture Decision History
