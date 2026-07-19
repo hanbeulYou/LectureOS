@@ -1,6 +1,6 @@
 """Provider-independent Application contract for Transcript correction proposals."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from math import isfinite
 from typing import Protocol
 
@@ -15,7 +15,10 @@ from lectureos.execution.identities import (
 )
 from lectureos.execution.models import DomainResultReference, ProcessingState
 from lectureos.execution.boundaries import ExecutionQueryBoundary
-from lectureos.transcript.boundaries import TranscriptQueryBoundary
+from lectureos.transcript.boundaries import (
+    TranscriptQueryBoundary,
+    TranscriptStructuralValidationBoundary,
+)
 from lectureos.transcript.identities import (
     CorrectionCandidateId,
     TranscriptId,
@@ -27,6 +30,7 @@ from lectureos.transcript.models import (
     CorrectionCandidate,
     CorrectedTranscriptRevision,
     TranscriptSegment,
+    TranscriptValidation,
 )
 
 
@@ -121,6 +125,7 @@ class PreparedCorrectionGeneration:
     candidate_results: tuple[DomainResultReference, ...]
     revision_result: DomainResultReference | None
     validation_id: TranscriptValidationId | None
+    validation: TranscriptValidation | None = None
 
 
 class TranscriptCorrectionGenerationError(ValueError):
@@ -134,11 +139,13 @@ class TranscriptCorrectionGenerationService:
         execution_query: ExecutionQueryBoundary,
         generation: CorrectionGenerationPort,
         persistence: AtomicGeneratedCorrectionPersistence | None = None,
+        validation: TranscriptStructuralValidationBoundary | None = None,
     ) -> None:
         self._transcripts = transcript_query
         self._executions = execution_query
         self._generation = generation
         self._persistence = persistence
+        self._validation = validation
 
     def generate_correction(self, **kwargs) -> PreparedCorrectionGeneration:
         prepared = self.prepare_correction(**kwargs)
@@ -146,6 +153,8 @@ class TranscriptCorrectionGenerationService:
             return prepared
         if self._persistence is None:
             raise RuntimeError("generated correction persistence is not configured")
+        if self._validation is None:
+            raise RuntimeError("transcript structural validation is not configured")
         self._persistence.persist_generated_correction(
             candidates=prepared.candidates,
             candidate_results=prepared.candidate_results,
@@ -153,7 +162,13 @@ class TranscriptCorrectionGenerationService:
             revision=prepared.revision,
             revision_result=prepared.revision_result,
         )
-        return prepared
+        validation = self._validation.validate_corrected_revision(
+            validation_id=prepared.validation_id,
+            revision_id=prepared.revision.identity,
+            run_id=prepared.request.run_id,
+            unit_execution_id=prepared.request.unit_execution_id,
+        )
+        return replace(prepared, validation=validation)
 
     def prepare_correction(
         self,

@@ -52,7 +52,9 @@ from lectureos.transcript.models import (
     ProviderTranscriptResult,
     RawTranscript,
     TranscriptSegment,
+    TranscriptValidation,
 )
+from lectureos.transcript.validation import TranscriptValidationService
 
 
 class FakeCorrectionCapability:
@@ -74,6 +76,30 @@ class RecordingGeneratedPersistence:
         self.calls.append(kwargs)
         if self.error is not None:
             raise self.error
+
+
+class RecordingStructuralValidation:
+    def __init__(self, *, structural_valid=False, error=None, events=None) -> None:
+        self.structural_valid = structural_valid
+        self.error = error
+        self.events = events
+        self.calls = []
+
+    def validate_corrected_revision(self, **kwargs):
+        self.calls.append(kwargs)
+        if self.events is not None:
+            self.events.append("validate")
+        if self.error is not None:
+            raise self.error
+        return TranscriptValidation(
+            identity=kwargs["validation_id"],
+            run_id=kwargs["run_id"],
+            unit_execution_id=kwargs["unit_execution_id"],
+            structural_valid=self.structural_valid,
+            timeline_traceable=self.structural_valid,
+            provenance_complete=self.structural_valid,
+            target_revision_id=kwargs["revision_id"],
+        )
 
 
 def create_v4_database(path: Path) -> sqlite3.Connection:
@@ -186,12 +212,29 @@ class SQLiteAtomicGeneratedCorrectionTests(unittest.TestCase):
             uncertainty=0.2,
         )
 
-    def _service(self, connection, execution, transcripts, proposal, persistence=None):
+    def _service(
+        self,
+        connection,
+        execution,
+        transcripts,
+        proposal,
+        persistence=None,
+        validation=None,
+    ):
+        command = persistence or SQLiteTranscriptCommandPersistence(connection)
+        validator = validation
+        if validator is None:
+            validator = (
+                TranscriptValidationService(transcripts, execution)
+                if not isinstance(command, RecordingGeneratedPersistence)
+                else RecordingStructuralValidation(structural_valid=True)
+            )
         return TranscriptCorrectionGenerationService(
             transcripts,
             execution,
             FakeCorrectionCapability((proposal,)),
-            persistence or SQLiteTranscriptCommandPersistence(connection),
+            command,
+            validator,
         )
 
     def _generate(self, service, raw):
@@ -216,7 +259,56 @@ class SQLiteAtomicGeneratedCorrectionTests(unittest.TestCase):
         self.assertEqual(port.calls[0]["candidates"], prepared.candidates)
         self.assertEqual(port.calls[0]["replacement_segments"], prepared.replacement_segments)
         self.assertEqual(port.calls[0]["revision"], prepared.revision)
+        self.assertTrue(prepared.validation.structural_valid)
         self.assertIsNone(transcripts.get_candidate(prepared.candidates[0].identity))
+        connection.close()
+
+    def test_structurally_invalid_result_is_returned_without_approval(self) -> None:
+        connection = initialize_sqlite_database(self.database_path)
+        execution, transcripts, raw, segments = self._seed(connection)
+        validation = RecordingStructuralValidation(structural_valid=False)
+        prepared = self._generate(
+            self._service(
+                connection,
+                execution,
+                transcripts,
+                self._proposal(segments[0].identity),
+                RecordingGeneratedPersistence(),
+                validation,
+            ),
+            raw,
+        )
+        self.assertFalse(prepared.validation.structural_valid)
+        self.assertIsNone(prepared.revision.decision_reference)
+        self.assertIsNone(prepared.revision.validation_id)
+        self.assertEqual(len(validation.calls), 1)
+        connection.close()
+
+    def test_validation_failure_propagates_after_canonical_commit(self) -> None:
+        connection = initialize_sqlite_database(self.database_path)
+        execution, transcripts, raw, segments = self._seed(connection)
+        validation = RecordingStructuralValidation(error=RuntimeError("validation failed"))
+        service = self._service(
+            connection,
+            execution,
+            transcripts,
+            self._proposal(segments[0].identity),
+            SQLiteTranscriptCommandPersistence(connection),
+            validation,
+        )
+        with self.assertRaisesRegex(RuntimeError, "validation failed"):
+            self._generate(service, raw)
+        self.assertIsNotNone(
+            SQLiteCorrectionCandidateRepository(connection).get(
+                CorrectionCandidateId("candidate")
+            )
+        )
+        self.assertIsNotNone(
+            SQLiteCorrectedTranscriptRevisionRepository(connection).get(
+                TranscriptRevisionId("revision")
+            )
+        )
+        self.assertFalse(connection.in_transaction)
         connection.close()
 
     def test_zero_proposals_does_not_invoke_persistence(self) -> None:
@@ -224,7 +316,11 @@ class SQLiteAtomicGeneratedCorrectionTests(unittest.TestCase):
         execution, transcripts, raw, _ = self._seed(connection)
         port = RecordingGeneratedPersistence()
         service = TranscriptCorrectionGenerationService(
-            transcripts, execution, FakeCorrectionCapability(()), port
+            transcripts,
+            execution,
+            FakeCorrectionCapability(()),
+            port,
+            TranscriptValidationService(transcripts, execution),
         )
         empty_plan = replace(self._plan(), candidates=())
         prepared = service.generate_correction(
@@ -236,6 +332,7 @@ class SQLiteAtomicGeneratedCorrectionTests(unittest.TestCase):
             identities=empty_plan,
         )
         self.assertIsNone(prepared.revision)
+        self.assertIsNone(prepared.validation)
         self.assertEqual(port.calls, [])
         connection.close()
 
@@ -264,6 +361,7 @@ class SQLiteAtomicGeneratedCorrectionTests(unittest.TestCase):
             raw,
         )
         self.assertFalse(connection.in_transaction)
+        self.assertTrue(prepared.validation.structural_valid)
         connection.close()
 
         reopened = open_sqlite_database(self.database_path)

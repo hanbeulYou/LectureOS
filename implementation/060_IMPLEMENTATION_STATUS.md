@@ -210,8 +210,8 @@ remain separately deferred according to Blueprint dependency order.
 - Status: **IN PROGRESS**
 - Completed slices: Correction Application Composition Assessment; Correction
   Capability Contract; Correction Proposal Validation and Canonical Construction;
-  Atomic Correction Generation Persistence
-- Immediate next slice: Structural Validation Integration
+  Atomic Correction Generation Persistence; Structural Validation Integration
+- Immediate next slice: In-Memory Acceptance and Restart Verification
 
 ### Approved Architect Decisions
 
@@ -251,6 +251,19 @@ output cannot control Candidate, Segment, Revision, Result or Validation identit
 The contract imports no SQLite, network client, credential or concrete provider.
 The one bounded 6-turn required review ended without a verdict and reported no
 concrete critical issue; it is recorded as
+`Inconclusive — no critical findings identified` under the global review policy.
+
+### Structural Validation Integration
+
+`TranscriptCorrectionGenerationService.generate_correction(...)` invokes the existing
+provider-independent structural Validation boundary only after the complete canonical
+proposal transaction commits. The returned prepared result carries the exact Validation
+record. Structural invalidity is returned normally while the Revision remains unapproved,
+and a Validation operation failure propagates without misrepresenting or rolling back the
+already committed proposed correction. The zero-proposal path invokes neither persistence
+nor Validation. No durable Validation, Review or Human Authority behavior was added.
+The one bounded 6-turn required review returned no verdict and identified no concrete
+critical issue; it is recorded as
 `Inconclusive — no critical findings identified` under the global review policy.
 
 ### Correction Proposal Orchestration
