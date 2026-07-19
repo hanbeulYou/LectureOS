@@ -4,6 +4,7 @@ from dataclasses import replace
 
 from .boundaries import (
     AtomicFailureExecutionPersistence,
+    AtomicResultExecutionPersistence,
     AtomicRetryExecutionPersistence,
     AtomicStartExecutionPersistence,
     RequestAccepted,
@@ -37,9 +38,10 @@ from .repositories import (
     ProcessingUnitRepository,
     UnitExecutionRepository,
 )
-from .start_persistence import InMemoryAtomicStartExecutionPersistence
 from .failure_persistence import InMemoryAtomicFailureExecutionPersistence
+from .result_persistence import InMemoryAtomicResultExecutionPersistence
 from .retry_persistence import InMemoryAtomicRetryExecutionPersistence
+from .start_persistence import InMemoryAtomicStartExecutionPersistence
 
 
 class ExecutionService:
@@ -54,6 +56,7 @@ class ExecutionService:
         atomic_start_persistence: AtomicStartExecutionPersistence | None = None,
         atomic_failure_persistence: AtomicFailureExecutionPersistence | None = None,
         atomic_retry_persistence: AtomicRetryExecutionPersistence | None = None,
+        atomic_result_persistence: AtomicResultExecutionPersistence | None = None,
     ) -> None:
         self.runs = runs if runs is not None else InMemoryRepository()
         self.units = units if units is not None else InMemoryRepository()
@@ -81,6 +84,15 @@ class ExecutionService:
             atomic_retry_persistence
             if atomic_retry_persistence is not None
             else InMemoryAtomicRetryExecutionPersistence(
+                self.executions,
+                self.runs,
+            )
+        )
+        self._atomic_result_persistence = (
+            atomic_result_persistence
+            if atomic_result_persistence is not None
+            else InMemoryAtomicResultExecutionPersistence(
+                self.results,
                 self.executions,
                 self.runs,
             )
@@ -161,18 +173,26 @@ class ExecutionService:
         if any(self.results.get(result_id) is not None for result_id in result_ids):
             raise ValueError("domain result identity already exists")
         run = self._require_run(execution.run_id)
-        for result in results:
-            self.results.save(result)
-        outcome_kind = OutcomeKind.PARTIAL_RESULT if partial else OutcomeKind.DOMAIN_RESULT_GENERATED
-        self.executions.save(
-            replace(
-                execution,
-                state=ProcessingState.COMPLETED,
-                outcome=ExecutionOutcome(outcome_kind),
-                result_references=execution.result_references + result_ids,
-            )
+        outcome_kind = (
+            OutcomeKind.PARTIAL_RESULT
+            if partial
+            else OutcomeKind.DOMAIN_RESULT_GENERATED
         )
-        self.runs.save(replace(run, result_references=run.result_references + result_ids))
+        completed_execution = replace(
+            execution,
+            state=ProcessingState.COMPLETED,
+            outcome=ExecutionOutcome(outcome_kind),
+            result_references=execution.result_references + result_ids,
+        )
+        updated_run = replace(
+            run,
+            result_references=run.result_references + result_ids,
+        )
+        self._atomic_result_persistence.persist_recorded_results(
+            results=results,
+            execution=completed_execution,
+            run=updated_run,
+        )
 
     def record_failure(self, execution_id: UnitExecutionId, failure: Failure) -> None:
         execution = self._require_execution(execution_id)

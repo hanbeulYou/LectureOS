@@ -294,18 +294,14 @@ class SQLiteAtomicResultPersistenceTests(unittest.TestCase):
                     self._persist(results=results, execution=execution, run=run)
                 self._assert_initial_state()
 
-    def test_port_is_sqlite_independent_and_service_is_not_wired(self) -> None:
+    def test_port_is_sqlite_independent(self) -> None:
         self.assertTrue(
             hasattr(AtomicResultExecutionPersistence, "persist_recorded_results")
         )
         boundary_source = inspect.getsource(
             __import__("lectureos.execution.boundaries", fromlist=["boundaries"])
         )
-        service_source = inspect.getsource(
-            __import__("lectureos.execution.service", fromlist=["service"])
-        )
         self.assertNotIn("sqlite", boundary_source.lower())
-        self.assertNotIn("AtomicResultExecutionPersistence", service_source)
 
     def test_internal_writers_do_not_own_transactions_or_call_public_saves(self) -> None:
         command_source = inspect.getsource(

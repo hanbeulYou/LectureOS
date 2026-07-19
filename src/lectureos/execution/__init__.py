@@ -2,6 +2,7 @@
 
 from .boundaries import (
     AtomicFailureExecutionPersistence,
+    AtomicResultExecutionPersistence,
     AtomicRetryExecutionPersistence,
     AtomicStartExecutionPersistence,
     ExecutionQueryBoundary,
@@ -21,13 +22,15 @@ from .models import (
     ProcessingUnit,
     UnitExecution,
 )
-from .service import ExecutionService
 from .failure_persistence import InMemoryAtomicFailureExecutionPersistence
+from .result_persistence import InMemoryAtomicResultExecutionPersistence
 from .retry_persistence import InMemoryAtomicRetryExecutionPersistence
+from .service import ExecutionService
 from .start_persistence import InMemoryAtomicStartExecutionPersistence
 
 __all__ = [
     "AtomicFailureExecutionPersistence",
+    "AtomicResultExecutionPersistence",
     "AtomicRetryExecutionPersistence",
     "AtomicStartExecutionPersistence",
     "Diagnostic",
@@ -40,6 +43,7 @@ __all__ = [
     "FailureCategory",
     "HumanDecisionBoundary",
     "InMemoryAtomicFailureExecutionPersistence",
+    "InMemoryAtomicResultExecutionPersistence",
     "InMemoryAtomicRetryExecutionPersistence",
     "InMemoryAtomicStartExecutionPersistence",
     "OutcomeKind",

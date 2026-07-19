@@ -58,6 +58,12 @@ SQLite transaction. It is schema-v4 gated, preserves supplied ordering, rejects
 any canonical Result identity collision, and rolls back the complete command on
 linkage, write, or commit failure.
 
-The next durability slice is ExecutionService Result Wiring. The Application
-service still uses its legacy independent Result writes until that slice is
-completed.
+ExecutionService Result Wiring is complete. `record_results(...)` preserves its
+existing lifecycle validation, final outcome and ordered references, then calls
+the Application-owned atomic Result port exactly once. The v4 composition root
+injects one SQLite command adapter for Start, Failure, Retry, and Result and a
+canonical DomainResultReference repository for command validation and reads.
+
+The next and final durability Goal slice is the read-only Diagnostic Persistence
+Assessment. Diagnostic canonical persistence remains deferred pending that
+evidence review.
