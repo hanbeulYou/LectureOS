@@ -203,3 +203,35 @@ CorrectedTranscriptRevision, Result-reference composition, Application wiring,
 and restart reconstruction. Review persistence, Subtitle persistence, Artifact
 persistence, correction provider integration, and broader product milestones
 remain separately deferred according to Blueprint dependency order.
+
+## Transcript Correction Application Foundation
+
+- Goal: `docs/goals/LectureOS_Codex_Goal_Transcript_Correction_Application_Foundation.md`
+- Status: **IN PROGRESS**
+- Completed slices: Correction Application Composition Assessment
+- Immediate next slice: Correction Capability Contract
+
+### Approved Architect Decisions
+
+- The Application request selects a canonical Raw Transcript and optional parent
+  Revision, running execution, and correction Capability. Application resolves an
+  immutable provider-neutral Segment context; providers receive no repositories or
+  hidden global context.
+- A proposal is one text replacement targeting one existing Segment, with rationale,
+  ordered evidence and optional confidence, uncertainty and provenance hints. Split,
+  merge, deletion and provider-controlled timestamp changes are unsupported.
+- Providers never supply canonical identities. The caller supplies a deterministic
+  identity plan for Candidate/Result/replacement Segment tuples plus the proposed
+  Revision, Revision Result and Validation identities.
+- The generation port returns zero or more ordered proposals. Duplicate targets are
+  rejected. Zero proposals is a successful no-op with no canonical writes.
+- Valid proposals form one proposed Revision with unchanged Segments reused and one
+  traceable replacement Segment per proposal. It has no Human Decision, validation
+  reference or applicability authority.
+- All Candidates and Candidate Results, replacement Segments, the Revision and Revision
+  Result form one atomic v5 command. Request and proposal DTOs are not persisted.
+- Structural Validation runs after canonical proposal persistence because the existing
+  validator queries stored revisions. Invalid structure remains explicit and unapproved;
+  Validation persistence is deferred and no Transcript Ready State is claimed.
+- Provider, proposal, persistence and validation-operation failures propagate without
+  fallback, retry, alternate provider, false success or implicit Execution Failure write.

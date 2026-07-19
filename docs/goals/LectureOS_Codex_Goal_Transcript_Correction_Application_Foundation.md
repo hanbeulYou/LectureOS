@@ -986,13 +986,20 @@ Goal 문서 변경은 해당 implementation slice의 상태 동기화로서 같�
 ### 17.1 Completed Capabilities
 
 ```text
-None — Goal not started
+Slice 1 — Correction Application Composition Assessment
+- provider-independent request/context ownership approved
+- provider-neutral single-Segment replacement proposal approved
+- caller-supplied deterministic canonical identity plan approved
+- zero-or-many proposal cardinality and zero-proposal no-op approved
+- one atomic Candidate/Segment/Revision/Result record set approved
+- persist-proposed-records then structural-validate ordering approved
+- explicit provider/proposal/persistence/validation failure propagation approved
+- Claude Review: Optional — Skipped (read-only assessment)
 ```
 
 ### 17.2 Remaining Milestones
 
 ```text
-1. Correction Application Composition Assessment
 2. Correction Capability Contract
 3. Correction Proposal Validation and Canonical Construction
 4. Atomic Correction Generation Persistence
@@ -1003,7 +1010,7 @@ None — Goal not started
 ### 17.3 Immediate Next Slice
 
 ```text
-Correction Application Composition Assessment
+Correction Capability Contract
 ```
 
 ### 17.4 Architecture Decision History
@@ -1014,18 +1021,41 @@ Slice 1부터 다음 decision을 이 표에 누적 기록하고
 
 | Decision Group | Status | Approved Decision | Evidence / Commit |
 | --- | --- | --- | --- |
-| correction request/context | Pending | Slice 1에서 결정 | Goal baseline |
-| provider-neutral proposal DTO | Pending | Slice 1에서 결정 | Goal baseline |
-| canonical identity ownership | Pending | Slice 1에서 결정 | Goal baseline |
-| generation cardinality | Pending | Slice 1에서 결정 | Goal baseline |
-| proposed revision construction | Pending | Slice 1에서 결정 | Goal baseline |
-| atomic persistence boundary | Pending | Slice 1에서 결정 | Goal baseline |
-| structural Validation ordering | Pending | Slice 1에서 결정 | Goal baseline |
-| failure propagation | Pending | Slice 1에서 결정 | Goal baseline |
+| correction request/context | Approved | Request identifies Raw Transcript lineage, optional parent Revision, running execution and correction Capability. Application resolves the exact parent Segment sequence and constructs immutable provider-neutral context containing existing Segment identity, text, source order and optional timeline/speaker/confidence/uncertainty values. Source Media body, repositories and hidden global context are not exposed. | Slice 1 |
+| provider-neutral proposal DTO | Approved | One proposal targets exactly one existing Segment and supplies proposed text, rationale, ordered evidence and optional confidence/uncertainty/provider provenance hints. Split, merge, deletion, timestamp replacement and arbitrary provider metadata are unsupported and rejected. | Slice 1 |
+| canonical identity ownership | Approved | Provider supplies no canonical identity. Caller supplies one deterministic identity plan containing Candidate, Candidate Result and replacement Segment identities per expected proposal plus proposed Revision, Revision Result and Validation identities. Application validates cardinality and absence before persistence. | Slice 1 |
+| generation cardinality | Approved | Port returns an ordered tuple of zero or more proposals. Duplicate targets and conflicting proposals are rejected. Zero proposals is an explicit successful no-op with no Candidate, Revision, Result or Validation write. | Slice 1 |
+| proposed revision construction | Approved | One or more valid proposals produce one proposed Revision. Each target Segment is replaced in the parent sequence by one new Segment preserving timeline, order, speaker and timing; untouched Segments are reused. Candidate order follows validated proposal order. Revision parent is the requested Raw Transcript or existing Revision, has no decision reference, no validation id and `UNDETERMINED` applicability. | Slice 1 |
+| atomic persistence boundary | Approved | One generation command atomically first-inserts all Candidates and their DomainResultReferences, all replacement Segments, the proposed Revision and its DomainResultReference. Public repository saves are not nested. Existing schema v5 and internal writers are reused; no request/proposal record is persisted. | Slice 1 |
+| structural Validation ordering | Approved | Proposal and canonical linkage validation occur before the atomic write. After the proposed records commit, existing `TranscriptValidationService.validate_corrected_revision(...)` runs against canonical storage. A structurally invalid result remains an explicit unapproved proposed Revision; it is not rolled back or treated as ready. Validation records remain in-memory in this Goal and are not claimed restart-durable. | Slice 1 |
+| failure propagation | Approved | Port failure propagates without fallback or write. Malformed/unsupported proposal or identity-plan mismatch raises an Application correction error before persistence. Persistence errors propagate with atomic rollback. Validation operation errors propagate after the already committed proposal records; structurally invalid Validation is returned normally and grants no approval. No automatic retry, alternate provider or Execution Failure recording is added. | Slice 1 |
 | approved sequence changes | None | 현재 Section 12 순서 유지 | Goal baseline |
 
 별도 assessment document는 decision과 evidence를 이 section 및 implementation status에
 합리적으로 기록할 수 없을 때만 만든다.
+
+#### Slice 1 contract evidence
+
+- Current `CorrectionCandidate` targets one `TranscriptSegmentId`; current Domain has no
+  provider-neutral split/merge/delete proposal concept. The minimum supported proposal is
+  therefore one text replacement for one existing Segment.
+- Current `TranscriptSegment` preserves source order, optional time range, speaker,
+  confidence, uncertainty and `replaces_segment_id`; replacement construction can retain
+  source traceability without provider-controlled timestamps.
+- Current `CorrectedTranscriptRevision` requires exactly one Raw or Revision parent and
+  already represents ordered Segment and Candidate references, optional decision/validation
+  references and undetermined applicability.
+- Existing `TranscriptService` validates execution provenance, parent lineage, Segment order
+  and immutable identity absence before Candidate or Revision persistence.
+- Existing `TranscriptValidationService` loads a persisted Revision through query boundaries
+  and records structural findings separately. It does not judge semantic correctness or
+  approval, so persistence precedes its current invocation without moving authority.
+- Existing separate Candidate and Revision atomic commands cannot make a multi-proposal
+  generation call indivisible. A command-specific atomic persistence port is required in
+  Slice 4, using the released v5 structures without schema change.
+- Current Application services receive deterministic identities from their callers. A
+  caller-supplied identity plan preserves that convention and keeps provider output from
+  owning canonical identity.
 
 ---
 
