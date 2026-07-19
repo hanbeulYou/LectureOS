@@ -74,3 +74,38 @@ The Durability Goal is complete. Durable SQLite execution now covers canonical
 Failure and DomainResultReference records and atomic Start, terminal Failure,
 Retry, and terminal Result commands through ExecutionService. A new product
 milestone must be selected before further persistence scope is introduced.
+
+## Canonical Transcript Foundation
+
+- Goal: `docs/goals/LectureOS_Codex_Goal_Canonical_Transcript_Foundation.md`
+- Status: **IN PROGRESS**
+- Completed slice: Transcript Persistence Composition Assessment
+- Immediate next slice: Complete Transcript Schema and Migration
+
+### Approved Architect Decisions
+
+- The selected target schema is v5. It is the next released version after the
+  frozen complete v4 and will introduce the complete canonical Transcript
+  foundation in one version.
+- `ProviderTranscriptResult` is a Transcript-owned immutable provenance record,
+  not an independent product aggregate. Existing Execution/Result durability
+  cannot reconstruct its provider content, capability, plugin, diagnostic, and
+  uncertainty fields, so v5 requires normalized provider-result storage.
+- Existing v4 `DomainResultReference` storage remains canonical. The producing
+  Raw Transcript, Correction Candidate, or Corrected Revision command owns the
+  first insertion of its generated reference in the same transaction as its
+  concrete record. The same identity must not later be submitted to
+  `ExecutionService.record_results()` as a new canonical Result.
+- Approved atomic sets are: ProviderTranscriptResult alone; RawTranscript plus
+  all supplied new TranscriptSegments plus its DomainResultReference;
+  CorrectionCandidate plus its DomainResultReference; and
+  CorrectedTranscriptRevision plus only absent supplied TranscriptSegments plus
+  its DomainResultReference.
+- Application performs execution, provenance, membership, ordering, and lineage
+  validation before persistence. SQLite command adapters perform only schema,
+  identity, serialization, and representation-linkage checks and own rollback.
+- Public repository protocols remain unchanged. Command composition uses
+  Application-owned ports and SQLite-package-internal non-committing writers.
+- Combining Transcript production with Execution terminal Result orchestration
+  is deferred beyond this canonical foundation. Existing Execution terminal
+  Result behavior is not changed by this Goal.
