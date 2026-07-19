@@ -208,8 +208,9 @@ remain separately deferred according to Blueprint dependency order.
 
 - Goal: `docs/goals/LectureOS_Codex_Goal_Transcript_Correction_Application_Foundation.md`
 - Status: **IN PROGRESS**
-- Completed slices: Correction Application Composition Assessment
-- Immediate next slice: Correction Capability Contract
+- Completed slices: Correction Application Composition Assessment; Correction
+  Capability Contract
+- Immediate next slice: Correction Proposal Validation and Canonical Construction
 
 ### Approved Architect Decisions
 
@@ -235,3 +236,18 @@ remain separately deferred according to Blueprint dependency order.
   Validation persistence is deferred and no Transcript Ready State is claimed.
 - Provider, proposal, persistence and validation-operation failures propagate without
   fallback, retry, alternate provider, false success or implicit Execution Failure write.
+
+### Correction Capability Contract
+
+The Application-owned `CorrectionGenerationPort` accepts an immutable canonical
+request containing Raw/parent lineage, execution, Capability and provider-neutral
+Segment context, and returns an ordered tuple of non-canonical
+`CorrectionProposal` values. Proposals carry only a target Segment, proposed text,
+rationale, evidence, uncertainty/confidence and optional opaque provenance hints.
+An explicit `CorrectionGenerationFailure` represents capability failure. A separate
+caller-owned identity plan supplies every future canonical identity, so provider
+output cannot control Candidate, Segment, Revision, Result or Validation identity.
+The contract imports no SQLite, network client, credential or concrete provider.
+The one bounded 6-turn required review ended without a verdict and reported no
+concrete critical issue; it is recorded as
+`Inconclusive — no critical findings identified` under the global review policy.
