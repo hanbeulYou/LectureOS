@@ -80,8 +80,9 @@ milestone must be selected before further persistence scope is introduced.
 - Goal: `docs/goals/LectureOS_Codex_Goal_Canonical_Transcript_Foundation.md`
 - Status: **IN PROGRESS**
 - Completed slices: Transcript Persistence Composition Assessment; Complete
-  Transcript Schema and Migration
-- Immediate next slice: Provider Provenance Resolution and Segment Repository
+  Transcript Schema and Migration; Provider Provenance Resolution and Segment
+  Repository
+- Immediate next slice: Raw Transcript Atomic Persistence
 
 ### Approved Architect Decisions
 
@@ -129,3 +130,12 @@ The Required Claude Review returned explicit `Verdict: PASS` using the final
 20-turn focused budget after earlier 6-turn and 10-turn attempts ended without a
 verdict. It reported no Blocking Issues, no Missing Tests, and no Blueprint
 Clarification requirement.
+
+### Durable Transcript Source Records
+
+`SQLiteProviderTranscriptResultRepository` persists the Transcript-owned exact
+provider provenance body, including ordered duplicate DiagnosticId references,
+without treating it as a separate product aggregate. `SQLiteTranscriptSegmentRepository`
+persists exact timed or untimed immutable Segment records. Both repositories are
+schema-v5 gated, reject every identity reuse, own their standalone transaction,
+preserve caller connections, and reconstruct exact Domain records after restart.

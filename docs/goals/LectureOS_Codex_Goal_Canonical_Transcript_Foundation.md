@@ -1090,18 +1090,25 @@ Slice 1 — Transcript Persistence Composition Assessment
 - command-specific atomic record sets approved
 
 Slice 2 — Complete Transcript Schema and Migration
+- commit `f7d9766` — `feat: add canonical transcript sqlite schema`
 - complete SQLite schema v5 direct initialization
 - explicit transactional v4-to-v5 migration and validated v5 no-op
 - strict v5 table, column, owned-child foreign-key and representation constraints
 - frozen v1-v4 compatibility and no canonical Transcript backfill
 - Required Claude Review: PASS (20-turn final focused review; prior 6/10-turn
   runs ended without verdict)
+
+Slice 3 — Provider Provenance Resolution and Segment Repository
+- `SQLiteProviderTranscriptResultRepository`
+- `SQLiteTranscriptSegmentRepository`
+- exact immutable round-trip, ordered duplicate diagnostic preservation,
+  collision rejection, atomic standalone save, restart durability and v5 gate
+- Claude Review: Optional — Skipped (approved isolated repository pattern)
 ```
 
 ### 16.2 Remaining Milestones
 
 ```text
-3. Provider Provenance Resolution and Segment Repository
 4. Raw Transcript Atomic Persistence
 5. Correction Candidate Persistence
 6. Corrected Transcript Revision Persistence
@@ -1111,7 +1118,7 @@ Slice 2 — Complete Transcript Schema and Migration
 ### 16.3 Immediate Next Slice
 
 ```text
-Provider Provenance Resolution and Segment Repository
+Raw Transcript Atomic Persistence
 ```
 
 ### 16.4 Architecture Decision History

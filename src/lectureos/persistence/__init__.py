@@ -11,6 +11,8 @@ from .execution_commands import SQLiteExecutionCommandPersistence
 from .failures import SQLiteFailureRepository
 from .processing_units import SQLiteProcessingUnitRepository
 from .processing_runs import SQLiteProcessingRunRepository
+from .provider_transcripts import SQLiteProviderTranscriptResultRepository
+from .transcript_segments import SQLiteTranscriptSegmentRepository
 from .unit_executions import SQLiteUnitExecutionRepository
 from .sqlite import (
     SQLITE_SCHEMA_VERSION,
@@ -29,6 +31,8 @@ __all__ = [
     "SQLiteFailureRepository",
     "SQLiteProcessingUnitRepository",
     "SQLiteProcessingRunRepository",
+    "SQLiteProviderTranscriptResultRepository",
+    "SQLiteTranscriptSegmentRepository",
     "SQLiteUnitExecutionRepository",
     "UnsupportedSchemaVersionError",
     "initialize_sqlite_database",
