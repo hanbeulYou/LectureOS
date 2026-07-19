@@ -60,6 +60,8 @@ def create_legacy_database(path: Path, version: int) -> sqlite3.Connection:
         statements.extend(sqlite_lifecycle._V2_ADDITION_STATEMENTS)
     if version >= 3:
         statements.extend(sqlite_lifecycle._V3_ADDITION_STATEMENTS)
+    if version >= 4:
+        statements.extend(sqlite_lifecycle._V4_ADDITION_STATEMENTS)
     for statement in statements:
         connection.execute(statement)
     connection.execute("INSERT INTO schema_metadata VALUES (1, ?)", (version,))
@@ -144,13 +146,13 @@ class SQLiteSchemaVersionFourTests(unittest.TestCase):
         self.assertEqual(SQLiteProcessingRunRepository(connection).get(run.identity), run)
         self.assertEqual(SQLiteUnitExecutionRepository(connection).get(execution.identity), execution)
 
-    def test_new_database_initializes_directly_as_complete_v4(self) -> None:
+    def test_new_database_includes_complete_frozen_v4(self) -> None:
         connection = initialize_sqlite_database(self.database_path)
         try:
-            self.assertEqual(SQLITE_SCHEMA_VERSION, 4)
-            self.assertEqual(connection.execute("SELECT version FROM schema_metadata").fetchone(), (4,))
+            self.assertEqual(SQLITE_SCHEMA_VERSION, 5)
+            self.assertEqual(connection.execute("SELECT version FROM schema_metadata").fetchone(), (5,))
             self.assertTrue(V4_TABLES.issubset(table_names(connection)))
-            self.assertEqual(sqlite_lifecycle.validate_sqlite_connection(connection), 4)
+            self.assertEqual(sqlite_lifecycle.validate_sqlite_connection(connection), 5)
         finally:
             connection.close()
         open_sqlite_database(self.database_path).close()
@@ -182,7 +184,7 @@ class SQLiteSchemaVersionFourTests(unittest.TestCase):
             connection.close()
 
     def test_v4_to_v4_is_validated_no_op(self) -> None:
-        connection = initialize_sqlite_database(self.database_path)
+        connection = create_legacy_database(self.database_path, 4)
         connection.execute(
             "INSERT INTO domain_result_references(identity, kind) VALUES ('result', 'kind')"
         )

@@ -7,8 +7,8 @@ from pathlib import Path
 
 from .errors import PersistenceError, UnsupportedSchemaVersionError
 
-SQLITE_SCHEMA_VERSION = 4
-_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4)
+SQLITE_SCHEMA_VERSION = 5
+_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5)
 
 _V1_TABLE_STATEMENTS = (
     """CREATE TABLE schema_metadata (
@@ -241,6 +241,123 @@ _V4_ADDITION_STATEMENTS = (
 )""",
 )
 
+_V5_ADDITION_STATEMENTS = (
+    """CREATE TABLE provider_transcript_results (
+    identity TEXT PRIMARY KEY,
+    source_media_id TEXT NOT NULL,
+    source_timeline_id TEXT NOT NULL,
+    processing_run_id TEXT NOT NULL,
+    unit_execution_id TEXT NOT NULL,
+    capability TEXT NOT NULL,
+    provider_reference TEXT NOT NULL
+        CHECK (length(trim(provider_reference)) > 0),
+    original_content TEXT NOT NULL,
+    plugin_reference TEXT,
+    uncertainty REAL,
+    normalized INTEGER NOT NULL CHECK (normalized = 0)
+)""",
+    """CREATE TABLE provider_transcript_result_diagnostics (
+    provider_transcript_result_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    diagnostic_id TEXT NOT NULL,
+    PRIMARY KEY (provider_transcript_result_id, ordinal),
+    FOREIGN KEY (provider_transcript_result_id)
+        REFERENCES provider_transcript_results(identity) ON DELETE CASCADE
+)""",
+    """CREATE TABLE transcript_segments (
+    identity TEXT PRIMARY KEY,
+    transcript_id TEXT NOT NULL,
+    source_timeline_id TEXT,
+    text TEXT NOT NULL,
+    source_order INTEGER NOT NULL CHECK (source_order >= 0),
+    start REAL,
+    end REAL,
+    speaker_label TEXT,
+    confidence REAL,
+    uncertainty REAL,
+    replaces_segment_id TEXT,
+    CHECK ((start IS NULL AND end IS NULL) OR
+           (start IS NOT NULL AND end IS NOT NULL AND
+            source_timeline_id IS NOT NULL AND start >= 0 AND end >= start))
+)""",
+    """CREATE TABLE raw_transcripts (
+    identity TEXT PRIMARY KEY,
+    domain_result_id TEXT NOT NULL,
+    source_media_id TEXT NOT NULL,
+    source_timeline_id TEXT NOT NULL,
+    provider_transcript_result_id TEXT NOT NULL,
+    processing_run_id TEXT NOT NULL,
+    unit_execution_id TEXT NOT NULL,
+    validation_id TEXT
+)""",
+    """CREATE TABLE raw_transcript_segments (
+    raw_transcript_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    transcript_segment_id TEXT NOT NULL,
+    PRIMARY KEY (raw_transcript_id, ordinal),
+    FOREIGN KEY (raw_transcript_id) REFERENCES raw_transcripts(identity)
+        ON DELETE CASCADE
+)""",
+    """CREATE TABLE correction_candidates (
+    identity TEXT PRIMARY KEY,
+    domain_result_id TEXT NOT NULL,
+    transcript_id TEXT NOT NULL,
+    segment_id TEXT NOT NULL,
+    proposed_text TEXT NOT NULL,
+    rationale TEXT NOT NULL CHECK (length(trim(rationale)) > 0),
+    processing_run_id TEXT NOT NULL,
+    unit_execution_id TEXT NOT NULL,
+    target_revision_id TEXT,
+    confidence REAL,
+    uncertainty REAL,
+    capability TEXT,
+    plugin_reference TEXT,
+    provider_reference TEXT CHECK (
+        provider_reference IS NULL OR length(trim(provider_reference)) > 0
+    )
+)""",
+    """CREATE TABLE correction_candidate_evidence (
+    correction_candidate_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    evidence TEXT NOT NULL,
+    PRIMARY KEY (correction_candidate_id, ordinal),
+    FOREIGN KEY (correction_candidate_id) REFERENCES correction_candidates(identity)
+        ON DELETE CASCADE
+)""",
+    """CREATE TABLE corrected_transcript_revisions (
+    identity TEXT PRIMARY KEY,
+    transcript_id TEXT NOT NULL,
+    domain_result_id TEXT NOT NULL,
+    processing_run_id TEXT NOT NULL,
+    unit_execution_id TEXT NOT NULL,
+    parent_raw_transcript_id TEXT,
+    parent_revision_id TEXT,
+    decision_reference TEXT,
+    validation_id TEXT,
+    applicability TEXT NOT NULL CHECK (
+        applicability IN ('undetermined', 'stale', 'superseded', 'historical')
+    ),
+    CHECK ((parent_raw_transcript_id IS NOT NULL AND parent_revision_id IS NULL) OR
+           (parent_raw_transcript_id IS NULL AND parent_revision_id IS NOT NULL))
+)""",
+    """CREATE TABLE corrected_transcript_revision_segments (
+    transcript_revision_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    transcript_segment_id TEXT NOT NULL,
+    PRIMARY KEY (transcript_revision_id, ordinal),
+    FOREIGN KEY (transcript_revision_id)
+        REFERENCES corrected_transcript_revisions(identity) ON DELETE CASCADE
+)""",
+    """CREATE TABLE corrected_transcript_revision_candidates (
+    transcript_revision_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    correction_candidate_id TEXT NOT NULL,
+    PRIMARY KEY (transcript_revision_id, ordinal),
+    FOREIGN KEY (transcript_revision_id)
+        REFERENCES corrected_transcript_revisions(identity) ON DELETE CASCADE
+)""",
+)
+
 _V1_EXPECTED_COLUMNS = {
     "schema_metadata": (
         ("singleton", "INTEGER", 0, 1),
@@ -399,6 +516,99 @@ _V4_EXPECTED_COLUMNS = {
     ),
 }
 
+_V5_EXPECTED_COLUMNS = {
+    **_V4_EXPECTED_COLUMNS,
+    "provider_transcript_results": (
+        ("identity", "TEXT", 0, 1),
+        ("source_media_id", "TEXT", 1, 0),
+        ("source_timeline_id", "TEXT", 1, 0),
+        ("processing_run_id", "TEXT", 1, 0),
+        ("unit_execution_id", "TEXT", 1, 0),
+        ("capability", "TEXT", 1, 0),
+        ("provider_reference", "TEXT", 1, 0),
+        ("original_content", "TEXT", 1, 0),
+        ("plugin_reference", "TEXT", 0, 0),
+        ("uncertainty", "REAL", 0, 0),
+        ("normalized", "INTEGER", 1, 0),
+    ),
+    "provider_transcript_result_diagnostics": (
+        ("provider_transcript_result_id", "TEXT", 1, 1),
+        ("ordinal", "INTEGER", 1, 2),
+        ("diagnostic_id", "TEXT", 1, 0),
+    ),
+    "transcript_segments": (
+        ("identity", "TEXT", 0, 1),
+        ("transcript_id", "TEXT", 1, 0),
+        ("source_timeline_id", "TEXT", 0, 0),
+        ("text", "TEXT", 1, 0),
+        ("source_order", "INTEGER", 1, 0),
+        ("start", "REAL", 0, 0),
+        ("end", "REAL", 0, 0),
+        ("speaker_label", "TEXT", 0, 0),
+        ("confidence", "REAL", 0, 0),
+        ("uncertainty", "REAL", 0, 0),
+        ("replaces_segment_id", "TEXT", 0, 0),
+    ),
+    "raw_transcripts": (
+        ("identity", "TEXT", 0, 1),
+        ("domain_result_id", "TEXT", 1, 0),
+        ("source_media_id", "TEXT", 1, 0),
+        ("source_timeline_id", "TEXT", 1, 0),
+        ("provider_transcript_result_id", "TEXT", 1, 0),
+        ("processing_run_id", "TEXT", 1, 0),
+        ("unit_execution_id", "TEXT", 1, 0),
+        ("validation_id", "TEXT", 0, 0),
+    ),
+    "raw_transcript_segments": (
+        ("raw_transcript_id", "TEXT", 1, 1),
+        ("ordinal", "INTEGER", 1, 2),
+        ("transcript_segment_id", "TEXT", 1, 0),
+    ),
+    "correction_candidates": (
+        ("identity", "TEXT", 0, 1),
+        ("domain_result_id", "TEXT", 1, 0),
+        ("transcript_id", "TEXT", 1, 0),
+        ("segment_id", "TEXT", 1, 0),
+        ("proposed_text", "TEXT", 1, 0),
+        ("rationale", "TEXT", 1, 0),
+        ("processing_run_id", "TEXT", 1, 0),
+        ("unit_execution_id", "TEXT", 1, 0),
+        ("target_revision_id", "TEXT", 0, 0),
+        ("confidence", "REAL", 0, 0),
+        ("uncertainty", "REAL", 0, 0),
+        ("capability", "TEXT", 0, 0),
+        ("plugin_reference", "TEXT", 0, 0),
+        ("provider_reference", "TEXT", 0, 0),
+    ),
+    "correction_candidate_evidence": (
+        ("correction_candidate_id", "TEXT", 1, 1),
+        ("ordinal", "INTEGER", 1, 2),
+        ("evidence", "TEXT", 1, 0),
+    ),
+    "corrected_transcript_revisions": (
+        ("identity", "TEXT", 0, 1),
+        ("transcript_id", "TEXT", 1, 0),
+        ("domain_result_id", "TEXT", 1, 0),
+        ("processing_run_id", "TEXT", 1, 0),
+        ("unit_execution_id", "TEXT", 1, 0),
+        ("parent_raw_transcript_id", "TEXT", 0, 0),
+        ("parent_revision_id", "TEXT", 0, 0),
+        ("decision_reference", "TEXT", 0, 0),
+        ("validation_id", "TEXT", 0, 0),
+        ("applicability", "TEXT", 1, 0),
+    ),
+    "corrected_transcript_revision_segments": (
+        ("transcript_revision_id", "TEXT", 1, 1),
+        ("ordinal", "INTEGER", 1, 2),
+        ("transcript_segment_id", "TEXT", 1, 0),
+    ),
+    "corrected_transcript_revision_candidates": (
+        ("transcript_revision_id", "TEXT", 1, 1),
+        ("ordinal", "INTEGER", 1, 2),
+        ("correction_candidate_id", "TEXT", 1, 0),
+    ),
+}
+
 
 def initialize_sqlite_database(database_path: str | Path) -> sqlite3.Connection:
     """Create the latest schema for a new path; validate existing databases."""
@@ -438,7 +648,7 @@ def migrate_sqlite_database(
 ) -> None:
     """Explicitly perform one approved migration step or validate a no-op target."""
 
-    if target_version not in (2, 3, 4):
+    if target_version not in (2, 3, 4, 5):
         raise PersistenceError(f"unsupported SQLite migration target: {target_version}")
     path = _validate_database_path(database_path)
     if not path.is_file():
@@ -456,6 +666,9 @@ def migrate_sqlite_database(
             return
         if current_version == 3 and target_version == 4:
             _migrate_v3_to_v4(connection)
+            return
+        if current_version == 4 and target_version == 5:
+            _migrate_v4_to_v5(connection)
             return
         raise PersistenceError(
             f"unsupported SQLite migration: {current_version} to {target_version}"
@@ -508,6 +721,7 @@ def _initialize_latest_schema(connection: sqlite3.Connection) -> None:
             *_V2_ADDITION_STATEMENTS,
             *_V3_ADDITION_STATEMENTS,
             *_V4_ADDITION_STATEMENTS,
+            *_V5_ADDITION_STATEMENTS,
         ):
             connection.execute(statement)
         connection.execute(
@@ -578,6 +792,24 @@ def _migrate_v3_to_v4(connection: sqlite3.Connection) -> None:
         raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
 
 
+def _migrate_v4_to_v5(connection: sqlite3.Connection) -> None:
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        for statement in _V5_ADDITION_STATEMENTS:
+            connection.execute(statement)
+        connection.execute(
+            "UPDATE schema_metadata SET version = 5 WHERE singleton = 1"
+        )
+        _validate_initialized_connection(connection)
+        _commit(connection)
+    except PersistenceError:
+        _rollback(connection)
+        raise
+    except sqlite3.Error as error:
+        _rollback(connection)
+        raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
+
+
 def _validate_initialized_connection(connection: sqlite3.Connection) -> int:
     try:
         if connection.execute("PRAGMA foreign_keys").fetchone() != (1,):
@@ -614,6 +846,7 @@ def _validate_schema_shape(connection: sqlite3.Connection, version: int) -> None
         2: _V2_EXPECTED_COLUMNS,
         3: _V3_EXPECTED_COLUMNS,
         4: _V4_EXPECTED_COLUMNS,
+        5: _V5_EXPECTED_COLUMNS,
     }[version]
     for table, expected in expected_columns.items():
         actual = tuple(
@@ -628,8 +861,10 @@ def _validate_schema_shape(connection: sqlite3.Connection, version: int) -> None
     elif version >= 3:
         _validate_v2_foreign_keys(connection)
         _validate_v3_foreign_keys(connection)
-        if version == 4:
+        if version >= 4:
             _validate_v4_foreign_keys(connection)
+        if version >= 5:
+            _validate_v5_foreign_keys(connection)
 
 
 def _validate_v1_foreign_keys(connection: sqlite3.Connection) -> None:
@@ -698,6 +933,42 @@ def _validate_v4_foreign_keys(connection: sqlite3.Connection) -> None:
         ("failure_affected_inputs", "failures", "failure_id"),
         ("failure_affected_results", "failures", "failure_id"),
         ("failure_diagnostics", "failures", "failure_id"),
+    )
+    for table, parent, parent_column in expected:
+        foreign_keys = connection.execute(f"PRAGMA foreign_key_list({table})").fetchall()
+        if not any(
+            row[2] == parent
+            and row[3] == parent_column
+            and row[4] == "identity"
+            and row[6].upper() == "CASCADE"
+            for row in foreign_keys
+        ):
+            raise PersistenceError(f"SQLite schema foreign key is missing: {table}")
+
+
+def _validate_v5_foreign_keys(connection: sqlite3.Connection) -> None:
+    expected = (
+        (
+            "provider_transcript_result_diagnostics",
+            "provider_transcript_results",
+            "provider_transcript_result_id",
+        ),
+        ("raw_transcript_segments", "raw_transcripts", "raw_transcript_id"),
+        (
+            "correction_candidate_evidence",
+            "correction_candidates",
+            "correction_candidate_id",
+        ),
+        (
+            "corrected_transcript_revision_segments",
+            "corrected_transcript_revisions",
+            "transcript_revision_id",
+        ),
+        (
+            "corrected_transcript_revision_candidates",
+            "corrected_transcript_revisions",
+            "transcript_revision_id",
+        ),
     )
     for table, parent, parent_column in expected:
         foreign_keys = connection.execute(f"PRAGMA foreign_key_list({table})").fetchall()

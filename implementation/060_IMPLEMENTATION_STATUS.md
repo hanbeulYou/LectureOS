@@ -79,8 +79,9 @@ milestone must be selected before further persistence scope is introduced.
 
 - Goal: `docs/goals/LectureOS_Codex_Goal_Canonical_Transcript_Foundation.md`
 - Status: **IN PROGRESS**
-- Completed slice: Transcript Persistence Composition Assessment
-- Immediate next slice: Complete Transcript Schema and Migration
+- Completed slices: Transcript Persistence Composition Assessment; Complete
+  Transcript Schema and Migration
+- Immediate next slice: Provider Provenance Resolution and Segment Repository
 
 ### Approved Architect Decisions
 
@@ -109,3 +110,22 @@ milestone must be selected before further persistence scope is introduced.
 - Combining Transcript production with Execution terminal Result orchestration
   is deferred beyond this canonical foundation. Existing Execution terminal
   Result behavior is not changed by this Goal.
+
+### Schema v5 Foundation
+
+SQLite schema v5 is the complete v4 schema plus normalized structures for
+ProviderTranscriptResult provenance, TranscriptSegment, RawTranscript,
+CorrectionCandidate, and CorrectedTranscriptRevision. Ordered diagnostic,
+segment, evidence, and candidate references use owned ordinal child tables.
+
+New databases initialize directly as complete v5. Migration supports only the
+explicit v4-to-v5 step and v5 validated no-op at this target; direct v1-v3 to v5,
+downgrade, and automatic chaining remain rejected. The migration performs no
+canonical Transcript backfill and preserves every existing v4 record on success
+or rollback.
+
+Validation completed with 51 focused migration tests and 609 complete tests.
+The Required Claude Review returned explicit `Verdict: PASS` using the final
+20-turn focused budget after earlier 6-turn and 10-turn attempts ended without a
+verdict. It reported no Blocking Issues, no Missing Tests, and no Blueprint
+Clarification requirement.
