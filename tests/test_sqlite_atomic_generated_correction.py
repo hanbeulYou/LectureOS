@@ -13,6 +13,7 @@ from lectureos.application import (
 )
 from lectureos.composition import (
     compose_sqlite_execution_service,
+    compose_sqlite_transcript_correction_generation_service,
     compose_sqlite_transcript_service,
 )
 from lectureos.execution.identities import (
@@ -212,6 +213,25 @@ class SQLiteAtomicGeneratedCorrectionTests(unittest.TestCase):
             uncertainty=0.2,
         )
 
+    def _two_candidate_plan(self):
+        return CorrectionGenerationIdentityPlan(
+            candidates=(
+                CorrectionCandidateIdentityPlan(
+                    CorrectionCandidateId("candidate-0"),
+                    DomainResultId("candidate-result-0"),
+                    TranscriptSegmentId("replacement-0"),
+                ),
+                CorrectionCandidateIdentityPlan(
+                    CorrectionCandidateId("candidate-1"),
+                    DomainResultId("candidate-result-1"),
+                    TranscriptSegmentId("replacement-1"),
+                ),
+            ),
+            revision_id=TranscriptRevisionId("revision-many"),
+            revision_result_id=DomainResultId("revision-result-many"),
+            validation_id=TranscriptValidationId("validation-many"),
+        )
+
     def _service(
         self,
         connection,
@@ -384,6 +404,51 @@ class SQLiteAtomicGeneratedCorrectionTests(unittest.TestCase):
         results = SQLiteDomainResultReferenceRepository(reopened)
         self.assertEqual(results.get(prepared.candidate_results[0].identity), prepared.candidate_results[0])
         self.assertEqual(results.get(prepared.revision_result.identity), prepared.revision_result)
+        reopened.close()
+
+    def test_composed_fake_provider_preserves_multiple_proposals_after_restart(self) -> None:
+        connection = initialize_sqlite_database(self.database_path)
+        execution, transcripts, raw, segments = self._seed(connection)
+        provider = FakeCorrectionCapability(
+            tuple(self._proposal(segment.identity) for segment in segments)
+        )
+        service = compose_sqlite_transcript_correction_generation_service(
+            connection, execution, provider
+        )
+        result = service.generate_correction(
+            transcript_id=raw.identity,
+            parent_revision_id=None,
+            run_id=self.run_id,
+            unit_execution_id=self.execution_id,
+            capability=self.capability,
+            identities=self._two_candidate_plan(),
+        )
+        self.assertEqual(len(provider.requests), 1)
+        self.assertEqual(len(result.candidates), 2)
+        self.assertTrue(result.validation.structural_valid)
+        self.assertIsNone(result.revision.decision_reference)
+        self.assertIsNone(result.revision.validation_id)
+        connection.close()
+
+        reopened = open_sqlite_database(self.database_path)
+        candidates = SQLiteCorrectionCandidateRepository(reopened)
+        stored_segments = SQLiteTranscriptSegmentRepository(reopened)
+        revisions = SQLiteCorrectedTranscriptRevisionRepository(reopened)
+        results = SQLiteDomainResultReferenceRepository(reopened)
+        for candidate, segment, candidate_result in zip(
+            result.candidates,
+            result.replacement_segments,
+            result.candidate_results,
+        ):
+            self.assertEqual(candidates.get(candidate.identity), candidate)
+            self.assertEqual(stored_segments.get(segment.identity), segment)
+            self.assertEqual(results.get(candidate_result.identity), candidate_result)
+        self.assertEqual(revisions.get(result.revision.identity), result.revision)
+        self.assertEqual(results.get(result.revision_result.identity), result.revision_result)
+        self.assertEqual(
+            result.revision.segment_ids,
+            tuple(segment.identity for segment in result.replacement_segments),
+        )
         reopened.close()
 
     def test_collision_rolls_back_complete_command(self) -> None:

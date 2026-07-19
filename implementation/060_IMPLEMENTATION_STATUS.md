@@ -207,11 +207,12 @@ remain separately deferred according to Blueprint dependency order.
 ## Transcript Correction Application Foundation
 
 - Goal: `docs/goals/LectureOS_Codex_Goal_Transcript_Correction_Application_Foundation.md`
-- Status: **IN PROGRESS**
+- Status: **COMPLETE**
 - Completed slices: Correction Application Composition Assessment; Correction
   Capability Contract; Correction Proposal Validation and Canonical Construction;
-  Atomic Correction Generation Persistence; Structural Validation Integration
-- Immediate next slice: In-Memory Acceptance and Restart Verification
+  Atomic Correction Generation Persistence; Structural Validation Integration;
+  In-Memory Acceptance and Restart Verification
+- Immediate next slice: Goal Complete
 
 ### Approved Architect Decisions
 
@@ -252,6 +253,25 @@ The contract imports no SQLite, network client, credential or concrete provider.
 The one bounded 6-turn required review ended without a verdict and reported no
 concrete critical issue; it is recorded as
 `Inconclusive — no critical findings identified` under the global review policy.
+
+### Correction Application Composition and Restart Acceptance
+
+`compose_sqlite_transcript_correction_generation_service(...)` assembles a
+provider-independent generation service from a caller-owned SQLite connection,
+Application execution query, fake-or-future capability port, one shared Transcript
+command adapter, canonical Transcript repositories and the existing structural validator.
+Acceptance coverage sends two deterministic proposals through the complete Application
+flow and reconstructs every Candidate, replacement Segment, proposed Revision and Result
+exactly after restart. Validation remains non-durable and non-authoritative. No concrete
+provider, network, credential, Review, Subtitle, Artifact or Diagnostic capability was
+introduced.
+The production composition boundary raised this slice to Required review. Its one bounded
+6-turn review ended without a verdict and identified no concrete critical issue; it is
+recorded as `Inconclusive — no critical findings identified`.
+
+The Transcript Correction Application Foundation Goal is complete. It establishes the
+provider-independent capability contract, canonical proposal construction, atomic durable
+coordination, structural Validation boundary and restart-safe fake-provider acceptance.
 
 ### Structural Validation Integration
 

@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import sqlite3
 
+from lectureos.application.transcript_correction_generation import (
+    CorrectionGenerationPort,
+    TranscriptCorrectionGenerationService,
+)
 from lectureos.execution.boundaries import ExecutionQueryBoundary
 from lectureos.execution.service import ExecutionService
 from lectureos.persistence import (
@@ -21,6 +25,7 @@ from lectureos.persistence import (
     SQLiteUnitExecutionRepository,
 )
 from lectureos.transcript.service import TranscriptService
+from lectureos.transcript.validation import TranscriptValidationService
 
 
 def compose_sqlite_atomic_start_execution_service(
@@ -78,13 +83,46 @@ def compose_sqlite_transcript_service(
 ) -> TranscriptService:
     """Build the complete durable v5 canonical Transcript composition."""
 
+    return _compose_sqlite_transcript_service(
+        connection,
+        execution_query,
+        SQLiteTranscriptCommandPersistence(connection),
+    )
+
+
+def compose_sqlite_transcript_correction_generation_service(
+    connection: sqlite3.Connection,
+    execution_query: ExecutionQueryBoundary,
+    generation: CorrectionGenerationPort,
+) -> TranscriptCorrectionGenerationService:
+    """Build provider-independent durable Transcript correction generation."""
+
+    atomic_commands = SQLiteTranscriptCommandPersistence(connection)
+    transcripts = _compose_sqlite_transcript_service(
+        connection, execution_query, atomic_commands
+    )
+    validation = TranscriptValidationService(transcripts, execution_query)
+    return TranscriptCorrectionGenerationService(
+        transcripts,
+        execution_query,
+        generation,
+        atomic_commands,
+        validation,
+    )
+
+
+def _compose_sqlite_transcript_service(
+    connection: sqlite3.Connection,
+    execution_query: ExecutionQueryBoundary,
+    atomic_commands: SQLiteTranscriptCommandPersistence,
+) -> TranscriptService:
+
     provider_results = SQLiteProviderTranscriptResultRepository(connection)
     raw_transcripts = SQLiteRawTranscriptRepository(connection)
     segments = SQLiteTranscriptSegmentRepository(connection)
     candidates = SQLiteCorrectionCandidateRepository(connection)
     revisions = SQLiteCorrectedTranscriptRevisionRepository(connection)
     domain_results = SQLiteDomainResultReferenceRepository(connection)
-    atomic_commands = SQLiteTranscriptCommandPersistence(connection)
     return TranscriptService(
         execution_query,
         provider_results=provider_results,

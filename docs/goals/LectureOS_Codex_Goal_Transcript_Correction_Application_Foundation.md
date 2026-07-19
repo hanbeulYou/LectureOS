@@ -1035,6 +1035,7 @@ Slice 4 — Atomic Correction Generation Persistence
   (one bounded 6-turn review; no concrete critical issue reported)
 
 Slice 5 — Structural Validation Integration
+- commit `a53ed7f` — `feat: validate generated transcript corrections`
 - generated Revision commit precedes existing structural Validation invocation
 - returned `PreparedCorrectionGeneration` includes the exact Validation result
 - structurally invalid results remain unapproved proposed Revisions
@@ -1042,18 +1043,28 @@ Slice 5 — Structural Validation Integration
 - zero-proposal no-op invokes neither persistence nor Validation
 - Required Claude Review: Inconclusive — no critical findings identified
   (one bounded 6-turn review; no concrete critical issue reported)
+
+Slice 6 — In-Memory Acceptance and Restart Verification
+- provider-independent top-level SQLite Application composition
+- one shared Transcript command adapter for canonical creation and correction generation
+- deterministic fake provider with two ordered proposals
+- exact Candidate, replacement Segment, Revision and Result reconstruction after restart
+- structural Validation returned without Review, Decision or applicability authority
+- no concrete provider, network, credential or sensitive media dependency
+- Required Claude Review: Inconclusive — no critical findings identified
+  (one bounded 6-turn review; no concrete critical issue reported)
 ```
 
 ### 17.2 Remaining Milestones
 
 ```text
-6. In-Memory Acceptance and Restart Verification
+None — Goal complete
 ```
 
 ### 17.3 Immediate Next Slice
 
 ```text
-In-Memory Acceptance and Restart Verification
+Goal Complete
 ```
 
 ### 17.4 Architecture Decision History
@@ -1072,7 +1083,7 @@ Slice 1부터 다음 decision을 이 표에 누적 기록하고
 | atomic persistence boundary | Approved | One generation command atomically first-inserts all Candidates and their DomainResultReferences, all replacement Segments, the proposed Revision and its DomainResultReference. Public repository saves are not nested. Existing schema v5 and internal writers are reused; no request/proposal record is persisted. Parent lineage, target membership and source provenance are checked before writes. | Slice 1; Slice 4 |
 | structural Validation ordering | Approved | Proposal and canonical linkage validation occur before the atomic write. After the proposed records commit, existing `TranscriptValidationService.validate_corrected_revision(...)` runs against canonical storage. A structurally invalid result remains an explicit unapproved proposed Revision; it is not rolled back or treated as ready. Validation records remain in-memory in this Goal and are not claimed restart-durable. | Slice 1; Slice 5 |
 | failure propagation | Approved | Port failure propagates without fallback or write. Malformed/unsupported proposal or identity-plan mismatch raises an Application correction error before persistence. Persistence errors propagate with atomic rollback. Validation operation errors propagate after the already committed proposal records; structurally invalid Validation is returned normally and grants no approval. No automatic retry, alternate provider or Execution Failure recording is added. | Slice 1 |
-| approved sequence changes | None | 현재 Section 12 순서 유지 | Goal baseline |
+| approved sequence changes | None | Section 12 순서대로 여섯 slice 완료 | Goal completion |
 
 별도 assessment document는 decision과 evidence를 이 section 및 implementation status에
 합리적으로 기록할 수 없을 때만 만든다.
