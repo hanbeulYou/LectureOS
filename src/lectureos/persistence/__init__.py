@@ -7,6 +7,9 @@ from .errors import (
     UnsupportedSchemaVersionError,
 )
 from .correction_candidates import SQLiteCorrectionCandidateRepository
+from .corrected_transcript_revisions import (
+    SQLiteCorrectedTranscriptRevisionRepository,
+)
 from .domain_results import SQLiteDomainResultReferenceRepository
 from .execution_commands import SQLiteExecutionCommandPersistence
 from .failures import SQLiteFailureRepository
@@ -30,6 +33,7 @@ __all__ = [
     "SchemaFeatureUnavailableError",
     "SQLITE_SCHEMA_VERSION",
     "SQLiteCorrectionCandidateRepository",
+    "SQLiteCorrectedTranscriptRevisionRepository",
     "SQLiteExecutionCommandPersistence",
     "SQLiteDomainResultReferenceRepository",
     "SQLiteFailureRepository",

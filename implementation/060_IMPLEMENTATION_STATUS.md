@@ -81,8 +81,9 @@ milestone must be selected before further persistence scope is introduced.
 - Status: **IN PROGRESS**
 - Completed slices: Transcript Persistence Composition Assessment; Complete
   Transcript Schema and Migration; Provider Provenance Resolution and Segment
-  Repository; Raw Transcript Atomic Persistence; Correction Candidate Persistence
-- Immediate next slice: Corrected Transcript Revision Persistence
+  Repository; Raw Transcript Atomic Persistence; Correction Candidate Persistence;
+  Corrected Transcript Revision Persistence
+- Immediate next slice: Canonical Transcript Composition and Restart Acceptance
 
 ### Approved Architect Decisions
 
@@ -167,3 +168,18 @@ Focused Candidate tests and the complete 633-test suite passed after adding the
 reviewer-suggested non-null target-revision round-trip case. The Required Claude
 Review returned explicit `Verdict: PASS` with no Blocking Issues using a 20-turn
 focused rerun after the initial 6-turn run ended without a verdict.
+
+### Durable Corrected Transcript Revisions
+
+`TranscriptService.create_corrected_revision(...)` preserves existing parent,
+candidate, execution, Segment membership, order, and lineage validation, computes
+the canonical Result reference, and invokes
+`AtomicCorrectedTranscriptRevisionPersistence` exactly once. SQLite atomically
+first-inserts the immutable Revision, inserts only absent supplied Segments while
+reusing exact existing Segments, and first-inserts the existing-v4 canonical
+Result reference. The standalone Revision repository remains self-transactional
+and reconstructs the exactly-one parent plus ordered Segment and Candidate
+references. Focused Revision tests and the complete 641-test suite passed before
+the required independent review. The initial 6-turn review ended without a
+verdict; the final focused 20-turn review returned explicit `Verdict: PASS` with
+no Blocking Issues, no Missing Tests, and no Blueprint Clarification requirement.

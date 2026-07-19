@@ -1118,6 +1118,7 @@ Slice 4 — Raw Transcript Atomic Persistence
   without verdict; no Blocking Issues or Missing Tests)
 
 Slice 5 — Correction Candidate Persistence
+- commit `87384d0` — `feat: persist transcript correction candidates`
 - `SQLiteCorrectionCandidateRepository`
 - `AtomicCorrectionCandidatePersistence` Application port and in-memory adapter
 - atomic CorrectionCandidate + generated DomainResultReference command
@@ -1127,19 +1128,30 @@ Slice 5 — Correction Candidate Persistence
 - Required Claude Review: PASS (20-turn focused rerun after 6-turn run ended
   without verdict; no Blocking Issues)
 - reviewer-suggested non-null target revision round-trip test added
+
+Slice 6 — Corrected Transcript Revision Persistence
+- `SQLiteCorrectedTranscriptRevisionRepository`
+- `AtomicCorrectedTranscriptRevisionPersistence` Application port and in-memory adapter
+- atomic CorrectedTranscriptRevision + only absent supplied TranscriptSegments +
+  generated DomainResultReference command
+- exact single-parent reconstruction and ordered Segment/Candidate references
+- `TranscriptService.create_corrected_revision(...)` exactly-once wiring
+- existing Segment reuse, collision, linkage, write/commit rollback and restart
+  integration coverage
+- Required Claude Review: PASS (20-turn focused rerun after 6-turn run ended
+  without verdict; no Blocking Issues or Missing Tests)
 ```
 
 ### 16.2 Remaining Milestones
 
 ```text
-6. Corrected Transcript Revision Persistence
 7. Canonical Transcript Composition and Restart Acceptance
 ```
 
 ### 16.3 Immediate Next Slice
 
 ```text
-Corrected Transcript Revision Persistence
+Canonical Transcript Composition and Restart Acceptance
 ```
 
 ### 16.4 Architecture Decision History

@@ -7,11 +7,13 @@ import sqlite3
 from lectureos.execution.models import DomainResultReference
 from lectureos.transcript.models import (
     CorrectionCandidate,
+    CorrectedTranscriptRevision,
     RawTranscript,
     TranscriptSegment,
 )
 
 from .correction_candidates import _insert_correction_candidate
+from .corrected_transcript_revisions import _insert_corrected_transcript_revision
 from .domain_results import _insert_domain_result_reference_record
 from .errors import (
     PersistenceError,
@@ -21,6 +23,7 @@ from .errors import (
 from .raw_transcripts import _insert_raw_transcript
 from .sqlite import validate_sqlite_connection
 from .transcript_segments import _insert_transcript_segment
+from .transcript_segments import _restore_transcript_segment
 
 
 class SQLiteTranscriptCommandPersistence:
@@ -104,6 +107,52 @@ class SQLiteTranscriptCommandPersistence:
             self._rollback_if_owned(transaction_started)
             raise
 
+    def persist_corrected_revision(
+        self,
+        *,
+        revision: CorrectedTranscriptRevision,
+        segments: tuple[TranscriptSegment, ...],
+        result: DomainResultReference,
+    ) -> None:
+        if self._schema_version < 5:
+            raise SchemaFeatureUnavailableError(
+                "atomic CorrectedTranscriptRevision persistence requires SQLite schema version 5"
+            )
+        transaction_started = False
+        try:
+            self._connection.execute("BEGIN IMMEDIATE")
+            transaction_started = True
+            self._validate_revision_linkage(revision, segments, result)
+            if self._revision_identity_exists(revision) or self._result_identity_exists(result):
+                raise PersistenceIdentityCollisionError(
+                    "CorrectedTranscriptRevision or DomainResultReference identity already exists"
+                )
+            new_segments = []
+            for segment in segments:
+                existing = self._read_segment(segment)
+                if existing is None:
+                    new_segments.append(segment)
+                elif existing != segment:
+                    raise PersistenceIdentityCollisionError(
+                        "TranscriptSegment identity has conflicting content"
+                    )
+            for segment in new_segments:
+                _insert_transcript_segment(self._connection, segment)
+            _insert_corrected_transcript_revision(self._connection, revision)
+            _insert_domain_result_reference_record(self._connection, result)
+            self._commit()
+        except PersistenceError:
+            self._rollback_if_owned(transaction_started)
+            raise
+        except sqlite3.Error as error:
+            self._rollback_if_owned(transaction_started)
+            raise PersistenceError(
+                f"could not persist atomic CorrectedTranscriptRevision records: {error}"
+            ) from error
+        except Exception:
+            self._rollback_if_owned(transaction_started)
+            raise
+
     @staticmethod
     def _validate_raw_linkage(
         transcript: RawTranscript,
@@ -150,6 +199,50 @@ class SQLiteTranscriptCommandPersistence:
             "SELECT 1 FROM correction_candidates WHERE identity = ?",
             (candidate.identity.value,),
         ).fetchone() is not None
+
+    @staticmethod
+    def _validate_revision_linkage(
+        revision: CorrectedTranscriptRevision,
+        segments: tuple[TranscriptSegment, ...],
+        result: DomainResultReference,
+    ) -> None:
+        identities = tuple(segment.identity for segment in segments)
+        if revision.segment_ids != identities:
+            raise PersistenceError(
+                "CorrectedTranscriptRevision segment references must match supplied Segments"
+            )
+        if len(set(identities)) != len(identities):
+            raise PersistenceError("CorrectedTranscriptRevision Segments must be unique")
+        if any(segment.transcript_id != revision.transcript_id for segment in segments):
+            raise PersistenceError("TranscriptSegment must belong to Revision lineage")
+        if result.identity != revision.domain_result_id:
+            raise PersistenceError("CorrectedTranscriptRevision Result identity must match")
+        if result.kind != "corrected_transcript_revision":
+            raise PersistenceError("CorrectedTranscriptRevision Result kind must match")
+        if len(result.upstream_results) != 1:
+            raise PersistenceError(
+                "CorrectedTranscriptRevision Result requires one upstream Result"
+            )
+
+    def _revision_identity_exists(
+        self, revision: CorrectedTranscriptRevision
+    ) -> bool:
+        return self._connection.execute(
+            "SELECT 1 FROM corrected_transcript_revisions WHERE identity = ?",
+            (revision.identity.value,),
+        ).fetchone() is not None
+
+    def _read_segment(self, segment: TranscriptSegment) -> TranscriptSegment | None:
+        row = self._connection.execute(
+            """
+            SELECT identity, transcript_id, source_timeline_id, text,
+                   source_order, start, end, speaker_label, confidence,
+                   uncertainty, replaces_segment_id
+            FROM transcript_segments WHERE identity = ?
+            """,
+            (segment.identity.value,),
+        ).fetchone()
+        return _restore_transcript_segment(row) if row is not None else None
 
     def _segment_identity_exists(self, segment: TranscriptSegment) -> bool:
         return self._connection.execute(

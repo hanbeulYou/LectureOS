@@ -26,12 +26,15 @@ from .models import (
 )
 from .persistence import (
     AtomicCorrectionCandidatePersistence,
+    AtomicCorrectedTranscriptRevisionPersistence,
     AtomicRawTranscriptPersistence,
     InMemoryAtomicCorrectionCandidatePersistence,
+    InMemoryAtomicCorrectedTranscriptRevisionPersistence,
     InMemoryAtomicRawTranscriptPersistence,
 )
 from .repositories import (
     CorrectionCandidateRepository,
+    CorrectedTranscriptRevisionRepository,
     ProviderTranscriptResultRepository,
     RawTranscriptRepository,
     TranscriptSegmentRepository,
@@ -47,9 +50,11 @@ class TranscriptService:
         raw_transcripts: RawTranscriptRepository | None = None,
         segments: TranscriptSegmentRepository | None = None,
         candidates: CorrectionCandidateRepository | None = None,
+        revisions: CorrectedTranscriptRevisionRepository | None = None,
         domain_results: DomainResultReferenceRepository | None = None,
         atomic_raw_persistence: AtomicRawTranscriptPersistence | None = None,
         atomic_candidate_persistence: AtomicCorrectionCandidatePersistence | None = None,
+        atomic_revision_persistence: AtomicCorrectedTranscriptRevisionPersistence | None = None,
     ) -> None:
         self._execution_query = execution_query
         self.provider_results = (
@@ -58,9 +63,7 @@ class TranscriptService:
         self.raw_transcripts = (
             raw_transcripts if raw_transcripts is not None else InMemoryRepository()
         )
-        self.revisions: InMemoryRepository[
-            TranscriptRevisionId, CorrectedTranscriptRevision
-        ] = InMemoryRepository()
+        self.revisions = revisions if revisions is not None else InMemoryRepository()
         self.segments = segments if segments is not None else InMemoryRepository()
         self.candidates = candidates if candidates is not None else InMemoryRepository()
         self.validations: InMemoryRepository[
@@ -83,6 +86,15 @@ class TranscriptService:
             if atomic_candidate_persistence is not None
             else InMemoryAtomicCorrectionCandidatePersistence(
                 self.candidates,
+                self.domain_results,
+            )
+        )
+        self._atomic_revision_persistence = (
+            atomic_revision_persistence
+            if atomic_revision_persistence is not None
+            else InMemoryAtomicCorrectedTranscriptRevisionPersistence(
+                self.revisions,
+                self.segments,
                 self.domain_results,
             )
         )
@@ -185,18 +197,17 @@ class TranscriptService:
             allow_existing=True,
         )
 
-        for segment in segments:
-            if self.segments.get(segment.identity) is None:
-                self.segments.save(segment)
-        self.revisions.save(revision)
-        self.domain_results.save(
-            DomainResultReference(
-                identity=revision.domain_result_id,
-                kind="corrected_transcript_revision",
-                source_media=raw.source_media_id,
-                source_timeline=raw.source_timeline_id,
-                upstream_results=(parent_result_id,),
-            )
+        result = DomainResultReference(
+            identity=revision.domain_result_id,
+            kind="corrected_transcript_revision",
+            source_media=raw.source_media_id,
+            source_timeline=raw.source_timeline_id,
+            upstream_results=(parent_result_id,),
+        )
+        self._atomic_revision_persistence.persist_corrected_revision(
+            revision=revision,
+            segments=segments,
+            result=result,
         )
 
     def record_validation(self, validation: TranscriptValidation) -> None:
