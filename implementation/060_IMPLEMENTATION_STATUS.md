@@ -64,6 +64,13 @@ the Application-owned atomic Result port exactly once. The v4 composition root
 injects one SQLite command adapter for Start, Failure, Retry, and Result and a
 canonical DomainResultReference repository for command validation and reads.
 
-The next and final durability Goal slice is the read-only Diagnostic Persistence
-Assessment. Diagnostic canonical persistence remains deferred pending that
-evidence review.
+The Diagnostic Persistence Assessment is complete. Canonical Diagnostic
+persistence remains explicitly deferred: existing records preserve ordered
+opaque DiagnosticId references, but no production producer or resolving consumer
+currently requires a canonical table or repository, and Retry authority does not
+consult diagnostics. See `070_DIAGNOSTIC_PERSISTENCE_ASSESSMENT.md`.
+
+The Durability Goal is complete. Durable SQLite execution now covers canonical
+Failure and DomainResultReference records and atomic Start, terminal Failure,
+Retry, and terminal Result commands through ExecutionService. A new product
+milestone must be selected before further persistence scope is introduced.

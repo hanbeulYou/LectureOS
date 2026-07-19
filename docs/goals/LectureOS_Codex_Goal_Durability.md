@@ -145,6 +145,7 @@ ExecutionService Retry Wiring
 SQLiteDomainResultReferenceRepository
 Atomic Result Persistence
 ExecutionService Result Wiring
+Diagnostic Persistence Assessment — DEFERRED
 ```
 
 완료된 주요 commits:
@@ -156,6 +157,9 @@ ExecutionService Result Wiring
 61e11262  feat: wire atomic failure persistence
 cf91fec4  feat: persist retries atomically
 f5b9e145  feat: wire atomic retry persistence
+13d0ce76  feat: persist domain result references in sqlite
+297bbc7b  feat: persist terminal results atomically
+f4c944bb  feat: wire atomic result persistence
 ```
 
 ---
@@ -165,7 +169,7 @@ f5b9e145  feat: wire atomic retry persistence
 다음 미완료 slice부터 아래 순서대로 계속 진행한다.
 
 ```text
-1. Diagnostic Persistence Assessment
+None — all Goal slices complete
 ```
 
 각 slice는 별도 commit으로 완료한다.
@@ -173,7 +177,7 @@ f5b9e145  feat: wire atomic retry persistence
 현재 immediate next slice는 다음과 같다.
 
 ```text
-Diagnostic Persistence Assessment
+Goal Complete
 ```
 
 순서를 바꾸거나 두 slice를 하나의 commit으로 합치지 않는다.
@@ -799,7 +803,17 @@ Required — Executed
 
 ---
 
-# Slice 4 — Diagnostic Persistence Assessment
+# Slice 4 — Diagnostic Persistence Assessment (Completed)
+
+Completion status:
+
+```text
+assessment: complete
+decision: Diagnostic Persistence — DEFERRED
+review classification: Optional — Skipped
+commit: docs: assess diagnostic persistence
+next slice: none — Goal complete
+```
 
 ## Goal
 
