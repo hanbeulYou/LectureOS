@@ -36,3 +36,21 @@ classroom transcript content is stored in this repository.
 M1 proves execution viability. It does not approve current transcript or
 subtitle quality for production. These observations are validation evidence,
 not new Domain contracts.
+
+## Durable Execution Persistence
+
+Completed foundation and command capabilities:
+
+- SQLite schema v4 with canonical DomainResultReference and Failure structures
+- SQLite repositories for ProcessingUnit, ProcessingRun, UnitExecution, Failure,
+  and DomainResultReference
+- atomic Start, terminal Failure, and Retry persistence boundaries
+- ExecutionService wiring for Start, terminal Failure, and Retry
+
+`SQLiteDomainResultReferenceRepository` stores immutable canonical Result
+references in the normalized v4 parent and ordered-lineage tables. It preserves
+typed optional references, upstream ordering and duplicates, rejects identity
+reuse, and remains unavailable without migration on schema v1-v3.
+
+The next durability slice is Atomic Result Persistence. Terminal Result command
+composition and ExecutionService Result wiring are not yet complete.
