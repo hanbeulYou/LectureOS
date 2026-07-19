@@ -24,7 +24,6 @@ from lectureos.execution.models import (
     ProcessingState,
     UnitExecution,
 )
-from lectureos.execution.service import ExecutionService
 from lectureos.persistence import (
     PersistenceError,
     PersistenceIdentityCollisionError,
@@ -247,16 +246,14 @@ class SQLiteAtomicRetryPersistenceTests(unittest.TestCase):
         self.assertEqual(self.run_repository.get(missing_run.identity), missing_run)
         self.assertEqual(self.execution_repository.get(self.source.identity), self.source)
 
-    def test_port_is_sqlite_independent_and_execution_service_is_not_wired(self) -> None:
+    def test_port_is_sqlite_independent(self) -> None:
         self.assertTrue(
             hasattr(AtomicRetryExecutionPersistence, "persist_retried_execution")
         )
         boundary_source = inspect.getsource(
             __import__("lectureos.execution.boundaries", fromlist=["boundaries"])
         )
-        service_source = inspect.getsource(ExecutionService.retry_unit_execution)
         self.assertNotIn("sqlite", boundary_source.lower())
-        self.assertNotIn("persist_retried_execution", service_source)
 
     def test_success_and_failure_leave_no_transaction_and_connection_open(self) -> None:
         self._persist()

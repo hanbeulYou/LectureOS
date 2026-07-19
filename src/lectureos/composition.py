@@ -34,7 +34,15 @@ def compose_sqlite_atomic_start_execution_service(
 def compose_sqlite_atomic_failure_execution_service(
     connection: sqlite3.Connection,
 ) -> ExecutionService:
-    """Build the Start and terminal-Failure SQLite slice on one connection."""
+    """Backward-compatible alias for the v4 durable execution composition."""
+
+    return compose_sqlite_execution_service(connection)
+
+
+def compose_sqlite_execution_service(
+    connection: sqlite3.Connection,
+) -> ExecutionService:
+    """Build the Start, Failure, and Retry SQLite slice on one connection."""
 
     runs = SQLiteProcessingRunRepository(connection)
     units = SQLiteProcessingUnitRepository(connection)
@@ -48,4 +56,5 @@ def compose_sqlite_atomic_failure_execution_service(
         failures=failures,
         atomic_start_persistence=atomic_commands,
         atomic_failure_persistence=atomic_commands,
+        atomic_retry_persistence=atomic_commands,
     )

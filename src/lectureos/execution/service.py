@@ -4,6 +4,7 @@ from dataclasses import replace
 
 from .boundaries import (
     AtomicFailureExecutionPersistence,
+    AtomicRetryExecutionPersistence,
     AtomicStartExecutionPersistence,
     RequestAccepted,
 )
@@ -38,6 +39,7 @@ from .repositories import (
 )
 from .start_persistence import InMemoryAtomicStartExecutionPersistence
 from .failure_persistence import InMemoryAtomicFailureExecutionPersistence
+from .retry_persistence import InMemoryAtomicRetryExecutionPersistence
 
 
 class ExecutionService:
@@ -51,6 +53,7 @@ class ExecutionService:
         failures: FailureRepository | None = None,
         atomic_start_persistence: AtomicStartExecutionPersistence | None = None,
         atomic_failure_persistence: AtomicFailureExecutionPersistence | None = None,
+        atomic_retry_persistence: AtomicRetryExecutionPersistence | None = None,
     ) -> None:
         self.runs = runs if runs is not None else InMemoryRepository()
         self.units = units if units is not None else InMemoryRepository()
@@ -70,6 +73,14 @@ class ExecutionService:
             if atomic_failure_persistence is not None
             else InMemoryAtomicFailureExecutionPersistence(
                 self.failures,
+                self.executions,
+                self.runs,
+            )
+        )
+        self._atomic_retry_persistence = (
+            atomic_retry_persistence
+            if atomic_retry_persistence is not None
+            else InMemoryAtomicRetryExecutionPersistence(
                 self.executions,
                 self.runs,
             )
@@ -208,14 +219,32 @@ class ExecutionService:
         failures = tuple(self.failures.get(failure_id) for failure_id in previous.failure_references)
         if not any(failure is not None and failure.retryable for failure in failures):
             raise ValueError("failed unit execution has no retryable failure")
-        accepted = self.start_unit_execution(
-            execution_id=execution_id,
+        if self.executions.get(execution_id) is not None:
+            raise ValueError("unit execution identity already exists")
+        run = self._require_run(previous.run_id)
+        unit = self._require_unit(previous.unit_id)
+        execution = UnitExecution(
+            identity=execution_id,
             run_id=previous.run_id,
             unit_id=previous.unit_id,
+            configuration=run.configuration,
+            capabilities=unit.capabilities,
+            state=ProcessingState.RUNNING,
+            retry_of=failed_execution_id,
         )
-        created = self._require_execution(execution_id)
-        self.executions.save(replace(created, retry_of=failed_execution_id))
-        return accepted
+        updated_run = replace(
+            run,
+            state=ProcessingState.RUNNING,
+            unit_execution_references=run.unit_execution_references + (execution_id,),
+        )
+        self._atomic_retry_persistence.persist_retried_execution(
+            execution=execution,
+            run=updated_run,
+        )
+        return RequestAccepted(
+            run_id=previous.run_id,
+            unit_execution_id=execution_id,
+        )
 
     def request_reprocessing(
         self,

@@ -23,6 +23,7 @@ from .models import (
 )
 from .service import ExecutionService
 from .failure_persistence import InMemoryAtomicFailureExecutionPersistence
+from .retry_persistence import InMemoryAtomicRetryExecutionPersistence
 from .start_persistence import InMemoryAtomicStartExecutionPersistence
 
 __all__ = [
@@ -39,6 +40,7 @@ __all__ = [
     "FailureCategory",
     "HumanDecisionBoundary",
     "InMemoryAtomicFailureExecutionPersistence",
+    "InMemoryAtomicRetryExecutionPersistence",
     "InMemoryAtomicStartExecutionPersistence",
     "OutcomeKind",
     "ProcessingRequestBoundary",
