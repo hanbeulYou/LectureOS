@@ -209,8 +209,9 @@ remain separately deferred according to Blueprint dependency order.
 - Goal: `docs/goals/LectureOS_Codex_Goal_Transcript_Correction_Application_Foundation.md`
 - Status: **IN PROGRESS**
 - Completed slices: Correction Application Composition Assessment; Correction
-  Capability Contract; Correction Proposal Validation and Canonical Construction
-- Immediate next slice: Atomic Correction Generation Persistence
+  Capability Contract; Correction Proposal Validation and Canonical Construction;
+  Atomic Correction Generation Persistence
+- Immediate next slice: Structural Validation Integration
 
 ### Approved Architect Decisions
 
@@ -266,3 +267,18 @@ persistence boundary.
 The one bounded 6-turn required review ended without a verdict and identified no
 concrete critical issue; it is recorded as
 `Inconclusive — no critical findings identified`.
+
+### Atomic Correction Generation Persistence
+
+`TranscriptCorrectionGenerationService.generate_correction(...)` invokes the
+Application-owned `AtomicGeneratedCorrectionPersistence` port exactly once for a
+non-empty prepared correction and performs no write for the explicit zero-proposal
+case. `SQLiteTranscriptCommandPersistence` owns one v5 transaction containing every
+Candidate, Candidate Result, replacement Segment, the proposed Revision and its Result.
+It verifies parent lineage, target membership, source provenance, ordered references and
+identity absence before using existing non-committing writers. Collision, linkage, late
+write and commit failures roll back the complete record set; successful records reconstruct
+exactly after restart. No schema, migration, Review or concrete-provider behavior changed.
+The one bounded 6-turn required review ended without a verdict and identified no
+concrete critical issue; it is recorded as
+`Inconclusive — no critical findings identified` under the global review policy.

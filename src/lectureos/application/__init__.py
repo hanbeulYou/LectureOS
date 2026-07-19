@@ -15,6 +15,7 @@ from .transcript_correction import (
     TranscriptCorrectionApplicationService,
 )
 from .transcript_correction_generation import (
+    AtomicGeneratedCorrectionPersistence,
     CorrectionCandidateIdentityPlan,
     CorrectionGenerationFailure,
     CorrectionGenerationIdentityPlan,
@@ -33,6 +34,7 @@ from .subtitle_review import (
 )
 
 __all__ = [
+    "AtomicGeneratedCorrectionPersistence",
     "TranscriptCorrectionApplicationError",
     "TranscriptCorrectionApplicationResult",
     "TranscriptCorrectionApplicationService",

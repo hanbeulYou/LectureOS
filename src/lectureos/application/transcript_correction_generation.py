@@ -84,6 +84,18 @@ class CorrectionGenerationPort(Protocol):
     ) -> tuple[CorrectionProposal, ...]: ...
 
 
+class AtomicGeneratedCorrectionPersistence(Protocol):
+    def persist_generated_correction(
+        self,
+        *,
+        candidates: tuple[CorrectionCandidate, ...],
+        candidate_results: tuple[DomainResultReference, ...],
+        replacement_segments: tuple[TranscriptSegment, ...],
+        revision: CorrectedTranscriptRevision,
+        revision_result: DomainResultReference,
+    ) -> None: ...
+
+
 @dataclass(frozen=True, slots=True)
 class CorrectionCandidateIdentityPlan:
     candidate_id: CorrectionCandidateId
@@ -121,10 +133,27 @@ class TranscriptCorrectionGenerationService:
         transcript_query: TranscriptQueryBoundary,
         execution_query: ExecutionQueryBoundary,
         generation: CorrectionGenerationPort,
+        persistence: AtomicGeneratedCorrectionPersistence | None = None,
     ) -> None:
         self._transcripts = transcript_query
         self._executions = execution_query
         self._generation = generation
+        self._persistence = persistence
+
+    def generate_correction(self, **kwargs) -> PreparedCorrectionGeneration:
+        prepared = self.prepare_correction(**kwargs)
+        if prepared.revision is None:
+            return prepared
+        if self._persistence is None:
+            raise RuntimeError("generated correction persistence is not configured")
+        self._persistence.persist_generated_correction(
+            candidates=prepared.candidates,
+            candidate_results=prepared.candidate_results,
+            replacement_segments=prepared.replacement_segments,
+            revision=prepared.revision,
+            revision_result=prepared.revision_result,
+        )
+        return prepared
 
     def prepare_correction(
         self,
@@ -403,6 +432,7 @@ class TranscriptCorrectionGenerationService:
 
 
 __all__ = [
+    "AtomicGeneratedCorrectionPersistence",
     "CorrectionCandidateIdentityPlan",
     "CorrectionGenerationFailure",
     "CorrectionGenerationIdentityPlan",

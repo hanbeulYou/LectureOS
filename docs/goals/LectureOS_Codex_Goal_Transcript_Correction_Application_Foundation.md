@@ -1009,6 +1009,7 @@ Slice 2 — Correction Capability Contract
   (one bounded 6-turn review; no concrete critical issue reported)
 
 Slice 3 — Correction Proposal Validation and Canonical Construction
+- commit `7620f32` — `feat: orchestrate transcript correction proposals`
 - `TranscriptCorrectionGenerationService.prepare_correction(...)`
 - canonical Raw/parent Revision and running-execution precondition loading
 - exactly-once provider-independent capability invocation
@@ -1020,12 +1021,22 @@ Slice 3 — Correction Proposal Validation and Canonical Construction
 - no canonical write before the Slice 4 command boundary
 - Required Claude Review: Inconclusive — no critical findings identified
   (one bounded 6-turn review; no concrete critical issue reported)
+
+Slice 4 — Atomic Correction Generation Persistence
+- Application-owned `AtomicGeneratedCorrectionPersistence`
+- one v5 transaction for all Candidates, Candidate Results, replacement Segments,
+  proposed Revision and Revision Result
+- parent lineage, source provenance, ordered reference and target membership checks
+- immutable identity collision handling and complete rollback
+- restart reconstruction and lower-schema feature-gate coverage
+- no public repository transaction nesting
+- Required Claude Review: Inconclusive — no critical findings identified
+  (one bounded 6-turn review; no concrete critical issue reported)
 ```
 
 ### 17.2 Remaining Milestones
 
 ```text
-4. Atomic Correction Generation Persistence
 5. Structural Validation Integration
 6. In-Memory Acceptance and Restart Verification
 ```
@@ -1033,7 +1044,7 @@ Slice 3 — Correction Proposal Validation and Canonical Construction
 ### 17.3 Immediate Next Slice
 
 ```text
-Atomic Correction Generation Persistence
+Structural Validation Integration
 ```
 
 ### 17.4 Architecture Decision History
@@ -1049,7 +1060,7 @@ Slice 1부터 다음 decision을 이 표에 누적 기록하고
 | canonical identity ownership | Approved | Provider supplies no canonical identity. Caller supplies one deterministic identity plan containing Candidate, Candidate Result and replacement Segment identities per expected proposal plus proposed Revision, Revision Result and Validation identities. Application validates cardinality and absence before persistence. | Slice 1 |
 | generation cardinality | Approved | Port returns an ordered tuple of zero or more proposals. Duplicate targets and conflicting proposals are rejected. Zero proposals is an explicit successful no-op with no Candidate, Revision, Result or Validation write. | Slice 1 |
 | proposed revision construction | Approved | One or more valid proposals produce one proposed Revision. Each target Segment is replaced in the parent sequence by one new Segment preserving timeline, order, speaker and timing; untouched Segments are reused. Candidate order follows validated proposal order. Revision parent is the requested Raw Transcript or existing Revision, has no decision reference, no validation id and `UNDETERMINED` applicability. | Slice 1 |
-| atomic persistence boundary | Approved | One generation command atomically first-inserts all Candidates and their DomainResultReferences, all replacement Segments, the proposed Revision and its DomainResultReference. Public repository saves are not nested. Existing schema v5 and internal writers are reused; no request/proposal record is persisted. | Slice 1 |
+| atomic persistence boundary | Approved | One generation command atomically first-inserts all Candidates and their DomainResultReferences, all replacement Segments, the proposed Revision and its DomainResultReference. Public repository saves are not nested. Existing schema v5 and internal writers are reused; no request/proposal record is persisted. Parent lineage, target membership and source provenance are checked before writes. | Slice 1; Slice 4 |
 | structural Validation ordering | Approved | Proposal and canonical linkage validation occur before the atomic write. After the proposed records commit, existing `TranscriptValidationService.validate_corrected_revision(...)` runs against canonical storage. A structurally invalid result remains an explicit unapproved proposed Revision; it is not rolled back or treated as ready. Validation records remain in-memory in this Goal and are not claimed restart-durable. | Slice 1 |
 | failure propagation | Approved | Port failure propagates without fallback or write. Malformed/unsupported proposal or identity-plan mismatch raises an Application correction error before persistence. Persistence errors propagate with atomic rollback. Validation operation errors propagate after the already committed proposal records; structurally invalid Validation is returned normally and grants no approval. No automatic retry, alternate provider or Execution Failure recording is added. | Slice 1 |
 | approved sequence changes | None | 현재 Section 12 순서 유지 | Goal baseline |
