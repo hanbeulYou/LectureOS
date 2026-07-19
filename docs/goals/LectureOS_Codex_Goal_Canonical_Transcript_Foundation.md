@@ -1107,6 +1107,7 @@ Slice 3 — Provider Provenance Resolution and Segment Repository
 - Claude Review: Optional — Skipped (approved isolated repository pattern)
 
 Slice 4 — Raw Transcript Atomic Persistence
+- commit `2e8abdd` — `feat: persist raw transcripts atomically`
 - `AtomicRawTranscriptPersistence` Application port and in-memory adapter
 - `SQLiteRawTranscriptRepository` and reusable non-committing writer
 - `SQLiteTranscriptCommandPersistence.persist_raw_transcript(...)`
@@ -1115,12 +1116,22 @@ Slice 4 — Raw Transcript Atomic Persistence
 - collision, linkage, write/commit rollback and restart integration coverage
 - Required Claude Review: PASS (20-turn focused rerun after 6-turn run ended
   without verdict; no Blocking Issues or Missing Tests)
+
+Slice 5 — Correction Candidate Persistence
+- `SQLiteCorrectionCandidateRepository`
+- `AtomicCorrectionCandidatePersistence` Application port and in-memory adapter
+- atomic CorrectionCandidate + generated DomainResultReference command
+- exact ordered evidence and optional provider/plugin/capability provenance
+- `TranscriptService.create_correction_candidate(...)` exactly-once wiring
+- collision, linkage, write/commit rollback and restart integration coverage
+- Required Claude Review: PASS (20-turn focused rerun after 6-turn run ended
+  without verdict; no Blocking Issues)
+- reviewer-suggested non-null target revision round-trip test added
 ```
 
 ### 16.2 Remaining Milestones
 
 ```text
-5. Correction Candidate Persistence
 6. Corrected Transcript Revision Persistence
 7. Canonical Transcript Composition and Restart Acceptance
 ```
@@ -1128,7 +1139,7 @@ Slice 4 — Raw Transcript Atomic Persistence
 ### 16.3 Immediate Next Slice
 
 ```text
-Correction Candidate Persistence
+Corrected Transcript Revision Persistence
 ```
 
 ### 16.4 Architecture Decision History

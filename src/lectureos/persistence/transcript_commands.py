@@ -5,8 +5,13 @@ from __future__ import annotations
 import sqlite3
 
 from lectureos.execution.models import DomainResultReference
-from lectureos.transcript.models import RawTranscript, TranscriptSegment
+from lectureos.transcript.models import (
+    CorrectionCandidate,
+    RawTranscript,
+    TranscriptSegment,
+)
 
+from .correction_candidates import _insert_correction_candidate
 from .domain_results import _insert_domain_result_reference_record
 from .errors import (
     PersistenceError,
@@ -56,15 +61,44 @@ class SQLiteTranscriptCommandPersistence:
         except PersistenceError:
             self._rollback_if_owned(transaction_started)
             raise
-        except sqlite3.IntegrityError as error:
-            self._rollback_if_owned(transaction_started)
-            raise PersistenceError(
-                f"could not persist atomic RawTranscript records: {error}"
-            ) from error
         except sqlite3.Error as error:
             self._rollback_if_owned(transaction_started)
             raise PersistenceError(
                 f"could not persist atomic RawTranscript records: {error}"
+            ) from error
+        except Exception:
+            self._rollback_if_owned(transaction_started)
+            raise
+
+    def persist_correction_candidate(
+        self,
+        *,
+        candidate: CorrectionCandidate,
+        result: DomainResultReference,
+    ) -> None:
+        if self._schema_version < 5:
+            raise SchemaFeatureUnavailableError(
+                "atomic CorrectionCandidate persistence requires SQLite schema version 5"
+            )
+        transaction_started = False
+        try:
+            self._connection.execute("BEGIN IMMEDIATE")
+            transaction_started = True
+            self._validate_candidate_linkage(candidate, result)
+            if self._candidate_identity_exists(candidate) or self._result_identity_exists(result):
+                raise PersistenceIdentityCollisionError(
+                    "CorrectionCandidate or DomainResultReference identity already exists"
+                )
+            _insert_correction_candidate(self._connection, candidate)
+            _insert_domain_result_reference_record(self._connection, result)
+            self._commit()
+        except PersistenceError:
+            self._rollback_if_owned(transaction_started)
+            raise
+        except sqlite3.Error as error:
+            self._rollback_if_owned(transaction_started)
+            raise PersistenceError(
+                f"could not persist atomic CorrectionCandidate records: {error}"
             ) from error
         except Exception:
             self._rollback_if_owned(transaction_started)
@@ -95,6 +129,26 @@ class SQLiteTranscriptCommandPersistence:
         return self._connection.execute(
             "SELECT 1 FROM raw_transcripts WHERE identity = ?",
             (transcript.identity.value,),
+        ).fetchone() is not None
+
+    @staticmethod
+    def _validate_candidate_linkage(
+        candidate: CorrectionCandidate,
+        result: DomainResultReference,
+    ) -> None:
+        if result.identity != candidate.domain_result_id:
+            raise PersistenceError("CorrectionCandidate Result identity must match")
+        if result.kind != "transcript_correction_candidate":
+            raise PersistenceError("CorrectionCandidate Result kind must match")
+        if len(result.upstream_results) != 1:
+            raise PersistenceError(
+                "CorrectionCandidate Result requires one upstream Result"
+            )
+
+    def _candidate_identity_exists(self, candidate: CorrectionCandidate) -> bool:
+        return self._connection.execute(
+            "SELECT 1 FROM correction_candidates WHERE identity = ?",
+            (candidate.identity.value,),
         ).fetchone() is not None
 
     def _segment_identity_exists(self, segment: TranscriptSegment) -> bool:

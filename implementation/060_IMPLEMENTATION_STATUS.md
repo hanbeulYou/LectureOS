@@ -81,8 +81,8 @@ milestone must be selected before further persistence scope is introduced.
 - Status: **IN PROGRESS**
 - Completed slices: Transcript Persistence Composition Assessment; Complete
   Transcript Schema and Migration; Provider Provenance Resolution and Segment
-  Repository; Raw Transcript Atomic Persistence
-- Immediate next slice: Correction Candidate Persistence
+  Repository; Raw Transcript Atomic Persistence; Correction Candidate Persistence
+- Immediate next slice: Corrected Transcript Revision Persistence
 
 ### Approved Architect Decisions
 
@@ -153,3 +153,17 @@ independently self-transactional, and Application code imports no SQLite types.
 Focused tests and the complete 624-test suite passed. The Required Claude Review
 returned explicit `Verdict: PASS` with no Blocking Issues or Missing Tests using
 a 20-turn focused rerun after the initial 6-turn run ended without a verdict.
+
+### Durable Correction Candidates
+
+`TranscriptService.create_correction_candidate(...)` preserves existing source,
+segment, target-revision, execution, and upstream-lineage validation, computes the
+canonical Result reference, and invokes `AtomicCorrectionCandidatePersistence`
+exactly once. SQLite atomically first-inserts the immutable Candidate with exact
+ordered evidence and the existing-v4 canonical Result reference. Standalone
+repository saves remain self-transactional; collision, write, result, and commit
+failure paths preserve the complete previous state.
+Focused Candidate tests and the complete 633-test suite passed after adding the
+reviewer-suggested non-null target-revision round-trip case. The Required Claude
+Review returned explicit `Verdict: PASS` with no Blocking Issues using a 20-turn
+focused rerun after the initial 6-turn run ended without a verdict.

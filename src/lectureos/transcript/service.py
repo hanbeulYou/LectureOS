@@ -25,10 +25,13 @@ from .models import (
     TranscriptValidation,
 )
 from .persistence import (
+    AtomicCorrectionCandidatePersistence,
     AtomicRawTranscriptPersistence,
+    InMemoryAtomicCorrectionCandidatePersistence,
     InMemoryAtomicRawTranscriptPersistence,
 )
 from .repositories import (
+    CorrectionCandidateRepository,
     ProviderTranscriptResultRepository,
     RawTranscriptRepository,
     TranscriptSegmentRepository,
@@ -43,8 +46,10 @@ class TranscriptService:
         provider_results: ProviderTranscriptResultRepository | None = None,
         raw_transcripts: RawTranscriptRepository | None = None,
         segments: TranscriptSegmentRepository | None = None,
+        candidates: CorrectionCandidateRepository | None = None,
         domain_results: DomainResultReferenceRepository | None = None,
         atomic_raw_persistence: AtomicRawTranscriptPersistence | None = None,
+        atomic_candidate_persistence: AtomicCorrectionCandidatePersistence | None = None,
     ) -> None:
         self._execution_query = execution_query
         self.provider_results = (
@@ -57,9 +62,7 @@ class TranscriptService:
             TranscriptRevisionId, CorrectedTranscriptRevision
         ] = InMemoryRepository()
         self.segments = segments if segments is not None else InMemoryRepository()
-        self.candidates: InMemoryRepository[
-            CorrectionCandidateId, CorrectionCandidate
-        ] = InMemoryRepository()
+        self.candidates = candidates if candidates is not None else InMemoryRepository()
         self.validations: InMemoryRepository[
             TranscriptValidationId, TranscriptValidation
         ] = InMemoryRepository()
@@ -72,6 +75,14 @@ class TranscriptService:
             else InMemoryAtomicRawTranscriptPersistence(
                 self.raw_transcripts,
                 self.segments,
+                self.domain_results,
+            )
+        )
+        self._atomic_candidate_persistence = (
+            atomic_candidate_persistence
+            if atomic_candidate_persistence is not None
+            else InMemoryAtomicCorrectionCandidatePersistence(
+                self.candidates,
                 self.domain_results,
             )
         )
@@ -138,15 +149,16 @@ class TranscriptService:
             if candidate.target_revision_id is not None
             else raw.domain_result_id
         )
-        self.candidates.save(candidate)
-        self.domain_results.save(
-            DomainResultReference(
-                identity=candidate.domain_result_id,
-                kind="transcript_correction_candidate",
-                source_media=raw.source_media_id,
-                source_timeline=raw.source_timeline_id,
-                upstream_results=(upstream,),
-            )
+        result = DomainResultReference(
+            identity=candidate.domain_result_id,
+            kind="transcript_correction_candidate",
+            source_media=raw.source_media_id,
+            source_timeline=raw.source_timeline_id,
+            upstream_results=(upstream,),
+        )
+        self._atomic_candidate_persistence.persist_correction_candidate(
+            candidate=candidate,
+            result=result,
         )
 
     def create_corrected_revision(
