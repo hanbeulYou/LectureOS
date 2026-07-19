@@ -4,15 +4,23 @@ from __future__ import annotations
 
 import sqlite3
 
+from lectureos.execution.boundaries import ExecutionQueryBoundary
 from lectureos.execution.service import ExecutionService
 from lectureos.persistence import (
+    SQLiteCorrectionCandidateRepository,
+    SQLiteCorrectedTranscriptRevisionRepository,
     SQLiteDomainResultReferenceRepository,
     SQLiteExecutionCommandPersistence,
     SQLiteFailureRepository,
     SQLiteProcessingRunRepository,
     SQLiteProcessingUnitRepository,
+    SQLiteProviderTranscriptResultRepository,
+    SQLiteRawTranscriptRepository,
+    SQLiteTranscriptCommandPersistence,
+    SQLiteTranscriptSegmentRepository,
     SQLiteUnitExecutionRepository,
 )
+from lectureos.transcript.service import TranscriptService
 
 
 def compose_sqlite_atomic_start_execution_service(
@@ -61,4 +69,31 @@ def compose_sqlite_execution_service(
         atomic_failure_persistence=atomic_commands,
         atomic_retry_persistence=atomic_commands,
         atomic_result_persistence=atomic_commands,
+    )
+
+
+def compose_sqlite_transcript_service(
+    connection: sqlite3.Connection,
+    execution_query: ExecutionQueryBoundary,
+) -> TranscriptService:
+    """Build the complete durable v5 canonical Transcript composition."""
+
+    provider_results = SQLiteProviderTranscriptResultRepository(connection)
+    raw_transcripts = SQLiteRawTranscriptRepository(connection)
+    segments = SQLiteTranscriptSegmentRepository(connection)
+    candidates = SQLiteCorrectionCandidateRepository(connection)
+    revisions = SQLiteCorrectedTranscriptRevisionRepository(connection)
+    domain_results = SQLiteDomainResultReferenceRepository(connection)
+    atomic_commands = SQLiteTranscriptCommandPersistence(connection)
+    return TranscriptService(
+        execution_query,
+        provider_results=provider_results,
+        raw_transcripts=raw_transcripts,
+        segments=segments,
+        candidates=candidates,
+        revisions=revisions,
+        domain_results=domain_results,
+        atomic_raw_persistence=atomic_commands,
+        atomic_candidate_persistence=atomic_commands,
+        atomic_revision_persistence=atomic_commands,
     )

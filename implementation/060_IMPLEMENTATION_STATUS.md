@@ -78,12 +78,13 @@ milestone must be selected before further persistence scope is introduced.
 ## Canonical Transcript Foundation
 
 - Goal: `docs/goals/LectureOS_Codex_Goal_Canonical_Transcript_Foundation.md`
-- Status: **IN PROGRESS**
+- Status: **COMPLETE**
 - Completed slices: Transcript Persistence Composition Assessment; Complete
   Transcript Schema and Migration; Provider Provenance Resolution and Segment
   Repository; Raw Transcript Atomic Persistence; Correction Candidate Persistence;
-  Corrected Transcript Revision Persistence
-- Immediate next slice: Canonical Transcript Composition and Restart Acceptance
+  Corrected Transcript Revision Persistence; Canonical Transcript Composition and
+  Restart Acceptance
+- Immediate next slice: None — select the next Blueprint-ordered product milestone
 
 ### Approved Architect Decisions
 
@@ -183,3 +184,22 @@ references. Focused Revision tests and the complete 641-test suite passed before
 the required independent review. The initial 6-turn review ended without a
 verdict; the final focused 20-turn review returned explicit `Verdict: PASS` with
 no Blocking Issues, no Missing Tests, and no Blueprint Clarification requirement.
+
+### Canonical Transcript Composition and Restart Acceptance
+
+`compose_sqlite_transcript_service(...)` constructs all v5 canonical Transcript
+repositories and one `SQLiteTranscriptCommandPersistence` on a caller-owned
+connection while accepting only an Application `ExecutionQueryBoundary`.
+Acceptance coverage persists real Domain-shaped provider provenance, ordered Raw
+Segments, a CorrectionCandidate, and two linked CorrectedTranscriptRevisions,
+then closes and reopens SQLite and reconstructs the exact canonical lineage.
+A deterministic failed second Revision proves rollback and prior-lineage
+preservation across restart. This composition does not require durable Review,
+Subtitle, Artifact, Diagnostic, or external correction-provider capabilities.
+
+The Canonical Transcript Foundation Goal is complete. It establishes durable
+canonical Transcript provenance, Segments, RawTranscript, CorrectionCandidate,
+CorrectedTranscriptRevision, Result-reference composition, Application wiring,
+and restart reconstruction. Review persistence, Subtitle persistence, Artifact
+persistence, correction provider integration, and broader product milestones
+remain separately deferred according to Blueprint dependency order.

@@ -1130,6 +1130,7 @@ Slice 5 — Correction Candidate Persistence
 - reviewer-suggested non-null target revision round-trip test added
 
 Slice 6 — Corrected Transcript Revision Persistence
+- commit `288b3e3` — `feat: persist corrected transcript revisions`
 - `SQLiteCorrectedTranscriptRevisionRepository`
 - `AtomicCorrectedTranscriptRevisionPersistence` Application port and in-memory adapter
 - atomic CorrectedTranscriptRevision + only absent supplied TranscriptSegments +
@@ -1140,18 +1141,28 @@ Slice 6 — Corrected Transcript Revision Persistence
   integration coverage
 - Required Claude Review: PASS (20-turn focused rerun after 6-turn run ended
   without verdict; no Blocking Issues or Missing Tests)
+
+Slice 7 — Canonical Transcript Composition and Restart Acceptance
+- top-level `compose_sqlite_transcript_service(...)` construction helper
+- one v5 caller-owned connection shared by all canonical Transcript repositories
+  and one Transcript command adapter
+- durable provider-to-raw-to-candidate-to-multiple-revision lineage acceptance
+- exact reconstruction after connection close/reopen
+- deterministic failed-revision rollback preserves the previously committed lineage
+- Claude Review: Optional — Skipped (composition and acceptance only; no new
+  transaction, schema, lifecycle, or product boundary)
 ```
 
 ### 16.2 Remaining Milestones
 
 ```text
-7. Canonical Transcript Composition and Restart Acceptance
+None — all Goal slices complete
 ```
 
 ### 16.3 Immediate Next Slice
 
 ```text
-Canonical Transcript Composition and Restart Acceptance
+Goal Complete — next product milestone requires a fresh Blueprint-order assessment
 ```
 
 ### 16.4 Architecture Decision History
