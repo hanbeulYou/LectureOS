@@ -273,6 +273,21 @@ The Transcript Correction Application Foundation Goal is complete. It establishe
 provider-independent capability contract, canonical proposal construction, atomic durable
 coordination, structural Validation boundary and restart-safe fake-provider acceptance.
 
+## Concrete Transcript Correction Provider
+
+- Goal: `docs/goals/LectureOS_Codex_Goal_Concrete_Transcript_Correction_Provider.md`
+- Status: **IN PROGRESS**
+- Selected provider: OpenAI Responses API, `gpt-5.6-terra`
+- Completed slices: Provider Decision and Goal Baseline
+- Immediate next slice: OpenAI Correction Adapter
+
+The provider choice is a bounded implementation Architect Decision. OpenAI is selected
+because strict JSON Schema output satisfies the existing neutral proposal contract, the
+repository already has a credential-safe `OPENAI_API_KEY` convention and credentialed API
+acceptance experience, and a dependency-free REST adapter can avoid a new SDK dependency.
+The adapter will send only correction context, set `store: false`, never persist raw provider
+payloads, and use synthetic non-sensitive Korean text for credentialed acceptance.
+
 ### Structural Validation Integration
 
 `TranscriptCorrectionGenerationService.generate_correction(...)` invokes the existing
