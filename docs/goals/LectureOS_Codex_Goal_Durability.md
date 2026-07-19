@@ -143,6 +143,7 @@ ExecutionService Failure Wiring
 Atomic Retry Persistence
 ExecutionService Retry Wiring
 SQLiteDomainResultReferenceRepository
+Atomic Result Persistence
 ```
 
 완료된 주요 commits:
@@ -163,9 +164,8 @@ f5b9e145  feat: wire atomic retry persistence
 다음 미완료 slice부터 아래 순서대로 계속 진행한다.
 
 ```text
-1. Atomic Result Persistence
-2. ExecutionService Result Wiring
-3. Diagnostic Persistence Assessment
+1. ExecutionService Result Wiring
+2. Diagnostic Persistence Assessment
 ```
 
 각 slice는 별도 commit으로 완료한다.
@@ -173,7 +173,7 @@ f5b9e145  feat: wire atomic retry persistence
 현재 immediate next slice는 다음과 같다.
 
 ```text
-Atomic Result Persistence
+ExecutionService Result Wiring
 ```
 
 순서를 바꾸거나 두 slice를 하나의 commit으로 합치지 않는다.
@@ -568,7 +568,17 @@ Skipped review를 PASS로 표현하지 않는다.
 
 ---
 
-# Slice 2 — Atomic Result Persistence
+# Slice 2 — Atomic Result Persistence (Completed)
+
+Completion status:
+
+```text
+implementation: complete
+focused tests: 10 PASS
+review classification: Required — Executed
+commit: feat: persist terminal results atomically
+next slice: ExecutionService Result Wiring
+```
 
 ## Goal
 

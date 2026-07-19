@@ -52,5 +52,12 @@ references in the normalized v4 parent and ordered-lineage tables. It preserves
 typed optional references, upstream ordering and duplicates, rejects identity
 reuse, and remains unavailable without migration on schema v1-v3.
 
-The next durability slice is Atomic Result Persistence. Terminal Result command
-composition and ExecutionService Result wiring are not yet complete.
+Atomic Result Persistence now stores every supplied new canonical Result plus
+the final UnitExecution and ProcessingRun snapshots in one caller-connection
+SQLite transaction. It is schema-v4 gated, preserves supplied ordering, rejects
+any canonical Result identity collision, and rolls back the complete command on
+linkage, write, or commit failure.
+
+The next durability slice is ExecutionService Result Wiring. The Application
+service still uses its legacy independent Result writes until that slice is
+completed.

@@ -96,6 +96,18 @@ class AtomicRetryExecutionPersistence(Protocol):
     ) -> None: ...
 
 
+class AtomicResultExecutionPersistence(Protocol):
+    """Application-owned port for storing final Record Results outputs."""
+
+    def persist_recorded_results(
+        self,
+        *,
+        results: tuple[DomainResultReference, ...],
+        execution: UnitExecution,
+        run: ProcessingRun,
+    ) -> None: ...
+
+
 class ExecutionQueryBoundary(Protocol):
     def get_run(self, run_id: ProcessingRunId) -> ProcessingRun | None: ...
 
