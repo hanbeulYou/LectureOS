@@ -212,23 +212,32 @@ next slice, commit once and require a clean Working Tree.
 
 ```text
 Slice 1 — Provider Decision and Goal Baseline
+- commit `c00dc3f` — `docs: add concrete transcript correction provider goal`
 - OpenAI Responses API selected
 - model gpt-5.6-terra selected
 - dependency-free REST and OPENAI_API_KEY convention approved
 - privacy boundary and strict-output contract recorded
+
+Slice 2 — OpenAI Correction Adapter
+- dependency-free `OpenAITranscriptCorrectionAdapter`
+- Responses API `gpt-5.6-terra`, `store:false`, strict JSON Schema request
+- deterministic ordered neutral proposal parsing
+- credential, timeout, refusal, incomplete, malformed and transport failure mapping
+- no-network injected-transport tests
+- Required Claude Review: Inconclusive — no critical findings identified
+  (one bounded 6-turn review; no concrete critical issue reported)
 ```
 
 ### Remaining Milestones
 
 ```text
-2. OpenAI Correction Adapter
 3. Credentialed Korean Acceptance
 ```
 
 ### Immediate Next Slice
 
 ```text
-OpenAI Correction Adapter
+Credentialed Korean Acceptance
 ```
 
 ## 13. Consolidated Completion Report

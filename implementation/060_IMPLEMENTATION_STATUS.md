@@ -278,8 +278,8 @@ coordination, structural Validation boundary and restart-safe fake-provider acce
 - Goal: `docs/goals/LectureOS_Codex_Goal_Concrete_Transcript_Correction_Provider.md`
 - Status: **IN PROGRESS**
 - Selected provider: OpenAI Responses API, `gpt-5.6-terra`
-- Completed slices: Provider Decision and Goal Baseline
-- Immediate next slice: OpenAI Correction Adapter
+- Completed slices: Provider Decision and Goal Baseline; OpenAI Correction Adapter
+- Immediate next slice: Credentialed Korean Acceptance
 
 The provider choice is a bounded implementation Architect Decision. OpenAI is selected
 because strict JSON Schema output satisfies the existing neutral proposal contract, the
@@ -287,6 +287,17 @@ repository already has a credential-safe `OPENAI_API_KEY` convention and credent
 acceptance experience, and a dependency-free REST adapter can avoid a new SDK dependency.
 The adapter will send only correction context, set `store: false`, never persist raw provider
 payloads, and use synthetic non-sensitive Korean text for credentialed acceptance.
+
+### OpenAI Correction Adapter
+
+`OpenAITranscriptCorrectionAdapter` implements the existing Application-owned port using
+dependency-free HTTPS translation to the Responses API. It selects `gpt-5.6-terra`, sends
+`store: false`, requests strict JSON Schema output, and deterministically reconstructs only
+provider-neutral ordered proposals. Credential absence, transport/timeout/HTTP failure,
+refusal, incomplete response, invalid JSON, wrong shapes and invalid numeric values map to
+`CorrectionGenerationFailure` without exposing credentials or persisting raw payloads.
+The one bounded 6-turn required review ended without a verdict and identified no concrete
+critical issue; it is recorded as `Inconclusive — no critical findings identified`.
 
 ### Structural Validation Integration
 
