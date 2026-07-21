@@ -683,3 +683,74 @@ existing data and meaning. Recording intake starts no downstream capability and 
 upstream record; the existing in-memory `subtitle/` domain remains unchanged. This begins the
 Subtitle Pipeline at stage 4.1 (Transcript Intake); Subtitle Candidate Generation and later
 subtitle/artifact stages remain out of scope and unstarted.
+
+## Subtitle Candidate Generation
+
+- Goal: `docs/goals/LectureOS_Codex_Goal_Subtitle_Candidate_Generation.md`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema v12
+- Completed slices: Goal Baseline and Assessment; Candidate Records; Deterministic Candidate
+  Generation Service; Atomic SQLite Persistence, Restart, Replay and Migration Compatibility;
+  Fake-Review / Fake-Transcript Acceptance
+- Immediate next slice: Goal Complete
+
+This milestone advances the Subtitle Pipeline to stage 4.2 (`docs/041_SUBTITLE_PIPELINE.md §4.2
+Subtitle Candidate Generation`): from a canonical **ELIGIBLE** `SubtitleTranscriptIntake` (v11) it
+deterministically proposes one durable `SubtitleCandidate` plus an ordered collection of candidate
+`SubtitleCandidateCue` records (Subtitle Units) derived from the source Corrected Transcript
+revision's ordered segments. `Product → Application → Capability Contract → Provider` and the
+lifecycle position `… → Transcript Ready → Subtitle Transcript Intake → Subtitle Candidate
+Generation → Reading Representation → Time Representation → …` are preserved, while Reading/Time
+Representation, Subtitle structural Validation, Subtitle Review Preparation/Decision, Final
+Subtitle, Artifact and export remain out of scope. Candidate generation is admitted only by an
+ELIGIBLE intake (the sole admission authority), consumes no provider (a provider-independent
+capability contract and a concrete AI provider are deferred to later, separate Goals), mutates no
+upstream record and starts no downstream capability.
+
+The bounded architectural assessment found no substantive blocker. The `SubtitleTranscriptIntake`
+(v11) is the canonical certificate consumed; the source revision and its ordered segments are read
+from the durable v5 records; source media/timeline and structural `validation_id` are carried from
+the intake for provenance (nothing recomputed). New Application-owned durable types
+`SubtitleCandidate` (identity `SubtitleCandidateId`) and ordered child `SubtitleCandidateCue`
+(identity `SubtitleCandidateCueId`) are added; the pre-existing in-memory `subtitle/` domain
+(including its same-named identities) is left unchanged and unimported by the durable contract.
+**Segment↔cue cardinality is not a domain invariant:** the durable model permanently supports
+one-to-many and many-to-one relationships (a cue references an ordered tuple of ≥1 source segments;
+distinct cues may reference the same segment), so later Reading/Time Representation may merge or
+split cues without any schema or model change. The initial deterministic, provider-free
+implementation emits one cue per ordered source segment purely as an implementation strategy for
+this milestone's baseline. A new `SubtitleCandidateGenerationService` mirrors the established
+generate/persist split with an Application-owned identity plan; additive SQLite schema v12 adds a
+`subtitle_candidates` parent table, an ordered `subtitle_candidate_cues` child and a
+`subtitle_candidate_cue_segments` ordinal child, with atomic persistence, restart reconstruction
+and deterministic replay. No wall-clock is read. The AGENTS.md Architect Checklist is entirely
+`No`: no existing Domain contract change, no released-schema meaning change, no lifecycle authority
+change, no responsibility shift, no new identity semantics, one additive migration, and no
+Blueprint contradiction. Migration compatibility from every released version (v1..v11) to v12 is
+verified.
+
+The Subtitle Candidate Generation Goal is complete. `SubtitleCandidateGenerationService.generate_
+candidate(...)` loads a canonical ELIGIBLE `SubtitleTranscriptIntake`, requires a running
+execution, refuses a NOT_ELIGIBLE intake, loads the source Corrected Transcript revision's ordered
+segments and deterministically derives one `SubtitleCandidate` plus an ordered collection of
+`SubtitleCandidateCue` records — each traceable to its ordered source segment(s), the source
+timeline range and the source revision — carrying the full intake/readiness/selection/
+applicability/decision/item/candidate lineage and the structural `validation_id`.
+`SQLiteSubtitleCandidateCommandPersistence` writes the candidate, its ordered cues (with their
+ordered cue-segment provenance) and the co-persisted `DomainResultReference` (kind
+`subtitle_candidate`, upstream = the intake DomainResult) in one atomic v12 transaction,
+reconstructs the candidate and ordered cues exactly after restart, and reproduces byte-identical
+records on deterministic replay into a fresh database. An in-process fake-review / fake-transcript
+acceptance drives the full pipeline (fake correction provider and fake reviewer, no network, no
+credential) and confirms only the ELIGIBLE intake yields a candidate while the NOT_ELIGIBLE intake
+is refused; cue→segment/revision/transcript lineage; candidate intake lineage and source
+media/timeline; execution provenance; atomic persistence; restart reconstruction; deterministic
+replay; idempotency (upstream intake rows byte-identical before and after generation); and that no
+later subtitle-revision / subtitle-cue / artifact table is produced. The complete 894-test suite
+passes. A Blueprint Drift Check confirmed no drift relative to any prior completed milestone, and
+migration compatibility from every released version (v1..v11) to v12 is verified by an explicit
+single-step-chain test that preserves existing data and meaning. The durable cue model supports
+one-to-many and many-to-one segment↔cue relationships so downstream stages may merge or split cues;
+the in-memory `subtitle/` domain remains unchanged. This advances the Subtitle Pipeline to stage
+4.2 (Subtitle Candidate Generation); Reading/Time Representation and later subtitle/artifact stages
+remain out of scope and unstarted.

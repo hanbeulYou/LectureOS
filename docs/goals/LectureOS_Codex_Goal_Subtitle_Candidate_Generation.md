@@ -194,23 +194,106 @@ produced**. (Generic validation inherited.)
 ### Completed Capabilities
 
 ```text
-None yet
+Slice 1 — Goal Baseline and Assessment
+- commit `eaefea3` — `docs: add subtitle candidate generation goal`
+- bounded assessment: no substantive blocker; candidate generation consumes the canonical
+  ELIGIBLE SubtitleTranscriptIntake (v11); provider-free deterministic baseline; additive
+  schema v12 planned; in-memory subtitle domain left unchanged; segment↔cue cardinality is
+  not a domain invariant (durable model supports one-to-many and many-to-one)
+- Review: Optional — Skipped (documentation only)
+
+Slice 2 — Candidate Records
+- commit `6157ac1` — `feat: add subtitle candidate records`
+- `SubtitleCandidateId`, `SubtitleCandidateCueId` added to application identities
+- `SubtitleCandidateCue`: identity, candidate linkage, ordered `source_segment_ids` (>=1),
+  optional source timeline + optional finite time range (untimed allowed; timed requires
+  timeline and 0<=start<=end), non-blank text, non-negative display order
+- `SubtitleCandidate`: identity, DomainResult linkage, intake + readiness lineage, transcript
+  + revision + media/timeline, carried `validation_id`, ordered unique `cue_ids`, execution
+  provenance, append-only sequence/previous linkage, deterministic reason
+- `SubtitleCandidateIdentityPlan` (candidate id, result id, ordered unique cue ids)
+- durable cue model supports one-to-many (many cues per segment) and many-to-one (multi-segment
+  cue) provenance; no human-decision / applicability / final field
+- 21 focused record tests passed; complete suite 872 passed
+- Required Claude Review: Inconclusive — no critical findings identified (additive immutable
+  records; cardinality-non-invariant enforced; no Blueprint/lifecycle/contract defect)
+
+Slice 3 — Deterministic Candidate Generation Service
+- commit `4656f3b` — `feat: derive subtitle candidate from eligible intake`
+- `SubtitleCandidateGenerationService.generate_candidate(...)` loads the canonical ELIGIBLE
+  intake, requires a running execution, refuses a NOT_ELIGIBLE intake, loads the source
+  revision's ordered segments, and deterministically derives one cue per ordered source segment
+  (baseline strategy, not a domain invariant), preserving revision/timeline/segment lineage
+- carries the full intake lineage into the candidate; candidate DomainResult upstream = the
+  intake DomainResult; no wall-clock; performs no write; mutates no upstream record; triggers
+  no downstream capability
+- `PreparedSubtitleCandidate` return; `AtomicSubtitleCandidatePersistence` port;
+  `SubtitleTranscriptIntakeQuery` protocol; `SubtitleCandidateGenerationError` for unsafe input
+- 8 focused service tests (ELIGIBLE 2-cue lineage/ordering, untimed cues, NOT_ELIGIBLE refusal,
+  identity-plan cardinality, unknown intake, running-execution, determinism, no-persistence)
+  passed; complete suite 880 passed
+- Required Claude Review: Inconclusive — no critical findings identified (pure deterministic
+  derivation; no persistence, no upstream mutation, no downstream trigger)
+
+Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
+- commit `bb8ad13` — `feat: persist subtitle candidate atomically`
+- additive SQLite schema v12: `subtitle_candidates` parent + ordered `subtitle_candidate_cues`
+  child (UNIQUE(candidate, ordinal), timed/untimed CHECK) + `subtitle_candidate_cue_segments`
+  ordinal child preserving one-to-many / many-to-one segment provenance losslessly
+- `_migrate_v11_to_v12` additive; downgrades and direct skips rejected; existing v1–v11 tables
+  and rows unchanged
+- `SQLiteSubtitleCandidateCommandPersistence.persist_subtitle_candidate(...)` writes the
+  candidate, its ordered cues (+ cue-segment children) and the DomainResultReference in one
+  `BEGIN IMMEDIATE` transaction; validates linkage/cue-ordering and identity absence; rolls back
+  completely on collision/linkage/write/commit failure; writes no upstream mutation
+- `SQLiteSubtitleCandidateRepository` reconstructs the exact candidate + ordered cues after restart
+- composition `compose_sqlite_subtitle_candidate_generation_service` wires the durable intake
+  query + transcript service + candidate persistence
+- migration compatibility verified: every released version v1..v11 chains to v12 preserving data;
+  idempotency verified (upstream intake row byte-identical); superseded-latest test expectations
+  updated (v2/v3/v4/v5/processing_units 11→12; v6..v11 unsupported-target guards 12→13; v9/v10/v11
+  chain helpers extended with the v11 addition block; v11 no-op/fresh-init realigned to the
+  superseded-version pattern); prior readiness/intake acceptance downstream checks adapted to the
+  additive candidate tables (candidate rows must be zero)
+- 13 focused v12 tests (migration, full v1..v11→v12 chain, restart, replay, idempotency, atomic
+  rollback of candidate + cues + cue-segments) passed; complete suite 893 passed
+- Required Claude Review: PASS — independent bounded review verified atomicity/rollback, ordered
+  cue + segment reconstruction, identity-collision atomicity, provenance linkage, additive
+  migration, migration-chain compatibility, and DDL/expected-columns exactness; no critical findings
+
+Slice 5 — Fake-Review / Fake-Transcript Acceptance
+- commit `1aec047` — `test: verify subtitle candidate generation acceptance`
+- `lectureos.subtitle_candidate_acceptance` drives the full pipeline with a fake correction
+  provider and fake reviewer (no network, no credential, fixed timestamps): fake proposals →
+  proposed Revision → Review Preparation → Accept/Reject → applicability → selection → readiness →
+  subtitle transcript intake → subtitle candidate generation → atomic v12 persistence → reopen →
+  exact restart reconstruction → identical deterministic replay
+- verifies only the ELIGIBLE intake yields a candidate and the NOT_ELIGIBLE intake is refused;
+  1 candidate, 2 ordered cues; cue→segment/revision/transcript lineage; candidate intake lineage
+  and media/timeline; execution provenance; result upstream = intake DomainResult; idempotency
+  (upstream intake rows byte-identical); restart reconstruction; deterministic replay; and no later
+  subtitle-revision / subtitle-cue / artifact table produced
+- acceptance summary: candidate_count 1, cue_count 2, every linkage / provenance / restart /
+  replay / idempotency / refusal / no-downstream flag true
+- focused acceptance test passed; complete suite 894 passed
+- Blueprint Drift Check: PASS — dependency direction unchanged, no provider owns candidate
+  identity/lifecycle, no existing enum/aggregate/service meaning changed (the in-memory subtitle
+  domain is untouched), schema strictly additive, no reading/time/validation/review/final/artifact
+  responsibility pulled in, Human Authority intact, Subtitle remains distinct from Transcript
+- Migration Compatibility: PASS — every released version v1..v11 chains to v12 preserving data
+- Claude Review: Optional — Skipped (acceptance harness/test only; no production or contract change)
 ```
 
 ### Remaining Milestones
 
 ```text
-Slice 1 — Goal Baseline and Assessment
-Slice 2 — Candidate Records
-Slice 3 — Deterministic Candidate Generation Service
-Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
-Slice 5 — Fake-Review / Fake-Transcript Acceptance
+None — Goal complete
 ```
 
 ### Immediate Next Slice
 
 ```text
-Slice 1 — Goal Baseline and Assessment
+Goal Complete
 ```
 
 ## 10. Completion Report — Milestone Additions
