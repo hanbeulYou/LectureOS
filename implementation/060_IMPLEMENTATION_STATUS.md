@@ -562,7 +562,7 @@ pre-existing in-memory `CurrentTranscriptSelection` model and service remain unc
 
 - Goal: `docs/goals/LectureOS_Codex_Goal_Transcript_Ready_State.md`
 - Status: **IN PROGRESS**
-- Immediate next slice: Slice 2 — Readiness Records
+- Immediate next slice: Slice 3 — Deterministic Readiness Evaluation Service
 
 This milestone deterministically evaluates and durably records whether the currently selected
 Transcript Revision is ready for downstream use, from canonical upstream records only.

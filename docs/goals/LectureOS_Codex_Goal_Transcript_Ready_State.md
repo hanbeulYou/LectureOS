@@ -359,14 +359,36 @@ commit/review/validation 근거를 기록하며, 완료 slice를 Remaining에서
 ### Completed Capabilities
 
 ```text
-None yet
+Slice 1 — Goal Baseline and Assessment
+- commit `e8270d1` — `docs: add transcript ready state goal`
+- bounded architectural assessment: no substantive blocker; readiness policy fully enumerated
+  and derivable from canonical records; structural Validation recomputed deterministically
+- reuse canonical selection/applicability/decision/validation contracts; add one aggregate
+- additive schema v10 planned; Current Selection kept distinct from Transcript Ready
+- Review: Optional — Skipped (documentation only)
+
+Slice 2 — Readiness Records
+- `TranscriptReadinessEvaluationId` added to application identities
+- `ReadinessOutcome` (READY / NOT_READY) and `ReadinessReasonCode` (ALL_CONDITIONS_MET,
+  NOT_SELECTED, NOT_APPLICABLE, SUPERSEDED_BY_MODIFICATION, STRUCTURAL_VALIDATION_FAILED) enums
+  with `evaluate_readiness_outcome` deterministic mapping
+- `TranscriptReadinessEvaluation` aggregate: identity, DomainResult linkage, Current Selection /
+  Applicability / Review Decision / Review Item / Candidate / Revision / structural Validation
+  linkage (+ their outcomes and structural_valid), readiness outcome + reason code, execution
+  provenance, append-only sequence / previous linkage, deterministic reason
+- `ReadinessEvaluationIdentityPlan` (readiness id, result id, validation id)
+- invariants (defense in depth): outcome/reason match the deterministic evaluation; READY
+  requires SELECTED + APPLICABLE + structural_valid + ALL_CONDITIONS_MET; NOT_READY forbids
+  ALL_CONDITIONS_MET; non-negative sequence; non-blank reason; first has no previous reference
+- 13 focused record tests passed; complete suite 801 passed
+- Required Claude Review: Inconclusive — no critical findings identified
+  (additive immutable records; READY invariants enforced at the record level; no Blueprint/
+  lifecycle/contract defect)
 ```
 
 ### Remaining Milestones
 
 ```text
-Slice 1 — Goal Baseline and Assessment
-Slice 2 — Readiness Records
 Slice 3 — Deterministic Readiness Evaluation Service
 Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
 Slice 5 — Fake-Review / Fake-Transcript Acceptance
@@ -375,7 +397,7 @@ Slice 5 — Fake-Review / Fake-Transcript Acceptance
 ### Immediate Next Slice
 
 ```text
-Slice 1 — Goal Baseline and Assessment
+Slice 3 — Deterministic Readiness Evaluation Service
 ```
 
 ## 13. Consolidated Completion Report
