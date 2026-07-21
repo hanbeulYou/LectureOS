@@ -323,14 +323,29 @@ commit/review/validation 근거를 기록하며, 완료 slice를 Remaining에서
 ### Completed Capabilities
 
 ```text
-None yet
+Slice 1 — Goal Baseline and Assessment
+- commit `8496a47` — `docs: add transcript review preparation goal`
+- bounded architectural assessment: no substantive blocker
+- reuse existing review domain vocabulary; add one Application-owned aggregate
+- additive SQLite schema v6 planned; providers unchanged
+- Review: Optional — Skipped (documentation only)
+
+Slice 2 — Review Preparation Records
+- `TranscriptReviewPreparationId` added to application identities
+- `TranscriptReviewPreparation` aggregate with ordering, grouping, metadata,
+  provenance, DomainResult linkage and structural-integrity fields
+- `ReviewItemGroup`, `ReviewPreparationIdentityPlan`,
+  `ReviewPreparationTargetIdentityPlan` and `REVIEW_PREPARATION_RESULT_KIND` added
+- invariants: item counts match, ordered items unique, groups cover items exactly,
+  identity plans unique
+- 12 focused record tests passed; complete suite 682 passed
+- Required Claude Review: Inconclusive — no critical findings identified
+  (additive records; no Blueprint, lifecycle, identity or contract defect)
 ```
 
 ### Remaining Milestones
 
 ```text
-Slice 1 — Goal Baseline and Assessment
-Slice 2 — Review Preparation Records
 Slice 3 — Deterministic Review Preparation Service
 Slice 4 — Atomic SQLite Persistence and Restart
 Slice 5 — Fake-Provider / Fake-Review Acceptance
@@ -339,7 +354,7 @@ Slice 5 — Fake-Provider / Fake-Review Acceptance
 ### Immediate Next Slice
 
 ```text
-Slice 1 — Goal Baseline and Assessment
+Slice 3 — Deterministic Review Preparation Service
 ```
 
 ## 12. Consolidated Completion Report

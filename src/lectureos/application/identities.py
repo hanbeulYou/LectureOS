@@ -18,3 +18,8 @@ class SubtitleDecisionApplicationResultId(OpaqueIdentity):
 @dataclass(frozen=True, slots=True)
 class SubtitleTextReplacementId(OpaqueIdentity):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class TranscriptReviewPreparationId(OpaqueIdentity):
+    pass

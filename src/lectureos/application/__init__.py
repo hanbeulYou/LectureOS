@@ -32,6 +32,13 @@ from .subtitle_review import (
     SubtitleReviewIntegrationError,
     SubtitleReviewIntegrationService,
 )
+from .transcript_review_preparation import (
+    REVIEW_PREPARATION_RESULT_KIND,
+    ReviewItemGroup,
+    ReviewPreparationIdentityPlan,
+    ReviewPreparationTargetIdentityPlan,
+    TranscriptReviewPreparation,
+)
 
 __all__ = [
     "AtomicGeneratedCorrectionPersistence",
@@ -52,6 +59,11 @@ __all__ = [
     "SUBTITLE_CANDIDATE_KIND",
     "SubtitleReviewIntegrationError",
     "SubtitleReviewIntegrationService",
+    "REVIEW_PREPARATION_RESULT_KIND",
+    "ReviewItemGroup",
+    "ReviewPreparationIdentityPlan",
+    "ReviewPreparationTargetIdentityPlan",
+    "TranscriptReviewPreparation",
     "SubtitleDecisionApplicationError",
     "SubtitleDecisionApplicationResult",
     "SubtitleDecisionApplicationService",
