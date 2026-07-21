@@ -7,8 +7,8 @@ from pathlib import Path
 
 from .errors import PersistenceError, UnsupportedSchemaVersionError
 
-SQLITE_SCHEMA_VERSION = 5
-_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5)
+SQLITE_SCHEMA_VERSION = 6
+_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5, 6)
 
 _V1_TABLE_STATEMENTS = (
     """CREATE TABLE schema_metadata (
@@ -358,6 +358,95 @@ _V5_ADDITION_STATEMENTS = (
 )""",
 )
 
+_V6_ADDITION_STATEMENTS = (
+    """CREATE TABLE review_candidate_references (
+    identity TEXT PRIMARY KEY,
+    kind TEXT NOT NULL CHECK (length(trim(kind)) > 0),
+    source_domain TEXT NOT NULL CHECK (length(trim(source_domain)) > 0),
+    domain_result_id TEXT,
+    source_media_id TEXT,
+    source_timeline_id TEXT,
+    processing_run_id TEXT,
+    unit_execution_id TEXT,
+    revision_reference TEXT,
+    applicability TEXT NOT NULL,
+    CHECK ((processing_run_id IS NULL AND unit_execution_id IS NULL) OR
+           (processing_run_id IS NOT NULL AND unit_execution_id IS NOT NULL))
+)""",
+    """CREATE TABLE review_contexts (
+    identity TEXT PRIMARY KEY,
+    source_media_id TEXT,
+    source_timeline_id TEXT,
+    blocking_reason TEXT
+)""",
+    """CREATE TABLE review_context_domain_results (
+    review_context_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    domain_result_id TEXT NOT NULL,
+    PRIMARY KEY (review_context_id, ordinal),
+    FOREIGN KEY (review_context_id) REFERENCES review_contexts(identity)
+        ON DELETE CASCADE
+)""",
+    """CREATE TABLE review_context_evidence (
+    review_context_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    evidence TEXT NOT NULL,
+    PRIMARY KEY (review_context_id, ordinal),
+    FOREIGN KEY (review_context_id) REFERENCES review_contexts(identity)
+        ON DELETE CASCADE
+)""",
+    """CREATE TABLE review_items (
+    identity TEXT PRIMARY KEY,
+    candidate_reference_id TEXT NOT NULL,
+    context_id TEXT NOT NULL,
+    applicability_at_creation TEXT NOT NULL,
+    processing_run_id TEXT,
+    unit_execution_id TEXT,
+    CHECK ((processing_run_id IS NULL AND unit_execution_id IS NULL) OR
+           (processing_run_id IS NOT NULL AND unit_execution_id IS NOT NULL))
+)""",
+    """CREATE TABLE transcript_review_preparations (
+    identity TEXT PRIMARY KEY,
+    domain_result_id TEXT NOT NULL,
+    source_transcript_id TEXT NOT NULL,
+    source_revision_id TEXT NOT NULL,
+    processing_run_id TEXT NOT NULL,
+    unit_execution_id TEXT NOT NULL,
+    source_media_id TEXT NOT NULL,
+    source_timeline_id TEXT NOT NULL,
+    context_id TEXT NOT NULL,
+    item_count INTEGER NOT NULL CHECK (item_count >= 1),
+    structural_valid INTEGER NOT NULL CHECK (structural_valid IN (0, 1)),
+    provenance_complete INTEGER NOT NULL CHECK (provenance_complete IN (0, 1)),
+    ordering_valid INTEGER NOT NULL CHECK (ordering_valid IN (0, 1))
+)""",
+    """CREATE TABLE transcript_review_preparation_items (
+    transcript_review_preparation_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    review_item_id TEXT NOT NULL,
+    PRIMARY KEY (transcript_review_preparation_id, ordinal),
+    FOREIGN KEY (transcript_review_preparation_id)
+        REFERENCES transcript_review_preparations(identity) ON DELETE CASCADE
+)""",
+    """CREATE TABLE transcript_review_preparation_candidates (
+    transcript_review_preparation_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    candidate_reference_id TEXT NOT NULL,
+    PRIMARY KEY (transcript_review_preparation_id, ordinal),
+    FOREIGN KEY (transcript_review_preparation_id)
+        REFERENCES transcript_review_preparations(identity) ON DELETE CASCADE
+)""",
+    """CREATE TABLE transcript_review_preparation_groups (
+    transcript_review_preparation_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    group_key TEXT NOT NULL CHECK (length(trim(group_key)) > 0),
+    review_item_id TEXT NOT NULL,
+    PRIMARY KEY (transcript_review_preparation_id, ordinal),
+    FOREIGN KEY (transcript_review_preparation_id)
+        REFERENCES transcript_review_preparations(identity) ON DELETE CASCADE
+)""",
+)
+
 _V1_EXPECTED_COLUMNS = {
     "schema_metadata": (
         ("singleton", "INTEGER", 0, 1),
@@ -609,6 +698,77 @@ _V5_EXPECTED_COLUMNS = {
     ),
 }
 
+_V6_EXPECTED_COLUMNS = {
+    **_V5_EXPECTED_COLUMNS,
+    "review_candidate_references": (
+        ("identity", "TEXT", 0, 1),
+        ("kind", "TEXT", 1, 0),
+        ("source_domain", "TEXT", 1, 0),
+        ("domain_result_id", "TEXT", 0, 0),
+        ("source_media_id", "TEXT", 0, 0),
+        ("source_timeline_id", "TEXT", 0, 0),
+        ("processing_run_id", "TEXT", 0, 0),
+        ("unit_execution_id", "TEXT", 0, 0),
+        ("revision_reference", "TEXT", 0, 0),
+        ("applicability", "TEXT", 1, 0),
+    ),
+    "review_contexts": (
+        ("identity", "TEXT", 0, 1),
+        ("source_media_id", "TEXT", 0, 0),
+        ("source_timeline_id", "TEXT", 0, 0),
+        ("blocking_reason", "TEXT", 0, 0),
+    ),
+    "review_context_domain_results": (
+        ("review_context_id", "TEXT", 1, 1),
+        ("ordinal", "INTEGER", 1, 2),
+        ("domain_result_id", "TEXT", 1, 0),
+    ),
+    "review_context_evidence": (
+        ("review_context_id", "TEXT", 1, 1),
+        ("ordinal", "INTEGER", 1, 2),
+        ("evidence", "TEXT", 1, 0),
+    ),
+    "review_items": (
+        ("identity", "TEXT", 0, 1),
+        ("candidate_reference_id", "TEXT", 1, 0),
+        ("context_id", "TEXT", 1, 0),
+        ("applicability_at_creation", "TEXT", 1, 0),
+        ("processing_run_id", "TEXT", 0, 0),
+        ("unit_execution_id", "TEXT", 0, 0),
+    ),
+    "transcript_review_preparations": (
+        ("identity", "TEXT", 0, 1),
+        ("domain_result_id", "TEXT", 1, 0),
+        ("source_transcript_id", "TEXT", 1, 0),
+        ("source_revision_id", "TEXT", 1, 0),
+        ("processing_run_id", "TEXT", 1, 0),
+        ("unit_execution_id", "TEXT", 1, 0),
+        ("source_media_id", "TEXT", 1, 0),
+        ("source_timeline_id", "TEXT", 1, 0),
+        ("context_id", "TEXT", 1, 0),
+        ("item_count", "INTEGER", 1, 0),
+        ("structural_valid", "INTEGER", 1, 0),
+        ("provenance_complete", "INTEGER", 1, 0),
+        ("ordering_valid", "INTEGER", 1, 0),
+    ),
+    "transcript_review_preparation_items": (
+        ("transcript_review_preparation_id", "TEXT", 1, 1),
+        ("ordinal", "INTEGER", 1, 2),
+        ("review_item_id", "TEXT", 1, 0),
+    ),
+    "transcript_review_preparation_candidates": (
+        ("transcript_review_preparation_id", "TEXT", 1, 1),
+        ("ordinal", "INTEGER", 1, 2),
+        ("candidate_reference_id", "TEXT", 1, 0),
+    ),
+    "transcript_review_preparation_groups": (
+        ("transcript_review_preparation_id", "TEXT", 1, 1),
+        ("ordinal", "INTEGER", 1, 2),
+        ("group_key", "TEXT", 1, 0),
+        ("review_item_id", "TEXT", 1, 0),
+    ),
+}
+
 
 def initialize_sqlite_database(database_path: str | Path) -> sqlite3.Connection:
     """Create the latest schema for a new path; validate existing databases."""
@@ -648,7 +808,7 @@ def migrate_sqlite_database(
 ) -> None:
     """Explicitly perform one approved migration step or validate a no-op target."""
 
-    if target_version not in (2, 3, 4, 5):
+    if target_version not in (2, 3, 4, 5, 6):
         raise PersistenceError(f"unsupported SQLite migration target: {target_version}")
     path = _validate_database_path(database_path)
     if not path.is_file():
@@ -669,6 +829,9 @@ def migrate_sqlite_database(
             return
         if current_version == 4 and target_version == 5:
             _migrate_v4_to_v5(connection)
+            return
+        if current_version == 5 and target_version == 6:
+            _migrate_v5_to_v6(connection)
             return
         raise PersistenceError(
             f"unsupported SQLite migration: {current_version} to {target_version}"
@@ -722,6 +885,7 @@ def _initialize_latest_schema(connection: sqlite3.Connection) -> None:
             *_V3_ADDITION_STATEMENTS,
             *_V4_ADDITION_STATEMENTS,
             *_V5_ADDITION_STATEMENTS,
+            *_V6_ADDITION_STATEMENTS,
         ):
             connection.execute(statement)
         connection.execute(
@@ -810,6 +974,24 @@ def _migrate_v4_to_v5(connection: sqlite3.Connection) -> None:
         raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
 
 
+def _migrate_v5_to_v6(connection: sqlite3.Connection) -> None:
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        for statement in _V6_ADDITION_STATEMENTS:
+            connection.execute(statement)
+        connection.execute(
+            "UPDATE schema_metadata SET version = 6 WHERE singleton = 1"
+        )
+        _validate_initialized_connection(connection)
+        _commit(connection)
+    except PersistenceError:
+        _rollback(connection)
+        raise
+    except sqlite3.Error as error:
+        _rollback(connection)
+        raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
+
+
 def _validate_initialized_connection(connection: sqlite3.Connection) -> int:
     try:
         if connection.execute("PRAGMA foreign_keys").fetchone() != (1,):
@@ -847,6 +1029,7 @@ def _validate_schema_shape(connection: sqlite3.Connection, version: int) -> None
         3: _V3_EXPECTED_COLUMNS,
         4: _V4_EXPECTED_COLUMNS,
         5: _V5_EXPECTED_COLUMNS,
+        6: _V6_EXPECTED_COLUMNS,
     }[version]
     for table, expected in expected_columns.items():
         actual = tuple(
@@ -865,6 +1048,8 @@ def _validate_schema_shape(connection: sqlite3.Connection, version: int) -> None
             _validate_v4_foreign_keys(connection)
         if version >= 5:
             _validate_v5_foreign_keys(connection)
+        if version >= 6:
+            _validate_v6_foreign_keys(connection)
 
 
 def _validate_v1_foreign_keys(connection: sqlite3.Connection) -> None:
@@ -968,6 +1153,38 @@ def _validate_v5_foreign_keys(connection: sqlite3.Connection) -> None:
             "corrected_transcript_revision_candidates",
             "corrected_transcript_revisions",
             "transcript_revision_id",
+        ),
+    )
+    for table, parent, parent_column in expected:
+        foreign_keys = connection.execute(f"PRAGMA foreign_key_list({table})").fetchall()
+        if not any(
+            row[2] == parent
+            and row[3] == parent_column
+            and row[4] == "identity"
+            and row[6].upper() == "CASCADE"
+            for row in foreign_keys
+        ):
+            raise PersistenceError(f"SQLite schema foreign key is missing: {table}")
+
+
+def _validate_v6_foreign_keys(connection: sqlite3.Connection) -> None:
+    expected = (
+        ("review_context_domain_results", "review_contexts", "review_context_id"),
+        ("review_context_evidence", "review_contexts", "review_context_id"),
+        (
+            "transcript_review_preparation_items",
+            "transcript_review_preparations",
+            "transcript_review_preparation_id",
+        ),
+        (
+            "transcript_review_preparation_candidates",
+            "transcript_review_preparations",
+            "transcript_review_preparation_id",
+        ),
+        (
+            "transcript_review_preparation_groups",
+            "transcript_review_preparations",
+            "transcript_review_preparation_id",
         ),
     )
     for table, parent, parent_column in expected:

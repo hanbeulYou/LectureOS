@@ -355,19 +355,39 @@ Slice 3 — Deterministic Review Preparation Service
 - 8 focused service tests passed; complete suite 690 passed
 - Required Claude Review: Inconclusive — no critical findings identified
   (pure Application mapping; provenance/lineage/identity validated; no persistence)
+
+Slice 4 — Atomic SQLite Persistence and Restart
+- additive SQLite schema v6 (9 new tables): review candidate references, review
+  contexts (+ ordered domain-result/evidence children), review items, the
+  preparation aggregate root and its ordered item/candidate/group children
+- `_migrate_v5_to_v6` additive migration; downgrades and direct skips rejected;
+  existing v1–v5 tables and rows unchanged; v6 FK cascade validated
+- `SQLiteReviewPreparationCommandPersistence.persist_review_preparation(...)` writes
+  every review record plus the co-persisted DomainResultReference in one
+  `BEGIN IMMEDIATE` transaction; validates linkage and identity absence; rolls back
+  the complete set on collision, linkage, write or commit failure
+- four SQLite repositories reconstruct the exact aggregate and reused review records
+  after restart with ordinal-integrity checks
+- `AtomicReviewPreparationPersistence` port and `generate_review(...)` persist path;
+  composition `compose_sqlite_transcript_review_preparation_service`
+- 10 focused persistence/migration tests (including restart reconstruction and
+  atomic rollback) passed; complete suite 700 passed; existing latest-version test
+  expectations updated from 5 to 6
+- Required Claude Review: Inconclusive — no critical findings identified
+  (independent bounded review verified atomicity, additive migration, restart
+  reconstruction, FK cascade, expected-column exactness and linkage validation)
 ```
 
 ### Remaining Milestones
 
 ```text
-Slice 4 — Atomic SQLite Persistence and Restart
 Slice 5 — Fake-Provider / Fake-Review Acceptance
 ```
 
 ### Immediate Next Slice
 
 ```text
-Slice 4 — Atomic SQLite Persistence and Restart
+Slice 5 — Fake-Provider / Fake-Review Acceptance
 ```
 
 ## 12. Consolidated Completion Report

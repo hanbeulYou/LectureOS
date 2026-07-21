@@ -363,7 +363,7 @@ concrete critical issue; it is recorded as
 
 - Goal: `docs/goals/LectureOS_Codex_Goal_Transcript_Review_Preparation.md`
 - Status: **IN PROGRESS**
-- Immediate next slice: Slice 4 — Atomic SQLite Persistence and Restart
+- Immediate next slice: Slice 5 — Fake-Provider / Fake-Review Acceptance
 
 This milestone prepares canonical proposed Transcript corrections for Human Review without
 introducing Review decisions or changing Transcript state. It is purely preparatory:

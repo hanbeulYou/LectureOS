@@ -112,13 +112,13 @@ class SQLiteSchemaVersionFiveTests(unittest.TestCase):
     def test_new_database_initializes_directly_as_complete_v5(self) -> None:
         connection = initialize_sqlite_database(self.database_path)
         try:
-            self.assertEqual(SQLITE_SCHEMA_VERSION, 5)
+            self.assertEqual(SQLITE_SCHEMA_VERSION, 6)
             self.assertEqual(
                 connection.execute("SELECT version FROM schema_metadata").fetchone(),
-                (5,),
+                (6,),
             )
             self.assertTrue(V5_TABLES.issubset(table_names(connection)))
-            self.assertEqual(sqlite_lifecycle.validate_sqlite_connection(connection), 5)
+            self.assertEqual(sqlite_lifecycle.validate_sqlite_connection(connection), 6)
         finally:
             connection.close()
         open_sqlite_database(self.database_path).close()
@@ -164,7 +164,7 @@ class SQLiteSchemaVersionFiveTests(unittest.TestCase):
         finally:
             connection.close()
 
-    def test_v5_to_v5_is_validated_no_op(self) -> None:
+    def test_latest_to_latest_is_validated_no_op(self) -> None:
         connection = initialize_sqlite_database(self.database_path)
         connection.execute(
             """INSERT INTO provider_transcript_results VALUES (
@@ -174,7 +174,7 @@ class SQLiteSchemaVersionFiveTests(unittest.TestCase):
         )
         before = table_names(connection)
         connection.close()
-        migrate_sqlite_database(self.database_path, target_version=5)
+        migrate_sqlite_database(self.database_path, target_version=SQLITE_SCHEMA_VERSION)
         reopened = open_sqlite_database(self.database_path)
         try:
             self.assertEqual(table_names(reopened), before)

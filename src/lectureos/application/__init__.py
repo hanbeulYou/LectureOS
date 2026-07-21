@@ -34,6 +34,7 @@ from .subtitle_review import (
 )
 from .transcript_review_preparation import (
     REVIEW_PREPARATION_RESULT_KIND,
+    AtomicReviewPreparationPersistence,
     PreparedTranscriptReview,
     ReviewItemGroup,
     ReviewPreparationIdentityPlan,
@@ -63,6 +64,7 @@ __all__ = [
     "SubtitleReviewIntegrationError",
     "SubtitleReviewIntegrationService",
     "REVIEW_PREPARATION_RESULT_KIND",
+    "AtomicReviewPreparationPersistence",
     "PreparedTranscriptReview",
     "ReviewItemGroup",
     "ReviewPreparationIdentityPlan",

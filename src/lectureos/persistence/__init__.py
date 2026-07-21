@@ -17,6 +17,13 @@ from .processing_units import SQLiteProcessingUnitRepository
 from .processing_runs import SQLiteProcessingRunRepository
 from .provider_transcripts import SQLiteProviderTranscriptResultRepository
 from .raw_transcripts import SQLiteRawTranscriptRepository
+from .review_preparation import (
+    SQLiteReviewCandidateReferenceRepository,
+    SQLiteReviewContextRepository,
+    SQLiteReviewItemRepository,
+    SQLiteReviewPreparationCommandPersistence,
+    SQLiteTranscriptReviewPreparationRepository,
+)
 from .transcript_commands import SQLiteTranscriptCommandPersistence
 from .transcript_segments import SQLiteTranscriptSegmentRepository
 from .unit_executions import SQLiteUnitExecutionRepository
@@ -41,6 +48,11 @@ __all__ = [
     "SQLiteProcessingRunRepository",
     "SQLiteProviderTranscriptResultRepository",
     "SQLiteRawTranscriptRepository",
+    "SQLiteReviewCandidateReferenceRepository",
+    "SQLiteReviewContextRepository",
+    "SQLiteReviewItemRepository",
+    "SQLiteReviewPreparationCommandPersistence",
+    "SQLiteTranscriptReviewPreparationRepository",
     "SQLiteTranscriptCommandPersistence",
     "SQLiteTranscriptSegmentRepository",
     "SQLiteUnitExecutionRepository",

@@ -10,6 +10,7 @@ ordering, grouping, metadata, structural integrity and persistence orchestration
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Protocol
 
 from lectureos.execution.boundaries import ExecutionQueryBoundary
 from lectureos.execution.identities import (
@@ -138,6 +139,18 @@ class PreparedTranscriptReview:
     review_items: tuple[ReviewItem, ...]
 
 
+class AtomicReviewPreparationPersistence(Protocol):
+    def persist_review_preparation(
+        self,
+        *,
+        preparation: TranscriptReviewPreparation,
+        preparation_result: DomainResultReference,
+        context: ReviewContext,
+        candidate_references: tuple[CandidateReference, ...],
+        review_items: tuple[ReviewItem, ...],
+    ) -> None: ...
+
+
 class TranscriptReviewPreparationError(ValueError):
     """A structurally valid request that cannot become canonical review preparation."""
 
@@ -149,9 +162,24 @@ class TranscriptReviewPreparationService:
         self,
         transcript_query: TranscriptQueryBoundary,
         execution_query: ExecutionQueryBoundary,
+        persistence: AtomicReviewPreparationPersistence | None = None,
     ) -> None:
         self._transcripts = transcript_query
         self._executions = execution_query
+        self._persistence = persistence
+
+    def generate_review(self, **kwargs) -> PreparedTranscriptReview:
+        prepared = self.prepare_review(**kwargs)
+        if self._persistence is None:
+            raise RuntimeError("review preparation persistence is not configured")
+        self._persistence.persist_review_preparation(
+            preparation=prepared.preparation,
+            preparation_result=prepared.preparation_result,
+            context=prepared.context,
+            candidate_references=prepared.candidate_references,
+            review_items=prepared.review_items,
+        )
+        return prepared
 
     def prepare_review(
         self,
@@ -358,6 +386,7 @@ __all__ = [
     "CORRECTION_CANDIDATE_KIND",
     "CORRECTION_CANDIDATE_SOURCE_DOMAIN",
     "REVIEW_PREPARATION_RESULT_KIND",
+    "AtomicReviewPreparationPersistence",
     "PreparedTranscriptReview",
     "ReviewItemGroup",
     "ReviewPreparationIdentityPlan",

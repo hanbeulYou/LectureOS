@@ -8,6 +8,9 @@ from lectureos.application.transcript_correction_generation import (
     CorrectionGenerationPort,
     TranscriptCorrectionGenerationService,
 )
+from lectureos.application.transcript_review_preparation import (
+    TranscriptReviewPreparationService,
+)
 from lectureos.execution.boundaries import ExecutionQueryBoundary
 from lectureos.execution.service import ExecutionService
 from lectureos.persistence import (
@@ -20,6 +23,7 @@ from lectureos.persistence import (
     SQLiteProcessingUnitRepository,
     SQLiteProviderTranscriptResultRepository,
     SQLiteRawTranscriptRepository,
+    SQLiteReviewPreparationCommandPersistence,
     SQLiteTranscriptCommandPersistence,
     SQLiteTranscriptSegmentRepository,
     SQLiteUnitExecutionRepository,
@@ -109,6 +113,17 @@ def compose_sqlite_transcript_correction_generation_service(
         atomic_commands,
         validation,
     )
+
+
+def compose_sqlite_transcript_review_preparation_service(
+    connection: sqlite3.Connection,
+    execution_query: ExecutionQueryBoundary,
+) -> TranscriptReviewPreparationService:
+    """Build durable v6 Transcript Review Preparation on one caller connection."""
+
+    transcripts = compose_sqlite_transcript_service(connection, execution_query)
+    persistence = SQLiteReviewPreparationCommandPersistence(connection)
+    return TranscriptReviewPreparationService(transcripts, execution_query, persistence)
 
 
 def _compose_sqlite_transcript_service(
