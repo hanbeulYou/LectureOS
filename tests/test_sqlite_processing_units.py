@@ -41,12 +41,12 @@ class SQLiteLifecycleTests(unittest.TestCase):
             connection = initialize_sqlite_database(path)
             try:
                 self.assertTrue(path.is_file())
-                self.assertEqual(SQLITE_SCHEMA_VERSION, 10)
+                self.assertEqual(SQLITE_SCHEMA_VERSION, 11)
                 self.assertEqual(
                     connection.execute(
                         "SELECT version FROM schema_metadata WHERE singleton = 1"
                     ).fetchone(),
-                    (10,),
+                    (11,),
                 )
                 self.assertEqual(
                     connection.execute("PRAGMA foreign_keys").fetchone(), (1,)

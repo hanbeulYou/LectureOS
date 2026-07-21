@@ -24,6 +24,7 @@ _ADDITION_BLOCKS = (
     (7, sqlite_lifecycle._V7_ADDITION_STATEMENTS),
     (8, sqlite_lifecycle._V8_ADDITION_STATEMENTS),
     (9, sqlite_lifecycle._V9_ADDITION_STATEMENTS),
+    (10, sqlite_lifecycle._V10_ADDITION_STATEMENTS),
 )
 
 
@@ -62,16 +63,13 @@ class SQLiteSchemaVersionTenTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
 
-    def test_schema_version_is_ten(self) -> None:
-        self.assertEqual(SQLITE_SCHEMA_VERSION, 10)
-
     def test_fresh_database_initializes_with_v10_tables(self) -> None:
         connection = initialize_sqlite_database(self.database_path)
         try:
             self.assertTrue(V10_TABLES.issubset(table_names(connection)))
             self.assertEqual(
                 connection.execute("SELECT version FROM schema_metadata").fetchone()[0],
-                10,
+                SQLITE_SCHEMA_VERSION,
             )
         finally:
             connection.close()
@@ -90,7 +88,8 @@ class SQLiteSchemaVersionTenTests(unittest.TestCase):
             connection.close()
 
     def test_v10_no_op_migration_is_allowed(self) -> None:
-        initialize_sqlite_database(self.database_path).close()
+        create_legacy_database(self.database_path, 9)
+        migrate_sqlite_database(self.database_path, 10)
         migrate_sqlite_database(self.database_path, 10)
         connection = open_sqlite_database(self.database_path)
         try:
@@ -109,7 +108,7 @@ class SQLiteSchemaVersionTenTests(unittest.TestCase):
     def test_unsupported_target_is_rejected(self) -> None:
         initialize_sqlite_database(self.database_path).close()
         with self.assertRaises(PersistenceError):
-            migrate_sqlite_database(self.database_path, 11)
+            migrate_sqlite_database(self.database_path, 12)
 
     def test_repository_rejects_pre_v10_schema(self) -> None:
         create_legacy_database(self.database_path, 9)

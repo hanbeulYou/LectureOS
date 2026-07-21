@@ -14,6 +14,9 @@ from lectureos.application.transcript_applicability_evaluation import (
 from lectureos.application.transcript_current_selection import (
     TranscriptCurrentSelectionService,
 )
+from lectureos.application.subtitle_transcript_intake import (
+    SubtitleTranscriptIntakeService,
+)
 from lectureos.application.transcript_readiness_evaluation import (
     TranscriptReadinessEvaluationService,
 )
@@ -29,6 +32,8 @@ from lectureos.persistence import (
     SQLiteApplicabilityEvaluationCommandPersistence,
     SQLiteCurrentSelectionCommandPersistence,
     SQLiteReadinessEvaluationCommandPersistence,
+    SQLiteSubtitleIntakeCommandPersistence,
+    SQLiteTranscriptReadinessEvaluationRepository,
     SQLiteTranscriptApplicabilityEvaluationRepository,
     SQLiteTranscriptCurrentSelectionRepository,
     SQLiteCorrectionCandidateRepository,
@@ -213,6 +218,20 @@ def compose_sqlite_transcript_readiness_evaluation_service(
         validation,
         execution_query,
         persistence,
+    )
+
+
+def compose_sqlite_subtitle_transcript_intake_service(
+    connection: sqlite3.Connection,
+    execution_query: ExecutionQueryBoundary,
+) -> SubtitleTranscriptIntakeService:
+    """Build durable v11 Subtitle Transcript Intake on one caller connection."""
+
+    readiness = SQLiteTranscriptReadinessEvaluationRepository(connection)
+    transcripts = compose_sqlite_transcript_service(connection, execution_query)
+    persistence = SQLiteSubtitleIntakeCommandPersistence(connection)
+    return SubtitleTranscriptIntakeService(
+        readiness, transcripts, execution_query, persistence
     )
 
 

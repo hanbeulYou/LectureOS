@@ -192,19 +192,44 @@ Slice 3 — Deterministic Intake Service
 - Required Claude Review: Inconclusive — no critical findings identified
   (pure deterministic derivation; readiness/revision/execution provenance verified; no
   persistence, no upstream mutation, no downstream trigger)
+
+Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
+- additive SQLite schema v11 (one flat table `subtitle_transcript_intakes`, no FK children)
+  with a CHECK mirroring the ELIGIBLE⇔READY invariant and the sequence/previous invariant
+- `_migrate_v10_to_v11` additive migration; downgrades and direct skips rejected; existing
+  v1–v10 tables and rows unchanged
+- `SQLiteSubtitleIntakeCommandPersistence.persist_subtitle_intake(...)` writes the intake and
+  its co-persisted DomainResultReference in one `BEGIN IMMEDIATE` transaction; validates
+  linkage and identity absence; rolls back on collision/linkage/write/commit failure; writes
+  only the intake row + its Domain Result (no upstream mutation)
+- `SQLiteSubtitleTranscriptIntakeRepository` reconstructs the exact intake after restart
+- composition `compose_sqlite_subtitle_transcript_intake_service` wires the durable readiness
+  query + transcript service + intake persistence
+- migration compatibility verified: every released version v1..v10 chains to v11 preserving
+  data (the v9/v10 test helpers extended with the v10 addition block for their own chains)
+- idempotency verified: repeated intake evaluation leaves the upstream Readiness row
+  byte-identical
+- 27 focused tests (v11 migration, full v1..v10→v11 compatibility chain, restart, replay,
+  idempotency, atomic rollback) passed across the affected suites; complete suite 850 passed;
+  existing latest-version test expectations updated 10→11 and the v6/v7/v8/v9/v10
+  unsupported-target guards advanced accordingly
+- Required Claude Review: Inconclusive — no critical findings identified
+  (independent bounded review verified atomicity, additive migration, expected-column
+  exactness, the triple-guarded ELIGIBLE⇔READY authority, migration-chain compatibility,
+  linkage validation, restart reconstruction, and absence of upstream mutation / downstream
+  trigger)
 ```
 
 ### Remaining Milestones
 
 ```text
-Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
 Slice 5 — Fake-Review / Fake-Transcript Acceptance
 ```
 
 ### Immediate Next Slice
 
 ```text
-Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
+Slice 5 — Fake-Review / Fake-Transcript Acceptance
 ```
 
 ## 10. Completion Report — Milestone Additions
