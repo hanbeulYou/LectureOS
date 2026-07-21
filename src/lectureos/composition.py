@@ -11,6 +11,9 @@ from lectureos.application.transcript_correction_generation import (
 from lectureos.application.transcript_applicability_evaluation import (
     TranscriptApplicabilityEvaluationService,
 )
+from lectureos.application.transcript_current_selection import (
+    TranscriptCurrentSelectionService,
+)
 from lectureos.application.transcript_review_decision import (
     TranscriptReviewDecisionService,
 )
@@ -21,6 +24,8 @@ from lectureos.execution.boundaries import ExecutionQueryBoundary
 from lectureos.execution.service import ExecutionService
 from lectureos.persistence import (
     SQLiteApplicabilityEvaluationCommandPersistence,
+    SQLiteCurrentSelectionCommandPersistence,
+    SQLiteTranscriptApplicabilityEvaluationRepository,
     SQLiteCorrectionCandidateRepository,
     SQLiteCorrectedTranscriptRevisionRepository,
     SQLiteDomainResultReferenceRepository,
@@ -167,6 +172,19 @@ def compose_sqlite_transcript_applicability_evaluation_service(
     persistence = SQLiteApplicabilityEvaluationCommandPersistence(connection)
     return TranscriptApplicabilityEvaluationService(
         decisions, execution_query, persistence
+    )
+
+
+def compose_sqlite_transcript_current_selection_service(
+    connection: sqlite3.Connection,
+    execution_query: ExecutionQueryBoundary,
+) -> TranscriptCurrentSelectionService:
+    """Build durable v9 Transcript Current Selection on one caller connection."""
+
+    evaluations = SQLiteTranscriptApplicabilityEvaluationRepository(connection)
+    persistence = SQLiteCurrentSelectionCommandPersistence(connection)
+    return TranscriptCurrentSelectionService(
+        evaluations, execution_query, persistence
     )
 
 

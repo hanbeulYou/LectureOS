@@ -373,19 +373,42 @@ Slice 3 — Deterministic Current Selection Service
 - Required Claude Review: Inconclusive — no critical findings identified
   (pure deterministic derivation; linkage/execution provenance validated; no persistence,
   no Transcript Ready, no automation)
+
+Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
+- additive SQLite schema v9 (one flat table `transcript_current_selections`, no FK children)
+  with CHECK constraints mirroring the aggregate invariants (applicability→selection mapping,
+  sequence, previous-selection linkage)
+- `_migrate_v8_to_v9` additive migration; downgrades and direct skips rejected; existing
+  v1–v8 tables and rows unchanged
+- `SQLiteCurrentSelectionCommandPersistence.persist_current_selection(...)` writes the
+  selection and its co-persisted DomainResultReference in one `BEGIN IMMEDIATE` transaction;
+  validates linkage and identity absence; rolls back on collision, linkage, write or commit
+  failure
+- `SQLiteTranscriptCurrentSelectionRepository` reconstructs the exact selection after restart
+- composition `compose_sqlite_transcript_current_selection_service` wires the durable
+  applicability query + selection persistence
+- migration compatibility verified: every released version (v1..v8) chains to v9 through the
+  supported single steps while preserving existing rows
+- 30 focused tests (v9 migration, full v1..v8→v9 compatibility chain, restart reconstruction,
+  deterministic replay into a fresh database, atomic rollback) passed across the affected
+  suites; complete suite 787 passed; existing latest-version test expectations updated 8→9 and
+  the v6/v7/v8 unsupported-target guards advanced accordingly
+- Required Claude Review: Inconclusive — no critical findings identified
+  (independent bounded review verified atomicity, additive migration, expected-column
+  exactness, applicability→selection CHECK fidelity, migration-chain compatibility, linkage
+  validation and restart reconstruction)
 ```
 
 ### Remaining Milestones
 
 ```text
-Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
 Slice 5 — Fake-Review Acceptance
 ```
 
 ### Immediate Next Slice
 
 ```text
-Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
+Slice 5 — Fake-Review Acceptance
 ```
 
 ## 13. Consolidated Completion Report

@@ -58,16 +58,13 @@ class SQLiteSchemaVersionEightTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
 
-    def test_schema_version_is_eight(self) -> None:
-        self.assertEqual(SQLITE_SCHEMA_VERSION, 8)
-
     def test_fresh_database_initializes_with_v8_tables(self) -> None:
         connection = initialize_sqlite_database(self.database_path)
         try:
             self.assertTrue(V8_TABLES.issubset(table_names(connection)))
             self.assertEqual(
                 connection.execute("SELECT version FROM schema_metadata").fetchone()[0],
-                8,
+                SQLITE_SCHEMA_VERSION,
             )
         finally:
             connection.close()
@@ -86,7 +83,8 @@ class SQLiteSchemaVersionEightTests(unittest.TestCase):
             connection.close()
 
     def test_v8_no_op_migration_is_allowed(self) -> None:
-        initialize_sqlite_database(self.database_path).close()
+        create_legacy_database(self.database_path, 7)
+        migrate_sqlite_database(self.database_path, 8)
         migrate_sqlite_database(self.database_path, 8)
         connection = open_sqlite_database(self.database_path)
         try:
@@ -105,7 +103,7 @@ class SQLiteSchemaVersionEightTests(unittest.TestCase):
     def test_unsupported_target_is_rejected(self) -> None:
         initialize_sqlite_database(self.database_path).close()
         with self.assertRaises(PersistenceError):
-            migrate_sqlite_database(self.database_path, 9)
+            migrate_sqlite_database(self.database_path, 10)
 
     def test_repository_rejects_pre_v8_schema(self) -> None:
         create_legacy_database(self.database_path, 7)

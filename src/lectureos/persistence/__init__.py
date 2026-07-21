@@ -11,6 +11,10 @@ from .applicability_evaluation import (
     SQLiteTranscriptApplicabilityEvaluationRepository,
 )
 from .correction_candidates import SQLiteCorrectionCandidateRepository
+from .current_selection import (
+    SQLiteCurrentSelectionCommandPersistence,
+    SQLiteTranscriptCurrentSelectionRepository,
+)
 from .corrected_transcript_revisions import (
     SQLiteCorrectedTranscriptRevisionRepository,
 )
@@ -49,6 +53,8 @@ __all__ = [
     "SQLITE_SCHEMA_VERSION",
     "SQLiteApplicabilityEvaluationCommandPersistence",
     "SQLiteTranscriptApplicabilityEvaluationRepository",
+    "SQLiteCurrentSelectionCommandPersistence",
+    "SQLiteTranscriptCurrentSelectionRepository",
     "SQLiteCorrectionCandidateRepository",
     "SQLiteCorrectedTranscriptRevisionRepository",
     "SQLiteExecutionCommandPersistence",
