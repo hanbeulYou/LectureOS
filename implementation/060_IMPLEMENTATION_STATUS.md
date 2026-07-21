@@ -451,3 +451,31 @@ reviewer and execution provenance, append-only lineage, atomic persistence, rest
 reconstruction, structural integrity and deterministic replay. The complete 733-test suite
 passes. Recording a decision triggers no downstream automation: no applicability, current
 selection, Transcript Ready, subtitle or artifact behavior was introduced.
+
+## Transcript Applicability
+
+- Goal: `docs/goals/LectureOS_Codex_Goal_Transcript_Applicability.md`
+- Status: **IN PROGRESS**
+- Immediate next slice: Slice 2 — Applicability Records
+
+This milestone deterministically derives and durably records the applicability of a proposed
+Transcript Revision from a canonical Human Review Decision, without selecting a current revision
+or producing a Transcript Ready state. `Product → Application → Capability → Provider` and the
+lifecycle position `Transcript → Proposed Revision → Review Preparation → Human Review Decision
+→ Applicability` are preserved, while Current Selection, Transcript Ready and Subtitle
+generation remain out of scope. Applicability is derived only from canonical Human Review
+Decisions; providers have no responsibility.
+
+The bounded architectural assessment found no substantive blocker. The pre-existing in-memory
+`transcript/applicability.py` service — a broader manual applicability plus Current Selection
+concern bound to the old review vocabulary — is left unchanged; a single Application-owned
+aggregate `TranscriptApplicabilityEvaluation` is added, together with a focused
+`ApplicabilityOutcome` enum (`APPLICABLE` from Accept, `NOT_APPLICABLE` from Reject,
+`SUPERSEDED_BY_MODIFICATION` from Modify) that is a pure deterministic function of the decision
+kind. A new `TranscriptApplicabilityEvaluationService` mirrors the established `prepare`/persist
+split with an Application-owned identity plan, and an additive SQLite schema v8 adds atomic
+persistence, restart reconstruction and deterministic replay for the evaluation record only. No
+wall-clock is read, so replay is deterministic. The AGENTS.md Architect Checklist is entirely
+`No`: no existing Domain contract change, no released-schema meaning change, no lifecycle
+authority change (applicability is derived, not decided), no responsibility shift, no new
+identity semantics, one additive migration, and no Blueprint contradiction.
