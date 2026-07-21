@@ -218,18 +218,44 @@ Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibili
   exactness, the triple-guarded ELIGIBLE⇔READY authority, migration-chain compatibility,
   linkage validation, restart reconstruction, and absence of upstream mutation / downstream
   trigger)
+
+Slice 5 — Fake-Review / Fake-Transcript Acceptance
+- `lectureos.subtitle_intake_acceptance` drives the full pipeline with a fake correction
+  provider and fake reviewer: no network, no credential, fixed timestamps
+- fake proposals → persisted proposed Revision → Review Preparation → Human Accept and Reject
+  decisions → applicability → current selection → readiness → subtitle transcript intake →
+  atomic v11 persistence → reopen → exact restart reconstruction → identical deterministic
+  replay
+- verifies only the READY (accepted) transcript is ELIGIBLE and the NOT_READY (rejected)
+  transcript is NOT_ELIGIBLE; immutable intake records; readiness / revision / transcript /
+  media+timeline / candidate / review-item linkage; execution provenance; atomic persistence;
+  restart reconstruction; deterministic replay
+- verifies idempotency (upstream Readiness rows byte-identical before/after) and that no
+  subtitle candidate/revision/cue or artifact table is produced
+- acceptance summary: intake_count 2, outcomes [eligible, not_eligible], and every linkage /
+  provenance / restart / replay / idempotency / no-downstream flag true
+- focused acceptance test passed; complete suite 851 passed
+- no credential, provider payload or sensitive transcript committed; no downstream capability
+  started; no upstream record mutated
+- Blueprint Drift Check: PASS — dependency direction unchanged, no provider owns intake, no
+  existing enum/aggregate/service meaning changed (the in-memory subtitle domain is untouched),
+  schema strictly additive, no Subtitle-candidate/Artifact/export responsibility pulled in,
+  Human Authority intact, Subtitle remains distinct from Transcript
+- Migration Compatibility: PASS — every released version v1..v10 chains to v11 preserving data
+- Claude Review: Optional — Skipped (acceptance harness/test only; no production or contract
+  change)
 ```
 
 ### Remaining Milestones
 
 ```text
-Slice 5 — Fake-Review / Fake-Transcript Acceptance
+None — Goal complete
 ```
 
 ### Immediate Next Slice
 
 ```text
-Slice 5 — Fake-Review / Fake-Transcript Acceptance
+Goal Complete
 ```
 
 ## 10. Completion Report — Milestone Additions

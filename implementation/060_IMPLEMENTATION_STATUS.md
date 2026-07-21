@@ -631,8 +631,12 @@ stage; Subtitle and Artifact stages remain out of scope and unstarted.
 ## Subtitle Transcript Intake
 
 - Goal: `docs/goals/LectureOS_Codex_Goal_Subtitle_Transcript_Intake.md`
-- Status: **IN PROGRESS**
-- Immediate next slice: Slice 5 — Fake-Review / Fake-Transcript Acceptance
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema v11
+- Completed slices: Goal Baseline and Assessment; Intake Records; Deterministic Intake
+  Service; Atomic SQLite Persistence, Restart, Replay and Migration Compatibility; Fake-Review
+  / Fake-Transcript Acceptance
+- Immediate next slice: Goal Complete
 
 This milestone begins the Subtitle Pipeline (`docs/041_SUBTITLE_PIPELINE.md §4.1 Transcript
 Intake`): it deterministically derives and durably records, from a canonical Transcript
@@ -658,3 +662,24 @@ change, no released-schema meaning change, no lifecycle authority change, no res
 no new identity semantics, one additive migration, and no Blueprint contradiction. The existing
 in-memory `subtitle/` domain remains unchanged. Migration compatibility from every released
 version (v1..v10) to v11 will be verified in Slice 4.
+
+The Subtitle Transcript Intake Goal is complete. `SubtitleTranscriptIntakeService` loads a
+canonical Transcript Readiness Evaluation, resolves the source Corrected Transcript revision →
+Raw Transcript for source media/timeline, and deterministically derives whether the revision is
+ELIGIBLE to begin subtitle work — ELIGIBLE only when the readiness outcome is READY, otherwise
+NOT_ELIGIBLE — carrying the readiness lineage (selection/applicability/decision/item/candidate/
+revision) and the structural `validation_id` into an immutable `SubtitleTranscriptIntake`
+aggregate. `SQLiteSubtitleIntakeCommandPersistence` writes the intake and its co-persisted
+DomainResultReference in one atomic v11 transaction, reconstructs it exactly after restart, and
+reproduces byte-identical records on deterministic replay into a fresh database (no wall-clock is
+read). An in-process fake-review / fake-transcript acceptance records Accept and Reject decisions
+and confirms only the READY transcript is ELIGIBLE while the NOT_READY transcript is NOT_ELIGIBLE;
+it further confirms restart reconstruction, deterministic replay, idempotency (upstream Readiness
+rows byte-identical before and after evaluation), and that no subtitle candidate/revision/cue or
+artifact table is produced. The complete 851-test suite passes. A Blueprint Drift Check confirmed
+no drift relative to any prior completed milestone, and migration compatibility from every
+released version (v1..v10) to v11 is verified by an explicit single-step-chain test that preserves
+existing data and meaning. Recording intake starts no downstream capability and mutates no
+upstream record; the existing in-memory `subtitle/` domain remains unchanged. This begins the
+Subtitle Pipeline at stage 4.1 (Transcript Intake); Subtitle Candidate Generation and later
+subtitle/artifact stages remain out of scope and unstarted.
