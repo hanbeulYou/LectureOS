@@ -28,3 +28,8 @@ class TranscriptReviewPreparationId(OpaqueIdentity):
 @dataclass(frozen=True, slots=True)
 class TranscriptReviewDecisionId(OpaqueIdentity):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class TranscriptApplicabilityEvaluationId(OpaqueIdentity):
+    pass

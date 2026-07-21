@@ -329,14 +329,32 @@ commit/review/validation 근거를 기록하며, 완료 slice를 Remaining에서
 ### Completed Capabilities
 
 ```text
-None yet
+Slice 1 — Goal Baseline and Assessment
+- commit `3ee4ac3` — `docs: add transcript applicability goal`
+- bounded architectural assessment: no substantive blocker
+- reuse canonical decision aggregate; add one Application-owned evaluation aggregate
+- deterministic outcome mapping; additive schema v8 planned; existing applicability
+  service and enum left unchanged
+- Review: Optional — Skipped (documentation only)
+
+Slice 2 — Applicability Records
+- `TranscriptApplicabilityEvaluationId` added to application identities
+- `ApplicabilityOutcome` enum (APPLICABLE / NOT_APPLICABLE / SUPERSEDED_BY_MODIFICATION)
+  with `outcome_for_decision_kind` deterministic mapping from decision kind
+- `TranscriptApplicabilityEvaluation` aggregate: identity, DomainResult linkage, source
+  decision id + kind, derived outcome, review item / candidate / revision linkage, execution
+  provenance, append-only sequence / previous linkage, deterministic reason
+- `ApplicabilityEvaluationIdentityPlan` (evaluation id, result id)
+- invariants: non-negative sequence, non-blank reason, outcome must match decision-kind
+  mapping, first evaluation has no previous reference
+- 9 focused record tests passed; complete suite 742 passed
+- Required Claude Review: Inconclusive — no critical findings identified
+  (additive immutable records; deterministic mapping; no Blueprint/lifecycle/contract defect)
 ```
 
 ### Remaining Milestones
 
 ```text
-Slice 1 — Goal Baseline and Assessment
-Slice 2 — Applicability Records
 Slice 3 — Deterministic Applicability Evaluation Service
 Slice 4 — Atomic SQLite Persistence, Restart and Replay
 Slice 5 — Fake-Review Acceptance
@@ -345,7 +363,7 @@ Slice 5 — Fake-Review Acceptance
 ### Immediate Next Slice
 
 ```text
-Slice 1 — Goal Baseline and Assessment
+Slice 3 — Deterministic Applicability Evaluation Service
 ```
 
 ## 13. Consolidated Completion Report
