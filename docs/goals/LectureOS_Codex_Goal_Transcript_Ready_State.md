@@ -384,12 +384,30 @@ Slice 2 — Readiness Records
 - Required Claude Review: Inconclusive — no critical findings identified
   (additive immutable records; READY invariants enforced at the record level; no Blueprint/
   lifecycle/contract defect)
+
+Slice 3 — Deterministic Readiness Evaluation Service
+- `TranscriptReadinessEvaluationService.evaluate_readiness(...)` deterministic derivation
+- loads the durable Current Selection, requires a running execution, cross-checks the
+  Applicability, Review Decision and Revision lineage against the selection (raising on any
+  inconsistency as canonical corruption), recomputes the selected Revision's structural
+  Validation via the existing `TranscriptStructuralValidationBoundary`, verifies the
+  Validation targets the selected revision, and maps to READY/NOT_READY + reason code via the
+  single deterministic function
+- readiness DomainResult links upstream to the source Current Selection DomainResult; no
+  wall-clock is read; performs no canonical write; mutates no upstream record; triggers no
+  downstream capability
+- `PreparedTranscriptReadiness` return; `AtomicReadinessEvaluationPersistence` port;
+  `TranscriptReadinessEvaluationError` for unsafe/inconsistent input
+- 8 focused service tests passed (READY for accepted-selected-valid; NOT_READY for
+  rejected/modified; inconsistent lineage rejected); complete suite 809 passed
+- Required Claude Review: Inconclusive — no critical findings identified
+  (pure deterministic derivation; lineage/validation/execution provenance verified; no
+  persistence, no upstream mutation, no downstream trigger)
 ```
 
 ### Remaining Milestones
 
 ```text
-Slice 3 — Deterministic Readiness Evaluation Service
 Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
 Slice 5 — Fake-Review / Fake-Transcript Acceptance
 ```
@@ -397,7 +415,7 @@ Slice 5 — Fake-Review / Fake-Transcript Acceptance
 ### Immediate Next Slice
 
 ```text
-Slice 3 — Deterministic Readiness Evaluation Service
+Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
 ```
 
 ## 13. Consolidated Completion Report
