@@ -22,7 +22,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import isfinite
+from typing import Protocol
 
+from lectureos.execution.boundaries import ExecutionQueryBoundary
 from lectureos.execution.identities import (
     DomainResultId,
     ProcessingRunId,
@@ -30,7 +32,9 @@ from lectureos.execution.identities import (
     SourceTimelineId,
     UnitExecutionId,
 )
+from lectureos.execution.models import DomainResultReference, ProcessingState
 from lectureos.review.identities import CandidateReferenceId, ReviewItemId
+from lectureos.transcript.boundaries import TranscriptQueryBoundary
 from lectureos.transcript.identities import (
     TranscriptId,
     TranscriptRevisionId,
@@ -47,6 +51,7 @@ from .identities import (
     TranscriptReadinessEvaluationId,
     TranscriptReviewDecisionId,
 )
+from .subtitle_transcript_intake import SubtitleIntakeOutcome, SubtitleTranscriptIntake
 
 SUBTITLE_CANDIDATE_RESULT_KIND = "subtitle_candidate"
 
@@ -144,9 +149,190 @@ class SubtitleCandidateIdentityPlan:
             raise ValueError("subtitle candidate identity plan cue ids must be unique")
 
 
+@dataclass(frozen=True, slots=True)
+class PreparedSubtitleCandidate:
+    """Immutable canonical candidate + ordered cues; not yet persisted."""
+
+    candidate: SubtitleCandidate
+    cues: tuple[SubtitleCandidateCue, ...]
+    candidate_result: DomainResultReference
+
+
+class SubtitleTranscriptIntakeQuery(Protocol):
+    def get(self, identity): ...
+
+
+class AtomicSubtitleCandidatePersistence(Protocol):
+    def persist_subtitle_candidate(
+        self,
+        *,
+        candidate: SubtitleCandidate,
+        cues: tuple[SubtitleCandidateCue, ...],
+        candidate_result: DomainResultReference,
+    ) -> None: ...
+
+
+class SubtitleCandidateGenerationError(ValueError):
+    """A structurally valid request that cannot become a canonical subtitle candidate."""
+
+
+class SubtitleCandidateGenerationService:
+    """Deterministically generates a subtitle candidate from an ELIGIBLE intake."""
+
+    def __init__(
+        self,
+        intake_query: SubtitleTranscriptIntakeQuery,
+        transcript_query: TranscriptQueryBoundary,
+        execution_query: ExecutionQueryBoundary,
+        persistence: AtomicSubtitleCandidatePersistence | None = None,
+    ) -> None:
+        self._intakes = intake_query
+        self._transcripts = transcript_query
+        self._executions = execution_query
+        self._persistence = persistence
+
+    def record_candidate(self, **kwargs) -> PreparedSubtitleCandidate:
+        prepared = self.generate_candidate(**kwargs)
+        if self._persistence is None:
+            raise RuntimeError("subtitle candidate persistence is not configured")
+        self._persistence.persist_subtitle_candidate(
+            candidate=prepared.candidate,
+            cues=prepared.cues,
+            candidate_result=prepared.candidate_result,
+        )
+        return prepared
+
+    def generate_candidate(
+        self,
+        *,
+        source_intake_id: SubtitleTranscriptIntakeId,
+        run_id: ProcessingRunId,
+        unit_execution_id: UnitExecutionId,
+        identities: SubtitleCandidateIdentityPlan,
+        sequence: int = 0,
+        previous_candidate_id: SubtitleCandidateId | None = None,
+        reason: str | None = None,
+    ) -> PreparedSubtitleCandidate:
+        intake = self._intakes.get(source_intake_id)
+        if intake is None:
+            raise KeyError("unknown subtitle transcript intake")
+        if not isinstance(intake, SubtitleTranscriptIntake):
+            raise SubtitleCandidateGenerationError(
+                "subtitle candidate must derive from a canonical Subtitle Transcript Intake"
+            )
+        if intake.outcome is not SubtitleIntakeOutcome.ELIGIBLE:
+            raise SubtitleCandidateGenerationError(
+                "subtitle candidate generation requires an ELIGIBLE intake"
+            )
+        self._require_running_execution(run_id, unit_execution_id)
+
+        revision = self._transcripts.get_corrected_revision(intake.source_revision_id)
+        if revision is None:
+            raise KeyError("unknown corrected transcript revision")
+        segments = tuple(
+            self._require_segment(segment_id) for segment_id in revision.segment_ids
+        )
+        if not segments:
+            raise SubtitleCandidateGenerationError(
+                "source revision has no segments to generate subtitle cues"
+            )
+        if len(identities.cue_ids) != len(segments):
+            raise SubtitleCandidateGenerationError(
+                "identity plan cue count must match the derived cue count"
+            )
+
+        # Baseline deterministic strategy (not a domain invariant): one cue per ordered
+        # source segment. Downstream Reading/Time Representation may merge or split cues.
+        cues = tuple(
+            SubtitleCandidateCue(
+                identity=cue_id,
+                candidate_id=identities.candidate_id,
+                source_transcript_id=revision.transcript_id,
+                source_revision_id=revision.identity,
+                source_segment_ids=(segment.identity,),
+                text=segment.text,
+                display_order=index,
+                source_timeline_id=segment.source_timeline_id,
+                start=segment.start,
+                end=segment.end,
+            )
+            for index, (cue_id, segment) in enumerate(
+                zip(identities.cue_ids, segments)
+            )
+        )
+
+        resolved_reason = reason if reason is not None else _default_reason(len(cues))
+        candidate = SubtitleCandidate(
+            identity=identities.candidate_id,
+            domain_result_id=identities.candidate_result_id,
+            source_intake_id=intake.identity,
+            source_readiness_id=intake.source_readiness_id,
+            source_selection_id=intake.source_selection_id,
+            source_applicability_id=intake.source_applicability_id,
+            source_decision_id=intake.source_decision_id,
+            review_item_id=intake.review_item_id,
+            candidate_reference_id=intake.candidate_reference_id,
+            source_transcript_id=revision.transcript_id,
+            source_revision_id=intake.source_revision_id,
+            source_media_id=intake.source_media_id,
+            source_timeline_id=intake.source_timeline_id,
+            validation_id=intake.validation_id,
+            cue_ids=tuple(identities.cue_ids),
+            run_id=run_id,
+            unit_execution_id=unit_execution_id,
+            sequence=sequence,
+            reason=resolved_reason,
+            previous_candidate_id=previous_candidate_id,
+        )
+        candidate_result = DomainResultReference(
+            identity=identities.candidate_result_id,
+            kind=SUBTITLE_CANDIDATE_RESULT_KIND,
+            source_media=intake.source_media_id,
+            source_timeline=intake.source_timeline_id,
+            upstream_results=(intake.domain_result_id,),
+        )
+        return PreparedSubtitleCandidate(
+            candidate=candidate, cues=cues, candidate_result=candidate_result
+        )
+
+    def _require_segment(self, segment_id: TranscriptSegmentId):
+        segment = self._transcripts.get_segment(segment_id)
+        if segment is None:
+            raise KeyError("unknown source transcript segment")
+        return segment
+
+    def _require_running_execution(self, run_id, unit_execution_id) -> None:
+        run = self._executions.get_run(run_id)
+        if run is None:
+            raise KeyError("unknown processing run")
+        execution = self._executions.get_unit_execution(unit_execution_id)
+        if execution is None:
+            raise KeyError("unknown unit execution")
+        if execution.run_id != run.identity:
+            raise SubtitleCandidateGenerationError(
+                "unit execution must belong to processing run"
+            )
+        if execution.state is not ProcessingState.RUNNING:
+            raise SubtitleCandidateGenerationError(
+                "generating subtitle candidate requires a running unit execution"
+            )
+
+
+def _default_reason(cue_count: int) -> str:
+    return (
+        f"baseline subtitle candidate derived from eligible intake with {cue_count} "
+        "cue(s), one per ordered source segment"
+    )
+
+
 __all__ = [
     "SUBTITLE_CANDIDATE_RESULT_KIND",
+    "AtomicSubtitleCandidatePersistence",
+    "PreparedSubtitleCandidate",
     "SubtitleCandidate",
     "SubtitleCandidateCue",
+    "SubtitleCandidateGenerationError",
+    "SubtitleCandidateGenerationService",
     "SubtitleCandidateIdentityPlan",
+    "SubtitleTranscriptIntakeQuery",
 ]

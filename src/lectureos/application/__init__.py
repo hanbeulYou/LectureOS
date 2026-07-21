@@ -45,9 +45,14 @@ from .transcript_applicability_evaluation import (
 )
 from .subtitle_candidate_generation import (
     SUBTITLE_CANDIDATE_RESULT_KIND,
+    AtomicSubtitleCandidatePersistence,
+    PreparedSubtitleCandidate,
     SubtitleCandidate,
     SubtitleCandidateCue,
+    SubtitleCandidateGenerationError,
+    SubtitleCandidateGenerationService,
     SubtitleCandidateIdentityPlan,
+    SubtitleTranscriptIntakeQuery,
 )
 from .subtitle_transcript_intake import (
     SUBTITLE_TRANSCRIPT_INTAKE_RESULT_KIND,
@@ -133,9 +138,14 @@ __all__ = [
     "TranscriptApplicabilityEvaluationService",
     "outcome_for_decision_kind",
     "SUBTITLE_CANDIDATE_RESULT_KIND",
+    "AtomicSubtitleCandidatePersistence",
+    "PreparedSubtitleCandidate",
     "SubtitleCandidate",
     "SubtitleCandidateCue",
+    "SubtitleCandidateGenerationError",
+    "SubtitleCandidateGenerationService",
     "SubtitleCandidateIdentityPlan",
+    "SubtitleTranscriptIntakeQuery",
     "SUBTITLE_TRANSCRIPT_INTAKE_RESULT_KIND",
     "AtomicSubtitleIntakePersistence",
     "PreparedSubtitleIntake",
