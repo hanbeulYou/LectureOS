@@ -557,3 +557,42 @@ single-step-chain test that preserves existing data. Current Selection determine
 Revision is currently selected; it never implies the Transcript is Ready, and no Transcript
 Ready, subtitle, artifact, export or downstream-execution behavior was introduced. The
 pre-existing in-memory `CurrentTranscriptSelection` model and service remain unchanged.
+
+## Transcript Ready State
+
+- Goal: `docs/goals/LectureOS_Codex_Goal_Transcript_Ready_State.md`
+- Status: **IN PROGRESS**
+- Immediate next slice: Slice 2 — Readiness Records
+
+This milestone deterministically evaluates and durably records whether the currently selected
+Transcript Revision is ready for downstream use, from canonical upstream records only.
+`Product → Application → Capability Contract → Provider` and the lifecycle position
+`Transcript Revision → Review Preparation → Human Review Decision → Applicability → Current
+Selection → Transcript Ready` are preserved, while Subtitle, Artifact, export and downstream
+execution remain out of scope. Transcript Ready is derived only from canonical records;
+providers have no responsibility. Recording READY starts no downstream capability, recording
+NOT_READY mutates no upstream record, and Current Selection remains a distinct concern from
+Transcript Ready (SELECTED does not itself imply READY).
+
+The bounded architectural assessment found no substantive blocker and no undefined readiness
+policy: the READY conditions are fully enumerated and all derivable from canonical durable
+records (Current Selection v9, Applicability v8, Human Review Decision v7, CorrectedTranscript
+Revision v5) plus a deterministic recomputation of the Revision's structural Validation via the
+existing `TranscriptStructuralValidationBoundary`. Because `TranscriptValidation` is a
+deterministic function of the durable Revision and is not itself a durably persisted aggregate,
+the readiness evaluation recomputes it at evaluation time and links the readiness record to the
+resulting canonical Validation; this preserves derivation-from-canonical and deterministic
+replay while mutating no upstream record. A single Application-owned aggregate
+`TranscriptReadinessEvaluation` is added, with focused `ReadinessOutcome` (READY / NOT_READY)
+and `ReadinessReasonCode` (ALL_CONDITIONS_MET, NOT_SELECTED, NOT_APPLICABLE,
+SUPERSEDED_BY_MODIFICATION, STRUCTURAL_VALIDATION_FAILED) enums. READY requires, at the
+aggregate level, selection SELECTED and applicability APPLICABLE and structural_valid True, so
+READY cannot be produced for NOT_SELECTED, NOT_APPLICABLE, SUPERSEDED_BY_MODIFICATION, or
+structurally invalid lineage. A new `TranscriptReadinessEvaluationService` mirrors the
+established evaluate/persist split with an Application-owned identity plan, and an additive
+SQLite schema v10 adds atomic persistence, restart reconstruction and deterministic replay for
+the readiness record only. No wall-clock is read. The AGENTS.md Architect Checklist is entirely
+`No`: no existing Domain contract change, no released-schema meaning change, no lifecycle
+authority change, no responsibility shift, no new identity semantics, one additive migration,
+and no Blueprint contradiction. Migration compatibility from every released version (v1..v9) to
+v10 will be verified in Slice 4.
