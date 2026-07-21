@@ -430,18 +430,45 @@ Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibili
   (independent bounded review verified atomicity, additive migration, expected-column exactness,
   the three-layer READY-authority CHECK, migration-chain compatibility, linkage validation,
   restart reconstruction, and absence of upstream mutation / downstream trigger)
+
+Slice 5 — Fake-Review / Fake-Transcript Acceptance
+- `lectureos.readiness_acceptance` drives the full pipeline with a fake correction provider and
+  fake reviewer: no network, no credential, fixed timestamps
+- fake proposals → persisted proposed Revision → Review Preparation → Human Accept, Reject and
+  Modify decisions → applicability → current selection → deterministic readiness evaluation →
+  atomic v10 persistence → reopen → exact restart reconstruction → identical deterministic replay
+- verifies only the accepted-selected-applicable-valid Revision is READY (ALL_CONDITIONS_MET);
+  the rejected lineage is NOT_READY (NOT_APPLICABLE) and the modified lineage is NOT_READY
+  (SUPERSEDED_BY_MODIFICATION); immutable readiness records; Current Selection / Applicability /
+  Review Decision / Review Item / Candidate / Revision / structural Validation linkage; execution
+  provenance; atomic persistence; restart reconstruction; deterministic replay
+- verifies idempotency (the upstream Current Selection rows are byte-identical before/after
+  readiness evaluation) and that no Subtitle/Artifact table or downstream operation is produced
+- acceptance summary: readiness_count 3, outcomes [ready, not_ready, not_ready], reason_codes
+  [all_conditions_met, not_applicable, superseded_by_modification], and every linkage /
+  provenance / restart / replay / idempotency / no-downstream flag true
+- focused acceptance test passed; complete suite 822 passed
+- no credential, provider payload or sensitive transcript committed; no downstream capability
+  started; no upstream record mutated
+- Blueprint Drift Check: PASS — dependency direction unchanged, no provider owns readiness, no
+  existing enum/aggregate/service meaning changed, schema strictly additive, no Subtitle/Artifact/
+  export responsibility pulled in, Human Authority intact, Current Selection distinct from
+  Transcript Ready
+- Migration Compatibility: PASS — every released version v1..v9 chains to v10 preserving data
+- Claude Review: Optional — Skipped (acceptance harness/test only; no production or contract
+  change)
 ```
 
 ### Remaining Milestones
 
 ```text
-Slice 5 — Fake-Review / Fake-Transcript Acceptance
+None — Goal complete
 ```
 
 ### Immediate Next Slice
 
 ```text
-Slice 5 — Fake-Review / Fake-Transcript Acceptance
+Goal Complete
 ```
 
 ## 13. Consolidated Completion Report

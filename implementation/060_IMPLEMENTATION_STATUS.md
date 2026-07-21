@@ -561,8 +561,12 @@ pre-existing in-memory `CurrentTranscriptSelection` model and service remain unc
 ## Transcript Ready State
 
 - Goal: `docs/goals/LectureOS_Codex_Goal_Transcript_Ready_State.md`
-- Status: **IN PROGRESS**
-- Immediate next slice: Slice 5 — Fake-Review / Fake-Transcript Acceptance
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema v10
+- Completed slices: Goal Baseline and Assessment; Readiness Records; Deterministic Readiness
+  Evaluation Service; Atomic SQLite Persistence, Restart, Replay and Migration Compatibility;
+  Fake-Review / Fake-Transcript Acceptance
+- Immediate next slice: Goal Complete
 
 This milestone deterministically evaluates and durably records whether the currently selected
 Transcript Revision is ready for downstream use, from canonical upstream records only.
@@ -596,3 +600,30 @@ the readiness record only. No wall-clock is read. The AGENTS.md Architect Checkl
 authority change, no responsibility shift, no new identity semantics, one additive migration,
 and no Blueprint contradiction. Migration compatibility from every released version (v1..v9) to
 v10 will be verified in Slice 4.
+
+The Transcript Ready State Goal is complete. `TranscriptReadinessEvaluationService` loads a
+canonical Current Selection, cross-checks its Applicability, Review Decision and Revision lineage
+against durable records, recomputes the selected Revision's structural Validation via the
+existing `TranscriptStructuralValidationBoundary`, and deterministically evaluates READY only
+when the selection is SELECTED, applicability is APPLICABLE, and structural Validation succeeds —
+otherwise NOT_READY with a deterministic reason code (NOT_SELECTED, NOT_APPLICABLE,
+SUPERSEDED_BY_MODIFICATION, or STRUCTURAL_VALIDATION_FAILED). The immutable
+`TranscriptReadinessEvaluation` aggregate carries Current Selection / Applicability / Review
+Decision / Review Item / Candidate / Revision / structural Validation linkage and execution
+provenance, and enforces the READY conditions at the record level (a second defense alongside
+the deterministic service derivation and the SQLite CHECK). `SQLiteReadinessEvaluationCommand
+Persistence` writes the readiness record and its co-persisted DomainResultReference in one atomic
+v10 transaction, reconstructs it exactly after restart, and reproduces byte-identical records on
+deterministic replay into a fresh database. An in-process fake-review / fake-transcript acceptance
+records Accept, Reject and Modify decisions and confirms only the accepted-selected-applicable-
+valid Revision is READY, while rejected and modified lineages are NOT_READY; it further confirms
+restart reconstruction, deterministic replay, idempotency (upstream Current Selection rows are
+byte-identical before and after evaluation), and that no Subtitle/Artifact table or downstream
+operation is produced. The complete 822-test suite passes. A Blueprint Drift Check confirmed no
+drift relative to any prior completed milestone, and migration compatibility from every released
+version (v1..v9) to v10 is verified by an explicit single-step-chain test that preserves existing
+data and meaning. Recording readiness starts no downstream capability and mutates no upstream
+record; Current Selection and Transcript Ready remain distinct canonical concerns; and the
+existing structural Validation contract and in-memory selection/applicability services remain
+unchanged. This completes the canonical Transcript pipeline through the Transcript Ready lifecycle
+stage; Subtitle and Artifact stages remain out of scope and unstarted.
