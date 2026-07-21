@@ -402,3 +402,32 @@ with no network or credential and confirms deterministic generation, immutable l
 Revision linkage, Candidate linkage, execution provenance, atomic persistence, restart
 reconstruction and structural integrity. The complete 701-test suite passes. No Human Review
 Decision, applicability, current selection or downstream product behavior was introduced.
+
+## Transcript Human Review Decision
+
+- Goal: `docs/goals/LectureOS_Codex_Goal_Transcript_Human_Review_Decision.md`
+- Status: **IN PROGRESS**
+- Immediate next slice: Slice 2 — Review Decision Records
+
+This milestone durably records canonical Human Review Decisions (Accept, Reject, Modify) on
+prepared Review Items without triggering any downstream automation. It is purely a recording
+of Human judgement: `Product → Application → Capability → Provider` and the lifecycle position
+`Transcript → Proposed Revision → Review Preparation → Human Review Decision` are preserved,
+while Applicability, Current Selection, Transcript Ready and Subtitle generation remain out of
+scope. Human Decision never automatically changes selection, approves or rejects revisions,
+updates applicability, produces Transcript Ready, or generates subtitles.
+
+The bounded architectural assessment found no substantive blocker. The existing in-memory
+review vocabulary (`DecisionKind`, `HumanActorReference`) is reused unchanged; a single
+Application-owned aggregate `TranscriptReviewDecision` is added to carry decision identity,
+kind, reviewer identity, a caller-supplied decision timestamp, rationale, Review Item /
+Candidate / Revision linkage, append-only sequence lineage and DomainResult linkage. A new
+`TranscriptReviewDecisionService` mirrors the established `prepare`/persist split with an
+Application-owned identity-and-timestamp plan, and an additive SQLite schema v7 adds atomic
+persistence, restart reconstruction and deterministic replay for the decision record only.
+The decision timestamp is a command input, never generated from wall-clock, guaranteeing
+deterministic replay. Providers are unchanged and never own Decision identity or lifecycle.
+The AGENTS.md Architect Checklist is entirely `No`: no existing Domain contract change (the
+released `ReviewDecision`/`ReviewService` are untouched), no released-schema meaning change,
+no lifecycle authority change, no responsibility shift, no new identity semantics, one additive
+migration, and no Blueprint contradiction with `043_REVIEW_PIPELINE.md`.
