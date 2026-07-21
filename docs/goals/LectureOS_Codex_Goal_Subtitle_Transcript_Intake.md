@@ -174,12 +174,29 @@ Slice 2 — Intake Records
 - Required Claude Review: Inconclusive — no critical findings identified
   (additive immutable records; ELIGIBLE⇔READY enforced at the record level; no Blueprint/
   lifecycle/contract defect)
+
+Slice 3 — Deterministic Intake Service
+- `SubtitleTranscriptIntakeService.evaluate_intake(...)` deterministic derivation
+- loads the durable canonical Readiness Evaluation, requires a running execution, resolves the
+  source Corrected Transcript revision → Raw Transcript for source media/timeline, maps the
+  readiness outcome to the intake outcome via the single deterministic function, and carries
+  the readiness lineage (selection/applicability/decision/item/candidate/revision/validation)
+  into the intake
+- intake DomainResult links upstream to the source readiness DomainResult; no wall-clock is
+  read; performs no canonical write; mutates no upstream record; triggers no downstream
+  capability
+- `PreparedSubtitleIntake` return; `AtomicSubtitleIntakePersistence` port;
+  `SubtitleTranscriptIntakeError` for unsafe input
+- 6 focused service tests passed (READY→ELIGIBLE with full linkage; NOT_READY→NOT_ELIGIBLE);
+  complete suite 838 passed
+- Required Claude Review: Inconclusive — no critical findings identified
+  (pure deterministic derivation; readiness/revision/execution provenance verified; no
+  persistence, no upstream mutation, no downstream trigger)
 ```
 
 ### Remaining Milestones
 
 ```text
-Slice 3 — Deterministic Intake Service
 Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
 Slice 5 — Fake-Review / Fake-Transcript Acceptance
 ```
@@ -187,7 +204,7 @@ Slice 5 — Fake-Review / Fake-Transcript Acceptance
 ### Immediate Next Slice
 
 ```text
-Slice 3 — Deterministic Intake Service
+Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
 ```
 
 ## 10. Completion Report — Milestone Additions

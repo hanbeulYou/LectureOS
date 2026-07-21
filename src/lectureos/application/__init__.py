@@ -45,9 +45,13 @@ from .transcript_applicability_evaluation import (
 )
 from .subtitle_transcript_intake import (
     SUBTITLE_TRANSCRIPT_INTAKE_RESULT_KIND,
+    AtomicSubtitleIntakePersistence,
+    PreparedSubtitleIntake,
     SubtitleIntakeIdentityPlan,
     SubtitleIntakeOutcome,
     SubtitleTranscriptIntake,
+    SubtitleTranscriptIntakeError,
+    SubtitleTranscriptIntakeService,
     intake_for_readiness_outcome,
 )
 from .transcript_readiness_evaluation import (
@@ -123,9 +127,13 @@ __all__ = [
     "TranscriptApplicabilityEvaluationService",
     "outcome_for_decision_kind",
     "SUBTITLE_TRANSCRIPT_INTAKE_RESULT_KIND",
+    "AtomicSubtitleIntakePersistence",
+    "PreparedSubtitleIntake",
     "SubtitleIntakeIdentityPlan",
     "SubtitleIntakeOutcome",
     "SubtitleTranscriptIntake",
+    "SubtitleTranscriptIntakeError",
+    "SubtitleTranscriptIntakeService",
     "intake_for_readiness_outcome",
     "READINESS_EVALUATION_RESULT_KIND",
     "AtomicReadinessEvaluationPersistence",
