@@ -17,6 +17,9 @@ from lectureos.application.transcript_current_selection import (
 from lectureos.application.subtitle_transcript_intake import (
     SubtitleTranscriptIntakeService,
 )
+from lectureos.application.subtitle_candidate_generation import (
+    SubtitleCandidateGenerationService,
+)
 from lectureos.application.transcript_readiness_evaluation import (
     TranscriptReadinessEvaluationService,
 )
@@ -32,7 +35,9 @@ from lectureos.persistence import (
     SQLiteApplicabilityEvaluationCommandPersistence,
     SQLiteCurrentSelectionCommandPersistence,
     SQLiteReadinessEvaluationCommandPersistence,
+    SQLiteSubtitleCandidateCommandPersistence,
     SQLiteSubtitleIntakeCommandPersistence,
+    SQLiteSubtitleTranscriptIntakeRepository,
     SQLiteTranscriptReadinessEvaluationRepository,
     SQLiteTranscriptApplicabilityEvaluationRepository,
     SQLiteTranscriptCurrentSelectionRepository,
@@ -232,6 +237,20 @@ def compose_sqlite_subtitle_transcript_intake_service(
     persistence = SQLiteSubtitleIntakeCommandPersistence(connection)
     return SubtitleTranscriptIntakeService(
         readiness, transcripts, execution_query, persistence
+    )
+
+
+def compose_sqlite_subtitle_candidate_generation_service(
+    connection: sqlite3.Connection,
+    execution_query: ExecutionQueryBoundary,
+) -> SubtitleCandidateGenerationService:
+    """Build durable v12 Subtitle Candidate Generation on one caller connection."""
+
+    intakes = SQLiteSubtitleTranscriptIntakeRepository(connection)
+    transcripts = compose_sqlite_transcript_service(connection, execution_query)
+    persistence = SQLiteSubtitleCandidateCommandPersistence(connection)
+    return SubtitleCandidateGenerationService(
+        intakes, transcripts, execution_query, persistence
     )
 
 

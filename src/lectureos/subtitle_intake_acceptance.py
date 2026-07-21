@@ -310,17 +310,23 @@ def run_subtitle_intake_acceptance() -> dict:
             readiness_repo.get(TranscriptReadinessEvaluationId(f"rdy-{plan[2]}"))
             for plan in _DECISION_PLAN
         )
-        no_downstream_tables = not {
-            "subtitle_candidates",
-            "subtitle_revisions",
-            "subtitle_cues",
-            "artifacts",
-        } & {
+        existing_tables = {
             row[0]
             for row in connection.execute(
                 "SELECT name FROM sqlite_master WHERE type = 'table'"
             ).fetchall()
         }
+        # subtitle_candidates and its cue tables exist (empty) from schema v12 onward.
+        # Intake starts no downstream capability, so no candidate rows may be produced and
+        # no later subtitle-revision / subtitle-cue / artifact table may exist.
+        candidate_rows = connection.execute(
+            "SELECT COUNT(*) FROM subtitle_candidates"
+        ).fetchone()[0]
+        no_downstream_tables = candidate_rows == 0 and not {
+            "subtitle_revisions",
+            "subtitle_cues",
+            "artifacts",
+        } & existing_tables
         connection.close()
 
         reopened = open_sqlite_database(path)

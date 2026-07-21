@@ -306,16 +306,22 @@ def run_readiness_acceptance() -> dict:
             selection_repo.get(TranscriptCurrentSelectionId(f"selection-{plan[2]}"))
             for plan in _DECISION_PLAN
         )
-        no_downstream_tables = not {
-            "subtitles",
-            "subtitle_candidates",
-            "artifacts",
-        } & {
+        existing_tables = {
             row[0]
             for row in connection.execute(
                 "SELECT name FROM sqlite_master WHERE type = 'table'"
             ).fetchall()
         }
+        # subtitle_candidates exists (empty) from schema v12 onward. Readiness starts no
+        # downstream capability, so no candidate rows may be produced and no subtitle or
+        # artifact table may exist.
+        candidate_rows = connection.execute(
+            "SELECT COUNT(*) FROM subtitle_candidates"
+        ).fetchone()[0]
+        no_downstream_tables = candidate_rows == 0 and not {
+            "subtitles",
+            "artifacts",
+        } & existing_tables
         connection.close()
 
         reopened = open_sqlite_database(path)

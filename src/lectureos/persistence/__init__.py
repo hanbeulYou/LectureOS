@@ -29,6 +29,10 @@ from .readiness_evaluation import (
     SQLiteReadinessEvaluationCommandPersistence,
     SQLiteTranscriptReadinessEvaluationRepository,
 )
+from .subtitle_candidate import (
+    SQLiteSubtitleCandidateCommandPersistence,
+    SQLiteSubtitleCandidateRepository,
+)
 from .subtitle_intake import (
     SQLiteSubtitleIntakeCommandPersistence,
     SQLiteSubtitleTranscriptIntakeRepository,
@@ -65,6 +69,8 @@ __all__ = [
     "SQLiteTranscriptCurrentSelectionRepository",
     "SQLiteReadinessEvaluationCommandPersistence",
     "SQLiteTranscriptReadinessEvaluationRepository",
+    "SQLiteSubtitleCandidateCommandPersistence",
+    "SQLiteSubtitleCandidateRepository",
     "SQLiteSubtitleIntakeCommandPersistence",
     "SQLiteSubtitleTranscriptIntakeRepository",
     "SQLiteCorrectionCandidateRepository",
