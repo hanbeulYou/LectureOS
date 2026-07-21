@@ -219,6 +219,7 @@ Slice 1 — Provider Decision and Goal Baseline
 - privacy boundary and strict-output contract recorded
 
 Slice 2 — OpenAI Correction Adapter
+- commit `d18b168` — `feat: add openai transcript correction adapter`
 - dependency-free `OpenAITranscriptCorrectionAdapter`
 - Responses API `gpt-5.6-terra`, `store:false`, strict JSON Schema request
 - deterministic ordered neutral proposal parsing
@@ -226,18 +227,28 @@ Slice 2 — OpenAI Correction Adapter
 - no-network injected-transport tests
 - Required Claude Review: Inconclusive — no critical findings identified
   (one bounded 6-turn review; no concrete critical issue reported)
+
+Slice 3 — Credentialed Korean Acceptance
+- dependency-free synthetic Korean acceptance module implemented
+- fake transport exercises canonical Candidate/Revision/Result persistence and restart
+- focused acceptance test passed; complete suite 670 passed
+- credentialed OpenAI request succeeded outside Codex with one proposal
+- provider `openai:gpt-5.6-terra`; structural Validation and canonical restart verified
+- no credential, raw provider payload or sensitive Transcript committed
+- no additional paid request made during resume
+- Claude Review: Optional — Skipped (acceptance harness/test only; no production contract change)
 ```
 
 ### Remaining Milestones
 
 ```text
-3. Credentialed Korean Acceptance
+None — Goal complete
 ```
 
 ### Immediate Next Slice
 
 ```text
-Credentialed Korean Acceptance
+Goal Complete
 ```
 
 ## 13. Consolidated Completion Report

@@ -276,10 +276,11 @@ coordination, structural Validation boundary and restart-safe fake-provider acce
 ## Concrete Transcript Correction Provider
 
 - Goal: `docs/goals/LectureOS_Codex_Goal_Concrete_Transcript_Correction_Provider.md`
-- Status: **IN PROGRESS**
+- Status: **COMPLETE**
 - Selected provider: OpenAI Responses API, `gpt-5.6-terra`
-- Completed slices: Provider Decision and Goal Baseline; OpenAI Correction Adapter
-- Immediate next slice: Credentialed Korean Acceptance
+- Completed slices: Provider Decision and Goal Baseline; OpenAI Correction Adapter;
+  Credentialed Korean Acceptance
+- Immediate next slice: Goal Complete
 
 The provider choice is a bounded implementation Architect Decision. OpenAI is selected
 because strict JSON Schema output satisfies the existing neutral proposal contract, the
@@ -298,6 +299,22 @@ refusal, incomplete response, invalid JSON, wrong shapes and invalid numeric val
 `CorrectionGenerationFailure` without exposing credentials or persisting raw payloads.
 The one bounded 6-turn required review ended without a verdict and identified no concrete
 critical issue; it is recorded as `Inconclusive — no critical findings identified`.
+
+### Credentialed Korean Acceptance
+
+The synthetic Korean acceptance module and no-network end-to-end restart test are
+implemented and the complete 670-test suite passes. The credentialed Responses API
+acceptance was executed successfully outside Codex with provider `openai:gpt-5.6-terra`,
+`proposal_count: 1`, `structural_valid: true`, and
+`canonical_restart_verified: true`. No additional paid request was made during resume.
+No credential value, raw provider payload or sensitive Transcript was printed, persisted,
+or committed. Review classification is Optional — Skipped because this slice adds only the
+acceptance harness and tests without changing the adapter or production contracts.
+
+The Concrete Transcript Correction Provider Goal is complete. One concrete OpenAI adapter
+now reaches the existing provider-independent correction Application, canonical persistence,
+structural Validation and restart reconstruction without introducing provider selection,
+fallback, Review authority or downstream product capabilities.
 
 ### Structural Validation Integration
 
