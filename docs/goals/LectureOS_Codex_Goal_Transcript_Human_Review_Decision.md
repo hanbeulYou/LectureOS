@@ -343,12 +343,26 @@ Slice 2 — Review Decision Records
 - 11 focused record tests passed; complete suite 712 passed
 - Required Claude Review: Inconclusive — no critical findings identified
   (additive immutable records; no Blueprint, lifecycle, identity or contract defect)
+
+Slice 3 — Deterministic Review Decision Service
+- `TranscriptReviewDecisionService.prepare_decision(...)` deterministic pure construction
+- loads durable review preparation, review item and candidate reference; requires running
+  execution; validates review item belongs to the preparation, candidate membership,
+  candidate kind and revision-reference provenance
+- reviewer must be a Human actor; Modify requires modified text; Accept/Reject forbid it
+- caller-supplied timestamp (no wall-clock); decision DomainResult links upstream to the
+  review preparation DomainResult; performs no canonical write
+- `PreparedReviewDecision` return; `AtomicReviewDecisionPersistence` port;
+  `TranscriptReviewDecisionError` for unsafe input
+- 10 focused service tests passed; complete suite 722 passed
+- Required Claude Review: Inconclusive — no critical findings identified
+  (pure Application construction; provenance/linkage/reviewer validated; no persistence,
+  no automation)
 ```
 
 ### Remaining Milestones
 
 ```text
-Slice 3 — Deterministic Review Decision Service
 Slice 4 — Atomic SQLite Persistence, Restart and Replay
 Slice 5 — Fake-Review Acceptance
 ```
@@ -356,7 +370,7 @@ Slice 5 — Fake-Review Acceptance
 ### Immediate Next Slice
 
 ```text
-Slice 3 — Deterministic Review Decision Service
+Slice 4 — Atomic SQLite Persistence, Restart and Replay
 ```
 
 ## 12. Consolidated Completion Report
