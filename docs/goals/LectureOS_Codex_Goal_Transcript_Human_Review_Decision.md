@@ -379,18 +379,37 @@ Slice 4 — Atomic SQLite Persistence, Restart and Replay
   (independent bounded review verified atomicity, additive migration, expected-column
   exactness, CHECK-constraint fidelity, timestamp round-trip determinism, linkage validation
   and restart reconstruction)
+
+Slice 5 — Fake-Review Acceptance
+- `lectureos.review_decision_acceptance` drives the full pipeline with a fake correction
+  provider and fake reviewer: no network, no credential, fixed timestamps
+- fake proposals → persisted proposed Revision → persisted Review Preparation → Human
+  Accept, Modify (append-only second decision on the same item) and Reject → atomic v7
+  persistence → reopen → exact restart reconstruction → identical deterministic replay
+- verifies immutable Decision records, Review Item / Candidate / Revision linkage, reviewer
+  provenance, execution provenance, append-only lineage, atomic persistence, restart
+  reconstruction, structural integrity and deterministic replay
+- acceptance summary: decision_count 3, kinds [accept, modify, reject], and
+  restart_reconstructed / review_item_linked / candidate_linked / revision_linked /
+  reviewer_provenance / execution_provenance / append_only_lineage / deterministic_replay
+  all true
+- focused acceptance test passed; complete suite 733 passed
+- no credential, provider payload or sensitive transcript committed; no downstream
+  automation triggered
+- Claude Review: Optional — Skipped (acceptance harness/test only; no production or
+  contract change)
 ```
 
 ### Remaining Milestones
 
 ```text
-Slice 5 — Fake-Review Acceptance
+None — Goal complete
 ```
 
 ### Immediate Next Slice
 
 ```text
-Slice 5 — Fake-Review Acceptance
+Goal Complete
 ```
 
 ## 12. Consolidated Completion Report

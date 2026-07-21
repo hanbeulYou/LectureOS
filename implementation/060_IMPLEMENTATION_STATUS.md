@@ -406,8 +406,12 @@ Decision, applicability, current selection or downstream product behavior was in
 ## Transcript Human Review Decision
 
 - Goal: `docs/goals/LectureOS_Codex_Goal_Transcript_Human_Review_Decision.md`
-- Status: **IN PROGRESS**
-- Immediate next slice: Slice 5 — Fake-Review Acceptance
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema v7
+- Completed slices: Goal Baseline and Assessment; Review Decision Records; Deterministic
+  Review Decision Service; Atomic SQLite Persistence, Restart and Replay; Fake-Review
+  Acceptance
+- Immediate next slice: Goal Complete
 
 This milestone durably records canonical Human Review Decisions (Accept, Reject, Modify) on
 prepared Review Items without triggering any downstream automation. It is purely a recording
@@ -431,3 +435,19 @@ The AGENTS.md Architect Checklist is entirely `No`: no existing Domain contract 
 released `ReviewDecision`/`ReviewService` are untouched), no released-schema meaning change,
 no lifecycle authority change, no responsibility shift, no new identity semantics, one additive
 migration, and no Blueprint contradiction with `043_REVIEW_PIPELINE.md`.
+
+The Transcript Human Review Decision Goal is complete. `TranscriptReviewDecisionService`
+records a reviewer's Accept, Reject or Modify judgement as an immutable
+`TranscriptReviewDecision` aggregate, validating that the referenced Review Item belongs to a
+durable Review Preparation, that the candidate and revision provenance match, that the reviewer
+is a Human actor, that the execution is running, and that Modify carries text while Accept and
+Reject do not. The decision timestamp is a caller-supplied command input, so
+`SQLiteReviewDecisionCommandPersistence` — which writes the decision and its co-persisted
+DomainResultReference in one atomic v7 transaction — reconstructs each decision exactly after
+restart and reproduces identical decisions on deterministic replay into a fresh database. An
+in-process fake-review acceptance records Accept, an append-only Modify on the same item, and
+Reject, confirming immutable Decision records, Review Item / Candidate / Revision linkage,
+reviewer and execution provenance, append-only lineage, atomic persistence, restart
+reconstruction, structural integrity and deterministic replay. The complete 733-test suite
+passes. Recording a decision triggers no downstream automation: no applicability, current
+selection, Transcript Ready, subtitle or artifact behavior was introduced.
