@@ -164,3 +164,64 @@ After every successful slice:
 - Remove it from Remaining Milestones.
 - Update repository capability summary.
 - Preserve history.
+
+## Milestone Execution Protocol
+
+A milestone prompt selects one capability; the durable rules below are inherited
+and must not be restated in prompts. This section states governing policy only.
+Detailed step-by-step workflow remains owned by
+implementation/050_IMPLEMENTATION_WORKFLOW.md; additive schema/migration mechanics
+remain owned by implementation/020_STORAGE_MODEL.md and the existing migration
+contracts. Cross-reference those documents rather than duplicating them.
+
+### Autonomous continuation
+
+Perform any bounded assessment, then — if no substantive Stop Condition exists —
+create and execute the work without pausing for approval: one bounded logical
+slice per commit, focused validation after each slice, and the complete
+validation suite before completion. Do not stop after assessment or Goal
+creation.
+
+### Stop Conditions (substantive only)
+
+Stop and report only for:
+
+- an unresolved Blueprint contradiction;
+- product policy materially undefined by current contracts;
+- an Architect Decision that cannot be safely bounded at implementation level;
+- inability to preserve atomicity, identity, provenance, or Human Authority;
+- an external dependency required for acceptance that is unavailable.
+
+Reviewer silence, a missing `PASS` line, optional improvements, naming
+preferences, speculative future concerns, and non-critical refactoring are never
+Stop Conditions. When blocked, report the exact blocker, the contract conflict or
+missing policy, repository status, completed commits, staged and unstaged state,
+and the exact resume point.
+
+### Additive persistence and migration compatibility
+
+When a milestone adds persistence, the schema change is strictly additive:
+preserve every existing row and meaning from the first through the latest
+released schema version, reject unsupported downgrade and direct-skip migrations
+consistently with the existing migration contracts, and verify that every
+previously released schema version reaches the new schema through the supported
+single-step migration chain without data loss or semantic mutation.
+
+### Blueprint Drift Check
+
+Before completion, verify no architectural drift relative to completed
+milestones: the Product → Application → Capability Contract → Provider dependency
+direction is unchanged; no provider owns identity, policy, or lifecycle it must
+not; no existing canonical enum, aggregate, or service changes meaning; the
+migration is additive; no downstream responsibility is pulled into an upstream
+domain; and Human Authority is preserved.
+
+### Consolidated Completion Report
+
+On completion, return one consolidated report. Unless a Goal specifies its own
+report sections, include at least: Summary; Repository Status; Completed Commits;
+Architecture Decisions; Tests and Validation; Claude Reviews; Blueprint Drift
+Check; Scope Confirmation; Deferred Capabilities; Open Questions; Final Verdict.
+End with the lines `Requires Architect Decision: Yes/No`,
+`Requires Blueprint Clarification: Yes/No`, and `Requires Blueprint PATCH: Yes/No`.
+A Goal may extend or specialize this skeleton with domain-specific sections.
