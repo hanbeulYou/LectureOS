@@ -632,7 +632,7 @@ stage; Subtitle and Artifact stages remain out of scope and unstarted.
 
 - Goal: `docs/goals/LectureOS_Codex_Goal_Subtitle_Transcript_Intake.md`
 - Status: **IN PROGRESS**
-- Immediate next slice: Slice 2 — Intake Records
+- Immediate next slice: Slice 3 — Deterministic Intake Service
 
 This milestone begins the Subtitle Pipeline (`docs/041_SUBTITLE_PIPELINE.md §4.1 Transcript
 Intake`): it deterministically derives and durably records, from a canonical Transcript

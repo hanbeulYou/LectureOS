@@ -151,14 +151,34 @@ validation inherited.)
 ### Completed Capabilities
 
 ```text
-None yet
+Slice 1 — Goal Baseline and Assessment
+- commit `c3272b7` — `docs: add subtitle transcript intake goal`
+- bounded assessment: no substantive blocker; intake derives from the canonical READY
+  Transcript Readiness Evaluation; additive schema v11 planned; in-memory subtitle domain
+  left unchanged
+- Review: Optional — Skipped (documentation only)
+
+Slice 2 — Intake Records
+- `SubtitleTranscriptIntakeId` added to application identities
+- `SubtitleIntakeOutcome` enum (ELIGIBLE / NOT_ELIGIBLE) with `intake_for_readiness_outcome`
+  deterministic mapping (READY→ELIGIBLE, NOT_READY→NOT_ELIGIBLE)
+- `SubtitleTranscriptIntake` aggregate: identity, DomainResult linkage, readiness linkage
+  (+ readiness outcome), derived intake outcome, carried selection/applicability/decision/
+  review-item/candidate lineage, transcript+revision linkage, source media/timeline,
+  structural Validation reference, execution provenance, append-only sequence/previous
+  linkage, deterministic reason
+- `SubtitleIntakeIdentityPlan` (intake id, result id)
+- invariants: outcome must match the readiness mapping; ELIGIBLE requires READY; non-negative
+  sequence; non-blank reason; first has no previous reference
+- 10 focused record tests passed; complete suite 832 passed
+- Required Claude Review: Inconclusive — no critical findings identified
+  (additive immutable records; ELIGIBLE⇔READY enforced at the record level; no Blueprint/
+  lifecycle/contract defect)
 ```
 
 ### Remaining Milestones
 
 ```text
-Slice 1 — Goal Baseline and Assessment
-Slice 2 — Intake Records
 Slice 3 — Deterministic Intake Service
 Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
 Slice 5 — Fake-Review / Fake-Transcript Acceptance
@@ -167,7 +187,7 @@ Slice 5 — Fake-Review / Fake-Transcript Acceptance
 ### Immediate Next Slice
 
 ```text
-Slice 1 — Goal Baseline and Assessment
+Slice 3 — Deterministic Intake Service
 ```
 
 ## 10. Completion Report — Milestone Additions
