@@ -14,6 +14,9 @@ from lectureos.application.transcript_applicability_evaluation import (
 from lectureos.application.transcript_current_selection import (
     TranscriptCurrentSelectionService,
 )
+from lectureos.application.transcript_readiness_evaluation import (
+    TranscriptReadinessEvaluationService,
+)
 from lectureos.application.transcript_review_decision import (
     TranscriptReviewDecisionService,
 )
@@ -25,7 +28,9 @@ from lectureos.execution.service import ExecutionService
 from lectureos.persistence import (
     SQLiteApplicabilityEvaluationCommandPersistence,
     SQLiteCurrentSelectionCommandPersistence,
+    SQLiteReadinessEvaluationCommandPersistence,
     SQLiteTranscriptApplicabilityEvaluationRepository,
+    SQLiteTranscriptCurrentSelectionRepository,
     SQLiteCorrectionCandidateRepository,
     SQLiteCorrectedTranscriptRevisionRepository,
     SQLiteDomainResultReferenceRepository,
@@ -185,6 +190,29 @@ def compose_sqlite_transcript_current_selection_service(
     persistence = SQLiteCurrentSelectionCommandPersistence(connection)
     return TranscriptCurrentSelectionService(
         evaluations, execution_query, persistence
+    )
+
+
+def compose_sqlite_transcript_readiness_evaluation_service(
+    connection: sqlite3.Connection,
+    execution_query: ExecutionQueryBoundary,
+) -> TranscriptReadinessEvaluationService:
+    """Build durable v10 Transcript Ready State evaluation on one caller connection."""
+
+    selections = SQLiteTranscriptCurrentSelectionRepository(connection)
+    applicabilities = SQLiteTranscriptApplicabilityEvaluationRepository(connection)
+    decisions = SQLiteTranscriptReviewDecisionRepository(connection)
+    transcripts = compose_sqlite_transcript_service(connection, execution_query)
+    validation = TranscriptValidationService(transcripts, execution_query)
+    persistence = SQLiteReadinessEvaluationCommandPersistence(connection)
+    return TranscriptReadinessEvaluationService(
+        selections,
+        applicabilities,
+        decisions,
+        transcripts,
+        validation,
+        execution_query,
+        persistence,
     )
 
 

@@ -25,6 +25,10 @@ from .processing_units import SQLiteProcessingUnitRepository
 from .processing_runs import SQLiteProcessingRunRepository
 from .provider_transcripts import SQLiteProviderTranscriptResultRepository
 from .raw_transcripts import SQLiteRawTranscriptRepository
+from .readiness_evaluation import (
+    SQLiteReadinessEvaluationCommandPersistence,
+    SQLiteTranscriptReadinessEvaluationRepository,
+)
 from .review_decision import (
     SQLiteReviewDecisionCommandPersistence,
     SQLiteTranscriptReviewDecisionRepository,
@@ -55,6 +59,8 @@ __all__ = [
     "SQLiteTranscriptApplicabilityEvaluationRepository",
     "SQLiteCurrentSelectionCommandPersistence",
     "SQLiteTranscriptCurrentSelectionRepository",
+    "SQLiteReadinessEvaluationCommandPersistence",
+    "SQLiteTranscriptReadinessEvaluationRepository",
     "SQLiteCorrectionCandidateRepository",
     "SQLiteCorrectedTranscriptRevisionRepository",
     "SQLiteExecutionCommandPersistence",

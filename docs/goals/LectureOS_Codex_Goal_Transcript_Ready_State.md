@@ -403,19 +403,45 @@ Slice 3 — Deterministic Readiness Evaluation Service
 - Required Claude Review: Inconclusive — no critical findings identified
   (pure deterministic derivation; lineage/validation/execution provenance verified; no
   persistence, no upstream mutation, no downstream trigger)
+
+Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
+- additive SQLite schema v10 (one flat table `transcript_readiness_evaluations`, no FK
+  children) with CHECK constraints mirroring the aggregate invariants, including the
+  READY-consistency CHECK (READY ⇔ selected + applicable + structural_valid + ALL_CONDITIONS_MET)
+- `_migrate_v9_to_v10` additive migration; downgrades and direct skips rejected; existing
+  v1–v9 tables and rows unchanged
+- `SQLiteReadinessEvaluationCommandPersistence.persist_readiness_evaluation(...)` writes the
+  readiness record and its co-persisted DomainResultReference in one `BEGIN IMMEDIATE`
+  transaction; validates linkage and identity absence; rolls back on collision, linkage, write
+  or commit failure; writes only the readiness row + its Domain Result (no upstream mutation)
+- `SQLiteTranscriptReadinessEvaluationRepository` reconstructs the exact readiness after restart
+- composition `compose_sqlite_transcript_readiness_evaluation_service` wires the durable
+  selection/applicability/decision queries + transcript/validation services + readiness
+  persistence
+- migration compatibility verified: every released version (v1..v9) chains to v10 through the
+  supported single steps while preserving existing rows and meaning
+- idempotency verified: repeated readiness evaluation leaves the upstream Current Selection row
+  byte-identical (the recomputed structural Validation is in-memory, not a durable table)
+- 20 focused tests (v10 migration, full v1..v9→v10 compatibility chain, restart reconstruction,
+  deterministic replay into a fresh database, idempotency, atomic rollback) passed; complete
+  suite 821 passed; existing latest-version test expectations updated 9→10 and the v6/v7/v8/v9
+  unsupported-target guards advanced accordingly
+- Required Claude Review: Inconclusive — no critical findings identified
+  (independent bounded review verified atomicity, additive migration, expected-column exactness,
+  the three-layer READY-authority CHECK, migration-chain compatibility, linkage validation,
+  restart reconstruction, and absence of upstream mutation / downstream trigger)
 ```
 
 ### Remaining Milestones
 
 ```text
-Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
 Slice 5 — Fake-Review / Fake-Transcript Acceptance
 ```
 
 ### Immediate Next Slice
 
 ```text
-Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
+Slice 5 — Fake-Review / Fake-Transcript Acceptance
 ```
 
 ## 13. Consolidated Completion Report
