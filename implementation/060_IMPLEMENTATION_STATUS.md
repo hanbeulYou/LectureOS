@@ -506,8 +506,12 @@ service remains unchanged.
 ## Transcript Current Selection
 
 - Goal: `docs/goals/LectureOS_Codex_Goal_Transcript_Current_Selection.md`
-- Status: **IN PROGRESS**
-- Immediate next slice: Slice 5 — Fake-Review Acceptance
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema v9
+- Completed slices: Goal Baseline and Assessment; Current Selection Records; Deterministic
+  Current Selection Service; Atomic SQLite Persistence, Restart, Replay and Migration
+  Compatibility; Fake-Review Acceptance
+- Immediate next slice: Goal Complete
 
 This milestone deterministically derives and durably records which proposed Transcript Revision
 is currently selected, from a canonical Applicability evaluation, without implying a Transcript
@@ -532,3 +536,24 @@ meaning change, no lifecycle authority change (selection is derived, not decided
 produces Transcript Ready), no responsibility shift, no new identity semantics, one additive
 migration, and no Blueprint contradiction. Migration compatibility from every released version
 (v1..v8) to v9 will be verified in Slice 4.
+
+The Transcript Current Selection Goal is complete. `TranscriptCurrentSelectionService` loads a
+canonical Applicability evaluation and deterministically derives which proposed Revision is
+currently selected — `SELECTED` from an APPLICABLE evaluation, `NOT_SELECTED` from
+NOT_APPLICABLE or SUPERSEDED_BY_MODIFICATION — carrying the applicability / decision / review
+item / candidate / revision linkage and execution provenance into an immutable
+`TranscriptCurrentSelection` aggregate. `SQLiteCurrentSelectionCommandPersistence` writes the
+selection and its co-persisted DomainResultReference in one atomic v9 transaction, reconstructs
+each selection exactly after restart, and reproduces identical selections on deterministic
+replay into a fresh database (no wall-clock is read). An in-process fake-review acceptance
+records Accept, Reject and Modify decisions, derives applicability, and derives the three
+corresponding current-selection outcomes (selected, not_selected, not_selected), confirming
+immutable Current Selection records, Applicability / Review Item / Candidate / Revision linkage,
+execution provenance, deterministic selection, atomic persistence, restart reconstruction,
+structural integrity and deterministic replay. The complete 788-test suite passes. A Blueprint
+Drift Check confirmed no drift relative to any prior completed milestone, and migration
+compatibility from every released version (v1..v8) to v9 is verified by an explicit
+single-step-chain test that preserves existing data. Current Selection determines only which
+Revision is currently selected; it never implies the Transcript is Ready, and no Transcript
+Ready, subtitle, artifact, export or downstream-execution behavior was introduced. The
+pre-existing in-memory `CurrentTranscriptSelection` model and service remain unchanged.

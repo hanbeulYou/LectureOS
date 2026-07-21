@@ -397,18 +397,40 @@ Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibili
   (independent bounded review verified atomicity, additive migration, expected-column
   exactness, applicability→selection CHECK fidelity, migration-chain compatibility, linkage
   validation and restart reconstruction)
+
+Slice 5 — Fake-Review Acceptance
+- `lectureos.current_selection_acceptance` drives the full pipeline with a fake correction
+  provider and fake reviewer: no network, no credential, fixed timestamps
+- fake proposals → persisted proposed Revision → persisted Review Preparation → Human Accept,
+  Reject and Modify decisions → applicability derivation → deterministic current-selection
+  derivation → atomic v9 persistence → reopen → exact restart reconstruction → identical
+  deterministic replay
+- verifies immutable Current Selection records, Applicability / Review Item / Candidate /
+  Revision linkage, execution provenance, deterministic selection, atomic persistence, restart
+  reconstruction, structural integrity and deterministic replay
+- acceptance summary: selection_count 3, outcomes [selected, not_selected, not_selected], and
+  deterministic_selection / restart_reconstructed / applicability_linked / review_item_linked /
+  candidate_linked / revision_linked / execution_provenance / deterministic_replay all true
+- focused acceptance test passed; complete suite 788 passed
+- no credential, provider payload or sensitive transcript committed; no Transcript Ready,
+  subtitle, artifact, export or downstream execution triggered
+- Blueprint Drift Check: PASS — no existing domain contract changed, schema strictly additive,
+  current selection derives only from canonical applicability, no forbidden-scope behavior
+- Migration Compatibility: PASS — every released version v1..v8 chains to v9 preserving data
+- Claude Review: Optional — Skipped (acceptance harness/test only; no production or contract
+  change)
 ```
 
 ### Remaining Milestones
 
 ```text
-Slice 5 — Fake-Review Acceptance
+None — Goal complete
 ```
 
 ### Immediate Next Slice
 
 ```text
-Slice 5 — Fake-Review Acceptance
+Goal Complete
 ```
 
 ## 13. Consolidated Completion Report
