@@ -17,6 +17,21 @@
 > Author every new milestone Goal from this template. Never clone a completed
 > Goal. See `docs/goals/README.md` for the authoring workflow.
 
+## How to read this template
+
+Every section below is exactly one of four kinds. Keep them separate; never let
+inherited policy leak back into a Goal.
+
+- **Inherited repository policy** — the inheritance notice above. Owned by
+  `AGENTS.md`; never restated in a Goal.
+- **Milestone-specific implementation** — sections 1–7. What this milestone builds.
+- **Milestone-specific validation** — section 8. Only the invariants unique to
+  this milestone; generic validation is inherited.
+- **Milestone-specific completion-report additions** — section 10. Only the report
+  sections beyond the base skeleton owned by `AGENTS.md`.
+
+Section 9 tracks living status; section 11 records deliberate overrides.
+
 ## 1. Mission & Lifecycle Position
 
 <What this milestone builds and why. State the lifecycle position, e.g.
