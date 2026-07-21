@@ -627,3 +627,34 @@ record; Current Selection and Transcript Ready remain distinct canonical concern
 existing structural Validation contract and in-memory selection/applicability services remain
 unchanged. This completes the canonical Transcript pipeline through the Transcript Ready lifecycle
 stage; Subtitle and Artifact stages remain out of scope and unstarted.
+
+## Subtitle Transcript Intake
+
+- Goal: `docs/goals/LectureOS_Codex_Goal_Subtitle_Transcript_Intake.md`
+- Status: **IN PROGRESS**
+- Immediate next slice: Slice 2 — Intake Records
+
+This milestone begins the Subtitle Pipeline (`docs/041_SUBTITLE_PIPELINE.md §4.1 Transcript
+Intake`): it deterministically derives and durably records, from a canonical Transcript
+Readiness Evaluation whose outcome is READY, whether the selected Corrected Transcript revision
+is ELIGIBLE to begin subtitle work. `Product → Application → Capability Contract → Provider` and
+the lifecycle position `… → Current Selection → Transcript Ready → Subtitle Transcript Intake →
+Subtitle Candidate Generation → …` are preserved, while Subtitle Candidate Generation,
+Reading/Time Representation, Subtitle Review, Final Subtitle, Artifact and export remain out of
+scope. Intake is derived only from canonical records; providers have no responsibility; recording
+intake mutates no upstream record and starts no downstream capability.
+
+The bounded architectural assessment found no substantive blocker. The `TranscriptReadinessEvaluation`
+(v10) is the canonical certificate consumed; source media/timeline are resolved from the durable
+Corrected Transcript revision → Raw Transcript (v5); structural validity is inherited from the
+readiness record (nothing recomputed — its `validation_id` is carried for provenance). A single
+Application-owned aggregate `SubtitleTranscriptIntake` is added, with a focused
+`SubtitleIntakeOutcome` enum (`ELIGIBLE` iff readiness `READY`, else `NOT_ELIGIBLE`) enforced at
+the aggregate and SQLite-CHECK levels. A new `SubtitleTranscriptIntakeService` mirrors the
+established evaluate/persist split with an Application-owned identity plan, and an additive SQLite
+schema v11 adds atomic persistence, restart reconstruction and deterministic replay for the intake
+record only. The AGENTS.md Architect Checklist is entirely `No`: no existing Domain contract
+change, no released-schema meaning change, no lifecycle authority change, no responsibility shift,
+no new identity semantics, one additive migration, and no Blueprint contradiction. The existing
+in-memory `subtitle/` domain remains unchanged. Migration compatibility from every released
+version (v1..v10) to v11 will be verified in Slice 4.
