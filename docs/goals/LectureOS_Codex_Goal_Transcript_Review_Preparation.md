@@ -341,12 +341,25 @@ Slice 2 — Review Preparation Records
 - 12 focused record tests passed; complete suite 682 passed
 - Required Claude Review: Inconclusive — no critical findings identified
   (additive records; no Blueprint, lifecycle, identity or contract defect)
+
+Slice 3 — Deterministic Review Preparation Service
+- `TranscriptReviewPreparationService.prepare_review(...)` deterministic pure mapping
+- loads proposed Revision + Candidates, requires running execution, maps to canonical
+  `CandidateReference`, `ReviewContext`, `ReviewItem` and the preparation aggregate
+- preserves downstream contract: candidate reference identity equals candidate identity
+- validates candidate lineage (transcript + parent revision), execution provenance,
+  DomainResult kind/identity/media/timeline and target Segment membership
+- deterministic review ordering (canonical candidate order) and segment-keyed grouping
+- computes structural integrity; performs no canonical write
+- `PreparedTranscriptReview` return; `TranscriptReviewPreparationError` for unsafe input
+- 8 focused service tests passed; complete suite 690 passed
+- Required Claude Review: Inconclusive — no critical findings identified
+  (pure Application mapping; provenance/lineage/identity validated; no persistence)
 ```
 
 ### Remaining Milestones
 
 ```text
-Slice 3 — Deterministic Review Preparation Service
 Slice 4 — Atomic SQLite Persistence and Restart
 Slice 5 — Fake-Provider / Fake-Review Acceptance
 ```
@@ -354,7 +367,7 @@ Slice 5 — Fake-Provider / Fake-Review Acceptance
 ### Immediate Next Slice
 
 ```text
-Slice 3 — Deterministic Review Preparation Service
+Slice 4 — Atomic SQLite Persistence and Restart
 ```
 
 ## 12. Consolidated Completion Report

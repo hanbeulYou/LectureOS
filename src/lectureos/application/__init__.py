@@ -34,10 +34,13 @@ from .subtitle_review import (
 )
 from .transcript_review_preparation import (
     REVIEW_PREPARATION_RESULT_KIND,
+    PreparedTranscriptReview,
     ReviewItemGroup,
     ReviewPreparationIdentityPlan,
     ReviewPreparationTargetIdentityPlan,
     TranscriptReviewPreparation,
+    TranscriptReviewPreparationError,
+    TranscriptReviewPreparationService,
 )
 
 __all__ = [
@@ -60,10 +63,13 @@ __all__ = [
     "SubtitleReviewIntegrationError",
     "SubtitleReviewIntegrationService",
     "REVIEW_PREPARATION_RESULT_KIND",
+    "PreparedTranscriptReview",
     "ReviewItemGroup",
     "ReviewPreparationIdentityPlan",
     "ReviewPreparationTargetIdentityPlan",
     "TranscriptReviewPreparation",
+    "TranscriptReviewPreparationError",
+    "TranscriptReviewPreparationService",
     "SubtitleDecisionApplicationError",
     "SubtitleDecisionApplicationResult",
     "SubtitleDecisionApplicationService",
