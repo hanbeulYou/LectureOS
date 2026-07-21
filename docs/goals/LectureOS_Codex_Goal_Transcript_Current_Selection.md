@@ -335,14 +335,34 @@ commit/review/validation 근거를 기록하며, 완료 slice를 Remaining에서
 ### Completed Capabilities
 
 ```text
-None yet
+Slice 1 — Goal Baseline and Assessment
+- commit `7333658` — `docs: add transcript current selection goal`
+- bounded architectural assessment: no substantive blocker
+- reuse canonical applicability aggregate; add one Application-owned selection aggregate
+- deterministic outcome mapping; additive schema v9 planned; existing selection service
+  and enum left unchanged
+- Review: Optional — Skipped (documentation only)
+
+Slice 2 — Current Selection Records
+- `TranscriptCurrentSelectionId` added to application identities
+- `CurrentSelectionOutcome` enum (SELECTED / NOT_SELECTED) with
+  `selection_for_applicability_outcome` deterministic mapping (APPLICABLE→SELECTED,
+  NOT_APPLICABLE/SUPERSEDED_BY_MODIFICATION→NOT_SELECTED)
+- `TranscriptCurrentSelection` aggregate: identity, DomainResult linkage, source
+  applicability id + outcome, derived selection outcome, decision / review item / candidate
+  / revision linkage, execution provenance, append-only sequence / previous linkage,
+  deterministic reason
+- `CurrentSelectionIdentityPlan` (selection id, result id)
+- invariants: non-negative sequence, non-blank reason, outcome must match applicability-outcome
+  mapping, first selection has no previous reference
+- 9 focused record tests passed; complete suite 769 passed
+- Required Claude Review: Inconclusive — no critical findings identified
+  (additive immutable records; deterministic mapping; no Blueprint/lifecycle/contract defect)
 ```
 
 ### Remaining Milestones
 
 ```text
-Slice 1 — Goal Baseline and Assessment
-Slice 2 — Current Selection Records
 Slice 3 — Deterministic Current Selection Service
 Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
 Slice 5 — Fake-Review Acceptance
@@ -351,7 +371,7 @@ Slice 5 — Fake-Review Acceptance
 ### Immediate Next Slice
 
 ```text
-Slice 1 — Goal Baseline and Assessment
+Slice 3 — Deterministic Current Selection Service
 ```
 
 ## 13. Consolidated Completion Report

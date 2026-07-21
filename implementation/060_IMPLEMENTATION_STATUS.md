@@ -507,7 +507,7 @@ service remains unchanged.
 
 - Goal: `docs/goals/LectureOS_Codex_Goal_Transcript_Current_Selection.md`
 - Status: **IN PROGRESS**
-- Immediate next slice: Slice 2 — Current Selection Records
+- Immediate next slice: Slice 3 — Deterministic Current Selection Service
 
 This milestone deterministically derives and durably records which proposed Transcript Revision
 is currently selected, from a canonical Applicability evaluation, without implying a Transcript
