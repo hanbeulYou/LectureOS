@@ -358,3 +358,28 @@ exactly after restart. No schema, migration, Review or concrete-provider behavio
 The one bounded 6-turn required review ended without a verdict and identified no
 concrete critical issue; it is recorded as
 `Inconclusive — no critical findings identified` under the global review policy.
+
+## Transcript Review Preparation
+
+- Goal: `docs/goals/LectureOS_Codex_Goal_Transcript_Review_Preparation.md`
+- Status: **IN PROGRESS**
+- Immediate next slice: Slice 2 — Review Preparation Records
+
+This milestone prepares canonical proposed Transcript corrections for Human Review without
+introducing Review decisions or changing Transcript state. It is purely preparatory:
+`Product → Application → Capability Contract → Provider` and the lifecycle position
+`Transcript → Proposed Revision → Review Preparation` are preserved, while Human Review
+Decision, applicability and current selection remain out of scope.
+
+The bounded architectural assessment found no substantive blocker. The existing in-memory
+`review/` domain types (`CandidateReference`, `ReviewContext`, `ReviewItem`) are reused as
+the canonical review-preparation vocabulary; a single Application-owned aggregate
+`TranscriptReviewPreparation` is added to carry review ordering, candidate grouping, review
+metadata, provenance, DomainResult linkage and structural integrity. A new
+`TranscriptReviewPreparationService` mirrors the correction-generation `prepare`/persist split
+with an Application-owned identity plan, and an additive SQLite schema v6 adds atomic
+persistence and restart reconstruction for the preparation subset only. Providers remain
+unchanged and never own Review identity or Review lifecycle. The AGENTS.md Architect Checklist
+is entirely `No`: no existing Domain contract change, no released-schema meaning change, no
+lifecycle authority change, no responsibility shift, no new identity semantics, one additive
+migration, and no Blueprint contradiction.
