@@ -350,12 +350,26 @@ Slice 2 — Applicability Records
 - 9 focused record tests passed; complete suite 742 passed
 - Required Claude Review: Inconclusive — no critical findings identified
   (additive immutable records; deterministic mapping; no Blueprint/lifecycle/contract defect)
+
+Slice 3 — Deterministic Applicability Evaluation Service
+- `TranscriptApplicabilityEvaluationService.evaluate_applicability(...)` deterministic pure
+  derivation
+- loads the durable canonical Human Review Decision, requires a running execution, derives
+  the outcome from the decision kind via the single deterministic mapping, and carries the
+  decision / review item / candidate / revision linkage into the evaluation
+- evaluation DomainResult links upstream to the source decision DomainResult; no wall-clock
+  is read; performs no canonical write
+- `PreparedApplicabilityEvaluation` return; `AtomicApplicabilityEvaluationPersistence` port;
+  `TranscriptApplicabilityEvaluationError` for unsafe input
+- 7 focused service tests passed; complete suite 749 passed
+- Required Claude Review: Inconclusive — no critical findings identified
+  (pure deterministic derivation; linkage/execution provenance validated; no persistence,
+  no selection, no automation)
 ```
 
 ### Remaining Milestones
 
 ```text
-Slice 3 — Deterministic Applicability Evaluation Service
 Slice 4 — Atomic SQLite Persistence, Restart and Replay
 Slice 5 — Fake-Review Acceptance
 ```
@@ -363,7 +377,7 @@ Slice 5 — Fake-Review Acceptance
 ### Immediate Next Slice
 
 ```text
-Slice 3 — Deterministic Applicability Evaluation Service
+Slice 4 — Atomic SQLite Persistence, Restart and Replay
 ```
 
 ## 13. Consolidated Completion Report

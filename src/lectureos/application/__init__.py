@@ -36,7 +36,11 @@ from .transcript_applicability_evaluation import (
     APPLICABILITY_EVALUATION_RESULT_KIND,
     ApplicabilityEvaluationIdentityPlan,
     ApplicabilityOutcome,
+    AtomicApplicabilityEvaluationPersistence,
+    PreparedApplicabilityEvaluation,
     TranscriptApplicabilityEvaluation,
+    TranscriptApplicabilityEvaluationError,
+    TranscriptApplicabilityEvaluationService,
     outcome_for_decision_kind,
 )
 from .transcript_review_decision import (
@@ -82,7 +86,11 @@ __all__ = [
     "APPLICABILITY_EVALUATION_RESULT_KIND",
     "ApplicabilityEvaluationIdentityPlan",
     "ApplicabilityOutcome",
+    "AtomicApplicabilityEvaluationPersistence",
+    "PreparedApplicabilityEvaluation",
     "TranscriptApplicabilityEvaluation",
+    "TranscriptApplicabilityEvaluationError",
+    "TranscriptApplicabilityEvaluationService",
     "outcome_for_decision_kind",
     "REVIEW_DECISION_RESULT_KIND",
     "AtomicReviewDecisionPersistence",
