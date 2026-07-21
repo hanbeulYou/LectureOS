@@ -358,12 +358,26 @@ Slice 2 — Current Selection Records
 - 9 focused record tests passed; complete suite 769 passed
 - Required Claude Review: Inconclusive — no critical findings identified
   (additive immutable records; deterministic mapping; no Blueprint/lifecycle/contract defect)
+
+Slice 3 — Deterministic Current Selection Service
+- `TranscriptCurrentSelectionService.evaluate_selection(...)` deterministic pure derivation
+- loads the durable canonical Applicability evaluation, requires a running execution, derives
+  the selection outcome from the applicability outcome via the single deterministic mapping,
+  and carries the applicability / decision / review item / candidate / revision linkage into
+  the selection
+- selection DomainResult links upstream to the source applicability DomainResult; no wall-clock
+  is read; performs no canonical write; never produces a Transcript Ready state
+- `PreparedCurrentSelection` return; `AtomicCurrentSelectionPersistence` port;
+  `TranscriptCurrentSelectionError` for unsafe input
+- 7 focused service tests passed; complete suite 776 passed
+- Required Claude Review: Inconclusive — no critical findings identified
+  (pure deterministic derivation; linkage/execution provenance validated; no persistence,
+  no Transcript Ready, no automation)
 ```
 
 ### Remaining Milestones
 
 ```text
-Slice 3 — Deterministic Current Selection Service
 Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
 Slice 5 — Fake-Review Acceptance
 ```
@@ -371,7 +385,7 @@ Slice 5 — Fake-Review Acceptance
 ### Immediate Next Slice
 
 ```text
-Slice 3 — Deterministic Current Selection Service
+Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
 ```
 
 ## 13. Consolidated Completion Report

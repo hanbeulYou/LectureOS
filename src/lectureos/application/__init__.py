@@ -45,9 +45,13 @@ from .transcript_applicability_evaluation import (
 )
 from .transcript_current_selection import (
     CURRENT_SELECTION_RESULT_KIND,
+    AtomicCurrentSelectionPersistence,
     CurrentSelectionIdentityPlan,
     CurrentSelectionOutcome,
+    PreparedCurrentSelection,
     TranscriptCurrentSelection,
+    TranscriptCurrentSelectionError,
+    TranscriptCurrentSelectionService,
     selection_for_applicability_outcome,
 )
 from .transcript_review_decision import (
@@ -100,9 +104,13 @@ __all__ = [
     "TranscriptApplicabilityEvaluationService",
     "outcome_for_decision_kind",
     "CURRENT_SELECTION_RESULT_KIND",
+    "AtomicCurrentSelectionPersistence",
     "CurrentSelectionIdentityPlan",
     "CurrentSelectionOutcome",
+    "PreparedCurrentSelection",
     "TranscriptCurrentSelection",
+    "TranscriptCurrentSelectionError",
+    "TranscriptCurrentSelectionService",
     "selection_for_applicability_outcome",
     "REVIEW_DECISION_RESULT_KIND",
     "AtomicReviewDecisionPersistence",

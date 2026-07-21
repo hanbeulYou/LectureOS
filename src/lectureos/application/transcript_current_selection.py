@@ -12,12 +12,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import Protocol
 
+from lectureos.execution.boundaries import ExecutionQueryBoundary
 from lectureos.execution.identities import (
     DomainResultId,
     ProcessingRunId,
     UnitExecutionId,
 )
+from lectureos.execution.models import DomainResultReference, ProcessingState
 from lectureos.review.identities import CandidateReferenceId, ReviewItemId
 from lectureos.transcript.identities import TranscriptRevisionId
 
@@ -26,7 +29,10 @@ from .identities import (
     TranscriptCurrentSelectionId,
     TranscriptReviewDecisionId,
 )
-from .transcript_applicability_evaluation import ApplicabilityOutcome
+from .transcript_applicability_evaluation import (
+    ApplicabilityOutcome,
+    TranscriptApplicabilityEvaluation,
+)
 
 CURRENT_SELECTION_RESULT_KIND = "transcript_current_selection"
 
@@ -98,10 +104,137 @@ class CurrentSelectionIdentityPlan:
     selection_result_id: DomainResultId
 
 
+@dataclass(frozen=True, slots=True)
+class PreparedCurrentSelection:
+    """Immutable canonical current-selection records; not yet persisted."""
+
+    selection: TranscriptCurrentSelection
+    selection_result: DomainResultReference
+
+
+class ApplicabilityEvaluationQuery(Protocol):
+    def get(self, identity): ...
+
+
+class AtomicCurrentSelectionPersistence(Protocol):
+    def persist_current_selection(
+        self,
+        *,
+        selection: TranscriptCurrentSelection,
+        selection_result: DomainResultReference,
+    ) -> None: ...
+
+
+class TranscriptCurrentSelectionError(ValueError):
+    """A structurally valid request that cannot become a canonical current selection."""
+
+
+class TranscriptCurrentSelectionService:
+    """Derives the current selection from a canonical Applicability evaluation."""
+
+    def __init__(
+        self,
+        applicability_query: ApplicabilityEvaluationQuery,
+        execution_query: ExecutionQueryBoundary,
+        persistence: AtomicCurrentSelectionPersistence | None = None,
+    ) -> None:
+        self._applicability = applicability_query
+        self._executions = execution_query
+        self._persistence = persistence
+
+    def record_selection(self, **kwargs) -> PreparedCurrentSelection:
+        prepared = self.evaluate_selection(**kwargs)
+        if self._persistence is None:
+            raise RuntimeError("current selection persistence is not configured")
+        self._persistence.persist_current_selection(
+            selection=prepared.selection,
+            selection_result=prepared.selection_result,
+        )
+        return prepared
+
+    def evaluate_selection(
+        self,
+        *,
+        source_applicability_id: TranscriptApplicabilityEvaluationId,
+        run_id: ProcessingRunId,
+        unit_execution_id: UnitExecutionId,
+        identities: CurrentSelectionIdentityPlan,
+        sequence: int = 0,
+        previous_selection_id: TranscriptCurrentSelectionId | None = None,
+        reason: str | None = None,
+    ) -> PreparedCurrentSelection:
+        evaluation = self._applicability.get(source_applicability_id)
+        if evaluation is None:
+            raise KeyError("unknown transcript applicability evaluation")
+        if not isinstance(evaluation, TranscriptApplicabilityEvaluation):
+            raise TranscriptCurrentSelectionError(
+                "current selection must derive from a canonical Applicability evaluation"
+            )
+        self._require_running_execution(run_id, unit_execution_id)
+        outcome = selection_for_applicability_outcome(evaluation.outcome)
+        resolved_reason = reason if reason is not None else _default_reason(outcome)
+
+        selection = TranscriptCurrentSelection(
+            identity=identities.selection_id,
+            domain_result_id=identities.selection_result_id,
+            source_applicability_id=evaluation.identity,
+            applicability_outcome=evaluation.outcome,
+            outcome=outcome,
+            source_decision_id=evaluation.source_decision_id,
+            review_item_id=evaluation.review_item_id,
+            candidate_reference_id=evaluation.candidate_reference_id,
+            source_revision_id=evaluation.source_revision_id,
+            run_id=run_id,
+            unit_execution_id=unit_execution_id,
+            sequence=sequence,
+            reason=resolved_reason,
+            previous_selection_id=previous_selection_id,
+        )
+        selection_result = DomainResultReference(
+            identity=identities.selection_result_id,
+            kind=CURRENT_SELECTION_RESULT_KIND,
+            upstream_results=(evaluation.domain_result_id,),
+        )
+        return PreparedCurrentSelection(
+            selection=selection, selection_result=selection_result
+        )
+
+    def _require_running_execution(self, run_id, unit_execution_id) -> None:
+        run = self._executions.get_run(run_id)
+        if run is None:
+            raise KeyError("unknown processing run")
+        execution = self._executions.get_unit_execution(unit_execution_id)
+        if execution is None:
+            raise KeyError("unknown unit execution")
+        if execution.run_id != run.identity:
+            raise TranscriptCurrentSelectionError(
+                "unit execution must belong to processing run"
+            )
+        if execution.state is not ProcessingState.RUNNING:
+            raise TranscriptCurrentSelectionError(
+                "selecting the current revision requires a running unit execution"
+            )
+
+
+def _default_reason(outcome: CurrentSelectionOutcome) -> str:
+    return {
+        CurrentSelectionOutcome.SELECTED: (
+            "applicable revision is currently selected"
+        ),
+        CurrentSelectionOutcome.NOT_SELECTED: (
+            "non-applicable revision is not currently selected"
+        ),
+    }[outcome]
+
+
 __all__ = [
     "CURRENT_SELECTION_RESULT_KIND",
+    "AtomicCurrentSelectionPersistence",
     "CurrentSelectionIdentityPlan",
     "CurrentSelectionOutcome",
+    "PreparedCurrentSelection",
     "TranscriptCurrentSelection",
+    "TranscriptCurrentSelectionError",
+    "TranscriptCurrentSelectionService",
     "selection_for_applicability_outcome",
 ]
