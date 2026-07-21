@@ -365,19 +365,39 @@ Slice 3 — Deterministic Applicability Evaluation Service
 - Required Claude Review: Inconclusive — no critical findings identified
   (pure deterministic derivation; linkage/execution provenance validated; no persistence,
   no selection, no automation)
+
+Slice 4 — Atomic SQLite Persistence, Restart and Replay
+- additive SQLite schema v8 (one flat table `transcript_applicability_evaluations`, no FK
+  children) with CHECK constraints mirroring the aggregate invariants (decision_kind→outcome
+  mapping, sequence, previous-evaluation linkage)
+- `_migrate_v7_to_v8` additive migration; downgrades and direct skips rejected; existing
+  v1–v7 tables and rows unchanged
+- `SQLiteApplicabilityEvaluationCommandPersistence.persist_applicability_evaluation(...)`
+  writes the evaluation and its co-persisted DomainResultReference in one `BEGIN IMMEDIATE`
+  transaction; validates linkage and identity absence; rolls back on collision, linkage,
+  write or commit failure
+- `SQLiteTranscriptApplicabilityEvaluationRepository` reconstructs the exact evaluation after
+  restart
+- composition `compose_sqlite_transcript_applicability_evaluation_service` wires the durable
+  decision query + evaluation persistence
+- 17 focused tests (v8 migration, restart reconstruction, deterministic replay into a fresh
+  database, atomic rollback) passed; complete suite 759 passed; existing latest-version test
+  expectations updated from 7 to 8
+- Required Claude Review: Inconclusive — no critical findings identified
+  (independent bounded review verified atomicity, additive migration, expected-column
+  exactness, decision→outcome CHECK fidelity, linkage validation and restart reconstruction)
 ```
 
 ### Remaining Milestones
 
 ```text
-Slice 4 — Atomic SQLite Persistence, Restart and Replay
 Slice 5 — Fake-Review Acceptance
 ```
 
 ### Immediate Next Slice
 
 ```text
-Slice 4 — Atomic SQLite Persistence, Restart and Replay
+Slice 5 — Fake-Review Acceptance
 ```
 
 ## 13. Consolidated Completion Report

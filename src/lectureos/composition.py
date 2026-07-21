@@ -8,6 +8,9 @@ from lectureos.application.transcript_correction_generation import (
     CorrectionGenerationPort,
     TranscriptCorrectionGenerationService,
 )
+from lectureos.application.transcript_applicability_evaluation import (
+    TranscriptApplicabilityEvaluationService,
+)
 from lectureos.application.transcript_review_decision import (
     TranscriptReviewDecisionService,
 )
@@ -17,6 +20,7 @@ from lectureos.application.transcript_review_preparation import (
 from lectureos.execution.boundaries import ExecutionQueryBoundary
 from lectureos.execution.service import ExecutionService
 from lectureos.persistence import (
+    SQLiteApplicabilityEvaluationCommandPersistence,
     SQLiteCorrectionCandidateRepository,
     SQLiteCorrectedTranscriptRevisionRepository,
     SQLiteDomainResultReferenceRepository,
@@ -28,6 +32,7 @@ from lectureos.persistence import (
     SQLiteRawTranscriptRepository,
     SQLiteReviewCandidateReferenceRepository,
     SQLiteReviewDecisionCommandPersistence,
+    SQLiteTranscriptReviewDecisionRepository,
     SQLiteReviewItemRepository,
     SQLiteReviewPreparationCommandPersistence,
     SQLiteTranscriptCommandPersistence,
@@ -149,6 +154,19 @@ def compose_sqlite_transcript_review_decision_service(
         candidate_references,
         execution_query,
         persistence,
+    )
+
+
+def compose_sqlite_transcript_applicability_evaluation_service(
+    connection: sqlite3.Connection,
+    execution_query: ExecutionQueryBoundary,
+) -> TranscriptApplicabilityEvaluationService:
+    """Build durable v8 Transcript Applicability evaluation on one caller connection."""
+
+    decisions = SQLiteTranscriptReviewDecisionRepository(connection)
+    persistence = SQLiteApplicabilityEvaluationCommandPersistence(connection)
+    return TranscriptApplicabilityEvaluationService(
+        decisions, execution_query, persistence
     )
 
 

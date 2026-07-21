@@ -6,30 +6,30 @@ from pathlib import Path
 from lectureos.persistence import (
     PersistenceError,
     SQLITE_SCHEMA_VERSION,
-    SQLiteTranscriptReviewDecisionRepository,
+    SQLiteTranscriptApplicabilityEvaluationRepository,
     initialize_sqlite_database,
     migrate_sqlite_database,
     open_sqlite_database,
 )
 from lectureos.persistence import sqlite as sqlite_lifecycle
 
-V7_TABLES = {"transcript_review_decisions"}
+V8_TABLES = {"transcript_applicability_evaluations"}
 
 
 def create_legacy_database(path: Path, version: int) -> None:
     connection = sqlite3.connect(path, isolation_level=None)
     connection.execute("PRAGMA foreign_keys = ON")
     statements = [*sqlite_lifecycle._V1_TABLE_STATEMENTS]
-    if version >= 2:
-        statements += sqlite_lifecycle._V2_ADDITION_STATEMENTS
-    if version >= 3:
-        statements += sqlite_lifecycle._V3_ADDITION_STATEMENTS
-    if version >= 4:
-        statements += sqlite_lifecycle._V4_ADDITION_STATEMENTS
-    if version >= 5:
-        statements += sqlite_lifecycle._V5_ADDITION_STATEMENTS
-    if version >= 6:
-        statements += sqlite_lifecycle._V6_ADDITION_STATEMENTS
+    for level, block in (
+        (2, sqlite_lifecycle._V2_ADDITION_STATEMENTS),
+        (3, sqlite_lifecycle._V3_ADDITION_STATEMENTS),
+        (4, sqlite_lifecycle._V4_ADDITION_STATEMENTS),
+        (5, sqlite_lifecycle._V5_ADDITION_STATEMENTS),
+        (6, sqlite_lifecycle._V6_ADDITION_STATEMENTS),
+        (7, sqlite_lifecycle._V7_ADDITION_STATEMENTS),
+    ):
+        if version >= level:
+            statements += block
     connection.execute("BEGIN")
     for statement in statements:
         connection.execute(statement)
@@ -50,7 +50,7 @@ def table_names(connection: sqlite3.Connection) -> set[str]:
     }
 
 
-class SQLiteSchemaVersionSevenTests(unittest.TestCase):
+class SQLiteSchemaVersionEightTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.database_path = Path(self.temporary_directory.name) / "lectureos.sqlite3"
@@ -58,23 +58,26 @@ class SQLiteSchemaVersionSevenTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
 
-    def test_fresh_database_initializes_with_v7_tables(self) -> None:
+    def test_schema_version_is_eight(self) -> None:
+        self.assertEqual(SQLITE_SCHEMA_VERSION, 8)
+
+    def test_fresh_database_initializes_with_v8_tables(self) -> None:
         connection = initialize_sqlite_database(self.database_path)
         try:
-            self.assertTrue(V7_TABLES.issubset(table_names(connection)))
+            self.assertTrue(V8_TABLES.issubset(table_names(connection)))
             self.assertEqual(
                 connection.execute("SELECT version FROM schema_metadata").fetchone()[0],
-                SQLITE_SCHEMA_VERSION,
+                8,
             )
         finally:
             connection.close()
 
-    def test_migrates_v6_to_v7_preserving_existing_rows(self) -> None:
-        create_legacy_database(self.database_path, 6)
-        migrate_sqlite_database(self.database_path, 7)
+    def test_migrates_v7_to_v8_preserving_existing_rows(self) -> None:
+        create_legacy_database(self.database_path, 7)
+        migrate_sqlite_database(self.database_path, 8)
         connection = open_sqlite_database(self.database_path)
         try:
-            self.assertTrue(V7_TABLES.issubset(table_names(connection)))
+            self.assertTrue(V8_TABLES.issubset(table_names(connection)))
             preserved = connection.execute(
                 "SELECT purpose FROM processing_units WHERE identity = 'unit'"
             ).fetchone()
@@ -82,35 +85,34 @@ class SQLiteSchemaVersionSevenTests(unittest.TestCase):
         finally:
             connection.close()
 
-    def test_v7_no_op_migration_is_allowed(self) -> None:
-        create_legacy_database(self.database_path, 6)
-        migrate_sqlite_database(self.database_path, 7)
-        migrate_sqlite_database(self.database_path, 7)
+    def test_v8_no_op_migration_is_allowed(self) -> None:
+        initialize_sqlite_database(self.database_path).close()
+        migrate_sqlite_database(self.database_path, 8)
         connection = open_sqlite_database(self.database_path)
         try:
             self.assertEqual(
                 connection.execute("SELECT version FROM schema_metadata").fetchone()[0],
-                7,
+                8,
             )
         finally:
             connection.close()
 
-    def test_direct_v5_to_v7_is_rejected(self) -> None:
-        create_legacy_database(self.database_path, 5)
+    def test_direct_v6_to_v8_is_rejected(self) -> None:
+        create_legacy_database(self.database_path, 6)
         with self.assertRaises(PersistenceError):
-            migrate_sqlite_database(self.database_path, 7)
+            migrate_sqlite_database(self.database_path, 8)
 
     def test_unsupported_target_is_rejected(self) -> None:
         initialize_sqlite_database(self.database_path).close()
         with self.assertRaises(PersistenceError):
             migrate_sqlite_database(self.database_path, 9)
 
-    def test_repository_rejects_pre_v7_schema(self) -> None:
-        create_legacy_database(self.database_path, 6)
+    def test_repository_rejects_pre_v8_schema(self) -> None:
+        create_legacy_database(self.database_path, 7)
         connection = open_sqlite_database(self.database_path)
         try:
             with self.assertRaises(Exception):
-                SQLiteTranscriptReviewDecisionRepository(connection)
+                SQLiteTranscriptApplicabilityEvaluationRepository(connection)
         finally:
             connection.close()
 

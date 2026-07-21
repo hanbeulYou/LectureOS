@@ -107,10 +107,10 @@ class SQLiteSchemaVersionTwoTests(unittest.TestCase):
     def test_new_initializer_contains_complete_version_two_foundation(self) -> None:
         connection = initialize_sqlite_database(self.database_path)
         try:
-            self.assertEqual(SQLITE_SCHEMA_VERSION, 7)
+            self.assertEqual(SQLITE_SCHEMA_VERSION, 8)
             self.assertEqual(
                 connection.execute("SELECT version FROM schema_metadata").fetchone(),
-                (7,),
+                (8,),
             )
             self.assertTrue(V2_TABLES.issubset(table_names(connection)))
             unit = self._unit()

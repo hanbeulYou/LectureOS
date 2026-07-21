@@ -456,7 +456,7 @@ selection, Transcript Ready, subtitle or artifact behavior was introduced.
 
 - Goal: `docs/goals/LectureOS_Codex_Goal_Transcript_Applicability.md`
 - Status: **IN PROGRESS**
-- Immediate next slice: Slice 4 — Atomic SQLite Persistence, Restart and Replay
+- Immediate next slice: Slice 5 — Fake-Review Acceptance
 
 This milestone deterministically derives and durably records the applicability of a proposed
 Transcript Revision from a canonical Human Review Decision, without selecting a current revision

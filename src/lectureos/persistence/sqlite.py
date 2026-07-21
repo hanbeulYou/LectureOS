@@ -7,8 +7,8 @@ from pathlib import Path
 
 from .errors import PersistenceError, UnsupportedSchemaVersionError
 
-SQLITE_SCHEMA_VERSION = 7
-_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5, 6, 7)
+SQLITE_SCHEMA_VERSION = 8
+_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8)
 
 _V1_TABLE_STATEMENTS = (
     """CREATE TABLE schema_metadata (
@@ -469,6 +469,30 @@ _V7_ADDITION_STATEMENTS = (
 )""",
 )
 
+_V8_ADDITION_STATEMENTS = (
+    """CREATE TABLE transcript_applicability_evaluations (
+    identity TEXT PRIMARY KEY,
+    domain_result_id TEXT NOT NULL,
+    source_decision_id TEXT NOT NULL,
+    decision_kind TEXT NOT NULL CHECK (decision_kind IN ('accept', 'reject', 'modify')),
+    outcome TEXT NOT NULL CHECK (
+        outcome IN ('applicable', 'not_applicable', 'superseded_by_modification')
+    ),
+    review_item_id TEXT NOT NULL,
+    candidate_reference_id TEXT NOT NULL,
+    source_revision_id TEXT NOT NULL,
+    processing_run_id TEXT NOT NULL,
+    unit_execution_id TEXT NOT NULL,
+    sequence INTEGER NOT NULL CHECK (sequence >= 0),
+    reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),
+    previous_evaluation_id TEXT,
+    CHECK ((decision_kind = 'accept' AND outcome = 'applicable') OR
+           (decision_kind = 'reject' AND outcome = 'not_applicable') OR
+           (decision_kind = 'modify' AND outcome = 'superseded_by_modification')),
+    CHECK ((sequence = 0 AND previous_evaluation_id IS NULL) OR sequence > 0)
+)""",
+)
+
 _V1_EXPECTED_COLUMNS = {
     "schema_metadata": (
         ("singleton", "INTEGER", 0, 1),
@@ -811,6 +835,25 @@ _V7_EXPECTED_COLUMNS = {
     ),
 }
 
+_V8_EXPECTED_COLUMNS = {
+    **_V7_EXPECTED_COLUMNS,
+    "transcript_applicability_evaluations": (
+        ("identity", "TEXT", 0, 1),
+        ("domain_result_id", "TEXT", 1, 0),
+        ("source_decision_id", "TEXT", 1, 0),
+        ("decision_kind", "TEXT", 1, 0),
+        ("outcome", "TEXT", 1, 0),
+        ("review_item_id", "TEXT", 1, 0),
+        ("candidate_reference_id", "TEXT", 1, 0),
+        ("source_revision_id", "TEXT", 1, 0),
+        ("processing_run_id", "TEXT", 1, 0),
+        ("unit_execution_id", "TEXT", 1, 0),
+        ("sequence", "INTEGER", 1, 0),
+        ("reason", "TEXT", 1, 0),
+        ("previous_evaluation_id", "TEXT", 0, 0),
+    ),
+}
+
 
 def initialize_sqlite_database(database_path: str | Path) -> sqlite3.Connection:
     """Create the latest schema for a new path; validate existing databases."""
@@ -850,7 +893,7 @@ def migrate_sqlite_database(
 ) -> None:
     """Explicitly perform one approved migration step or validate a no-op target."""
 
-    if target_version not in (2, 3, 4, 5, 6, 7):
+    if target_version not in (2, 3, 4, 5, 6, 7, 8):
         raise PersistenceError(f"unsupported SQLite migration target: {target_version}")
     path = _validate_database_path(database_path)
     if not path.is_file():
@@ -877,6 +920,9 @@ def migrate_sqlite_database(
             return
         if current_version == 6 and target_version == 7:
             _migrate_v6_to_v7(connection)
+            return
+        if current_version == 7 and target_version == 8:
+            _migrate_v7_to_v8(connection)
             return
         raise PersistenceError(
             f"unsupported SQLite migration: {current_version} to {target_version}"
@@ -932,6 +978,7 @@ def _initialize_latest_schema(connection: sqlite3.Connection) -> None:
             *_V5_ADDITION_STATEMENTS,
             *_V6_ADDITION_STATEMENTS,
             *_V7_ADDITION_STATEMENTS,
+            *_V8_ADDITION_STATEMENTS,
         ):
             connection.execute(statement)
         connection.execute(
@@ -1056,6 +1103,24 @@ def _migrate_v6_to_v7(connection: sqlite3.Connection) -> None:
         raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
 
 
+def _migrate_v7_to_v8(connection: sqlite3.Connection) -> None:
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        for statement in _V8_ADDITION_STATEMENTS:
+            connection.execute(statement)
+        connection.execute(
+            "UPDATE schema_metadata SET version = 8 WHERE singleton = 1"
+        )
+        _validate_initialized_connection(connection)
+        _commit(connection)
+    except PersistenceError:
+        _rollback(connection)
+        raise
+    except sqlite3.Error as error:
+        _rollback(connection)
+        raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
+
+
 def _validate_initialized_connection(connection: sqlite3.Connection) -> int:
     try:
         if connection.execute("PRAGMA foreign_keys").fetchone() != (1,):
@@ -1095,6 +1160,7 @@ def _validate_schema_shape(connection: sqlite3.Connection, version: int) -> None
         5: _V5_EXPECTED_COLUMNS,
         6: _V6_EXPECTED_COLUMNS,
         7: _V7_EXPECTED_COLUMNS,
+        8: _V8_EXPECTED_COLUMNS,
     }[version]
     for table, expected in expected_columns.items():
         actual = tuple(

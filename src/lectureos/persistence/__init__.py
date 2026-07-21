@@ -6,6 +6,10 @@ from .errors import (
     SchemaFeatureUnavailableError,
     UnsupportedSchemaVersionError,
 )
+from .applicability_evaluation import (
+    SQLiteApplicabilityEvaluationCommandPersistence,
+    SQLiteTranscriptApplicabilityEvaluationRepository,
+)
 from .correction_candidates import SQLiteCorrectionCandidateRepository
 from .corrected_transcript_revisions import (
     SQLiteCorrectedTranscriptRevisionRepository,
@@ -43,6 +47,8 @@ __all__ = [
     "PersistenceIdentityCollisionError",
     "SchemaFeatureUnavailableError",
     "SQLITE_SCHEMA_VERSION",
+    "SQLiteApplicabilityEvaluationCommandPersistence",
+    "SQLiteTranscriptApplicabilityEvaluationRepository",
     "SQLiteCorrectionCandidateRepository",
     "SQLiteCorrectedTranscriptRevisionRepository",
     "SQLiteExecutionCommandPersistence",
