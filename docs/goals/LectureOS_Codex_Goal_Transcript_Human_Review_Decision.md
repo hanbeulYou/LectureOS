@@ -358,19 +358,39 @@ Slice 3 — Deterministic Review Decision Service
 - Required Claude Review: Inconclusive — no critical findings identified
   (pure Application construction; provenance/linkage/reviewer validated; no persistence,
   no automation)
+
+Slice 4 — Atomic SQLite Persistence, Restart and Replay
+- additive SQLite schema v7 (one flat table `transcript_review_decisions`, no FK children)
+  with CHECK constraints mirroring the aggregate invariants (kind, Modify text, sequence,
+  previous-decision linkage)
+- `_migrate_v6_to_v7` additive migration; downgrades and direct skips rejected; existing
+  v1–v6 tables and rows unchanged
+- `SQLiteReviewDecisionCommandPersistence.persist_review_decision(...)` writes the decision
+  and its co-persisted DomainResultReference in one `BEGIN IMMEDIATE` transaction; validates
+  linkage and identity absence; rolls back on collision, linkage, write or commit failure
+- `SQLiteTranscriptReviewDecisionRepository` reconstructs the exact decision after restart;
+  caller-supplied timestamp stored via ISO round-trip preserves equality
+- composition `compose_sqlite_transcript_review_decision_service` wires the durable review
+  preparation query facade + decision persistence
+- 17 focused tests (v7 migration, restart reconstruction, deterministic replay into a fresh
+  database, atomic rollback) passed; complete suite 732 passed; existing latest-version test
+  expectations updated from 6 to 7
+- Required Claude Review: Inconclusive — no critical findings identified
+  (independent bounded review verified atomicity, additive migration, expected-column
+  exactness, CHECK-constraint fidelity, timestamp round-trip determinism, linkage validation
+  and restart reconstruction)
 ```
 
 ### Remaining Milestones
 
 ```text
-Slice 4 — Atomic SQLite Persistence, Restart and Replay
 Slice 5 — Fake-Review Acceptance
 ```
 
 ### Immediate Next Slice
 
 ```text
-Slice 4 — Atomic SQLite Persistence, Restart and Replay
+Slice 5 — Fake-Review Acceptance
 ```
 
 ## 12. Consolidated Completion Report

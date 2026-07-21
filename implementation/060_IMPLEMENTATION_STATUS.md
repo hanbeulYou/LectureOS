@@ -407,7 +407,7 @@ Decision, applicability, current selection or downstream product behavior was in
 
 - Goal: `docs/goals/LectureOS_Codex_Goal_Transcript_Human_Review_Decision.md`
 - Status: **IN PROGRESS**
-- Immediate next slice: Slice 4 — Atomic SQLite Persistence, Restart and Replay
+- Immediate next slice: Slice 5 — Fake-Review Acceptance
 
 This milestone durably records canonical Human Review Decisions (Accept, Reject, Modify) on
 prepared Review Items without triggering any downstream automation. It is purely a recording

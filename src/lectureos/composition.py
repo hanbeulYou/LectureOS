@@ -8,6 +8,9 @@ from lectureos.application.transcript_correction_generation import (
     CorrectionGenerationPort,
     TranscriptCorrectionGenerationService,
 )
+from lectureos.application.transcript_review_decision import (
+    TranscriptReviewDecisionService,
+)
 from lectureos.application.transcript_review_preparation import (
     TranscriptReviewPreparationService,
 )
@@ -23,8 +26,12 @@ from lectureos.persistence import (
     SQLiteProcessingUnitRepository,
     SQLiteProviderTranscriptResultRepository,
     SQLiteRawTranscriptRepository,
+    SQLiteReviewCandidateReferenceRepository,
+    SQLiteReviewDecisionCommandPersistence,
+    SQLiteReviewItemRepository,
     SQLiteReviewPreparationCommandPersistence,
     SQLiteTranscriptCommandPersistence,
+    SQLiteTranscriptReviewPreparationRepository,
     SQLiteTranscriptSegmentRepository,
     SQLiteUnitExecutionRepository,
 )
@@ -124,6 +131,25 @@ def compose_sqlite_transcript_review_preparation_service(
     transcripts = compose_sqlite_transcript_service(connection, execution_query)
     persistence = SQLiteReviewPreparationCommandPersistence(connection)
     return TranscriptReviewPreparationService(transcripts, execution_query, persistence)
+
+
+def compose_sqlite_transcript_review_decision_service(
+    connection: sqlite3.Connection,
+    execution_query: ExecutionQueryBoundary,
+) -> TranscriptReviewDecisionService:
+    """Build durable v7 Transcript Human Review Decision on one caller connection."""
+
+    preparations = SQLiteTranscriptReviewPreparationRepository(connection)
+    review_items = SQLiteReviewItemRepository(connection)
+    candidate_references = SQLiteReviewCandidateReferenceRepository(connection)
+    persistence = SQLiteReviewDecisionCommandPersistence(connection)
+    return TranscriptReviewDecisionService(
+        preparations,
+        review_items,
+        candidate_references,
+        execution_query,
+        persistence,
+    )
 
 
 def _compose_sqlite_transcript_service(

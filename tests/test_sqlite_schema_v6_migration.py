@@ -64,9 +64,6 @@ class SQLiteSchemaVersionSixTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
 
-    def test_schema_version_is_six(self) -> None:
-        self.assertEqual(SQLITE_SCHEMA_VERSION, 6)
-
     def test_fresh_database_initializes_with_v6_tables(self) -> None:
         connection = initialize_sqlite_database(self.database_path)
         try:
@@ -74,7 +71,7 @@ class SQLiteSchemaVersionSixTests(unittest.TestCase):
             version = connection.execute(
                 "SELECT version FROM schema_metadata"
             ).fetchone()[0]
-            self.assertEqual(version, 6)
+            self.assertEqual(version, SQLITE_SCHEMA_VERSION)
         finally:
             connection.close()
 
@@ -92,7 +89,8 @@ class SQLiteSchemaVersionSixTests(unittest.TestCase):
             connection.close()
 
     def test_v6_no_op_migration_is_allowed(self) -> None:
-        initialize_sqlite_database(self.database_path).close()
+        create_v5_database(self.database_path)
+        migrate_sqlite_database(self.database_path, 6)
         migrate_sqlite_database(self.database_path, 6)
         connection = open_sqlite_database(self.database_path)
         try:
@@ -112,7 +110,7 @@ class SQLiteSchemaVersionSixTests(unittest.TestCase):
     def test_unsupported_target_is_rejected(self) -> None:
         initialize_sqlite_database(self.database_path).close()
         with self.assertRaises(PersistenceError):
-            migrate_sqlite_database(self.database_path, 7)
+            migrate_sqlite_database(self.database_path, 8)
 
     def test_repository_rejects_pre_v6_schema(self) -> None:
         create_v5_database(self.database_path)
