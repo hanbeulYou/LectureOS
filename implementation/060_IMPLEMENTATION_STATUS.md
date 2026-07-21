@@ -362,8 +362,12 @@ concrete critical issue; it is recorded as
 ## Transcript Review Preparation
 
 - Goal: `docs/goals/LectureOS_Codex_Goal_Transcript_Review_Preparation.md`
-- Status: **IN PROGRESS**
-- Immediate next slice: Slice 5 — Fake-Provider / Fake-Review Acceptance
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema v6
+- Completed slices: Goal Baseline and Assessment; Review Preparation Records;
+  Deterministic Review Preparation Service; Atomic SQLite Persistence and Restart;
+  Fake-Provider / Fake-Review Acceptance
+- Immediate next slice: Goal Complete
 
 This milestone prepares canonical proposed Transcript corrections for Human Review without
 introducing Review decisions or changing Transcript state. It is purely preparatory:
@@ -383,3 +387,18 @@ unchanged and never own Review identity or Review lifecycle. The AGENTS.md Archi
 is entirely `No`: no existing Domain contract change, no released-schema meaning change, no
 lifecycle authority change, no responsibility shift, no new identity semantics, one additive
 migration, and no Blueprint contradiction.
+
+The Transcript Review Preparation Goal is complete. `TranscriptReviewPreparationService`
+deterministically maps a canonical proposed `CorrectedTranscriptRevision` and its
+`CorrectionCandidate` set into canonical Review Items, a Review Context and Candidate
+References, preserving the established cross-domain contract that a Candidate Reference
+identity equals its Correction Candidate identity. It computes review ordering, target-Segment
+grouping, review metadata and structural integrity, and validates candidate lineage, parent
+Revision linkage, execution provenance and DomainResult provenance before any write.
+`SQLiteReviewPreparationCommandPersistence` persists the aggregate, the reused review records
+and the preparation's DomainResultReference in one atomic v6 transaction with restart-safe
+reconstruction. An in-process fake-provider / fake-review acceptance drives the full pipeline
+with no network or credential and confirms deterministic generation, immutable lineage, parent
+Revision linkage, Candidate linkage, execution provenance, atomic persistence, restart
+reconstruction and structural integrity. The complete 701-test suite passes. No Human Review
+Decision, applicability, current selection or downstream product behavior was introduced.

@@ -376,18 +376,34 @@ Slice 4 — Atomic SQLite Persistence and Restart
 - Required Claude Review: Inconclusive — no critical findings identified
   (independent bounded review verified atomicity, additive migration, restart
   reconstruction, FK cascade, expected-column exactness and linkage validation)
+
+Slice 5 — Fake-Provider / Fake-Review Acceptance
+- `lectureos.review_preparation_acceptance` drives the full canonical pipeline with a
+  fake in-process correction provider: no network, no credential, generic text
+- fake correction proposals → persisted proposed Revision → review preparation →
+  atomic v6 persistence → reopen → exact restart reconstruction
+- verifies deterministic generation, immutable lineage, parent Revision linkage,
+  Candidate linkage, execution provenance, atomic persistence, restart reconstruction
+  and structural integrity
+- acceptance summary: proposal_count 2, review_item_count 2, group_count 2,
+  deterministic/restart_reconstructed/structural_valid/lineage_immutable/
+  parent_revision_linked/candidates_linked/execution_provenance all true
+- focused acceptance test passed; complete suite 701 passed
+- no credential, provider payload or sensitive transcript committed
+- Claude Review: Optional — Skipped (acceptance harness/test only; no production or
+  contract change)
 ```
 
 ### Remaining Milestones
 
 ```text
-Slice 5 — Fake-Provider / Fake-Review Acceptance
+None — Goal complete
 ```
 
 ### Immediate Next Slice
 
 ```text
-Slice 5 — Fake-Provider / Fake-Review Acceptance
+Goal Complete
 ```
 
 ## 12. Consolidated Completion Report
