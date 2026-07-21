@@ -502,3 +502,33 @@ the schema change is strictly additive, applicability derives only from canonica
 Decisions, and no Current Selection, Transcript Ready, subtitle, artifact or other
 forbidden-scope behavior was introduced. The pre-existing in-memory `transcript/applicability.py`
 service remains unchanged.
+
+## Transcript Current Selection
+
+- Goal: `docs/goals/LectureOS_Codex_Goal_Transcript_Current_Selection.md`
+- Status: **IN PROGRESS**
+- Immediate next slice: Slice 2 — Current Selection Records
+
+This milestone deterministically derives and durably records which proposed Transcript Revision
+is currently selected, from a canonical Applicability evaluation, without implying a Transcript
+Ready state. `Product → Application → Capability → Provider` and the lifecycle position
+`Transcript → Proposed Revision → Review Preparation → Human Review Decision → Applicability →
+Current Selection` are preserved, while Transcript Ready, Subtitle generation and downstream
+execution remain out of scope. Current Selection is derived only from canonical Applicability
+evaluations; providers have no responsibility, and selecting a revision never implies the
+Transcript is Ready.
+
+The bounded architectural assessment found no substantive blocker. The pre-existing in-memory
+`CurrentTranscriptSelection` (working-context, old review vocabulary, not derived from canonical
+applicability) is left unchanged; a single Application-owned aggregate `TranscriptCurrentSelection`
+is added, together with a focused `CurrentSelectionOutcome` enum (`SELECTED` from APPLICABLE,
+`NOT_SELECTED` from NOT_APPLICABLE or SUPERSEDED_BY_MODIFICATION) that is a pure deterministic
+function of the applicability outcome. A new `TranscriptCurrentSelectionService` mirrors the
+established `evaluate`/persist split with an Application-owned identity plan, and an additive
+SQLite schema v9 adds atomic persistence, restart reconstruction and deterministic replay for
+the selection record only. No wall-clock is read, so replay is deterministic. The AGENTS.md
+Architect Checklist is entirely `No`: no existing Domain contract change, no released-schema
+meaning change, no lifecycle authority change (selection is derived, not decided, and never
+produces Transcript Ready), no responsibility shift, no new identity semantics, one additive
+migration, and no Blueprint contradiction. Migration compatibility from every released version
+(v1..v8) to v9 will be verified in Slice 4.
