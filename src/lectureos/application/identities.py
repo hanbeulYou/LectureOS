@@ -23,3 +23,8 @@ class SubtitleTextReplacementId(OpaqueIdentity):
 @dataclass(frozen=True, slots=True)
 class TranscriptReviewPreparationId(OpaqueIdentity):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class TranscriptReviewDecisionId(OpaqueIdentity):
+    pass

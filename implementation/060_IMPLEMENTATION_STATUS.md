@@ -407,7 +407,7 @@ Decision, applicability, current selection or downstream product behavior was in
 
 - Goal: `docs/goals/LectureOS_Codex_Goal_Transcript_Human_Review_Decision.md`
 - Status: **IN PROGRESS**
-- Immediate next slice: Slice 2 — Review Decision Records
+- Immediate next slice: Slice 3 — Deterministic Review Decision Service
 
 This milestone durably records canonical Human Review Decisions (Accept, Reject, Modify) on
 prepared Review Items without triggering any downstream automation. It is purely a recording

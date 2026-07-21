@@ -32,6 +32,11 @@ from .subtitle_review import (
     SubtitleReviewIntegrationError,
     SubtitleReviewIntegrationService,
 )
+from .transcript_review_decision import (
+    REVIEW_DECISION_RESULT_KIND,
+    ReviewDecisionIdentityPlan,
+    TranscriptReviewDecision,
+)
 from .transcript_review_preparation import (
     REVIEW_PREPARATION_RESULT_KIND,
     AtomicReviewPreparationPersistence,
@@ -63,6 +68,9 @@ __all__ = [
     "SUBTITLE_CANDIDATE_KIND",
     "SubtitleReviewIntegrationError",
     "SubtitleReviewIntegrationService",
+    "REVIEW_DECISION_RESULT_KIND",
+    "ReviewDecisionIdentityPlan",
+    "TranscriptReviewDecision",
     "REVIEW_PREPARATION_RESULT_KIND",
     "AtomicReviewPreparationPersistence",
     "PreparedTranscriptReview",

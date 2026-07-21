@@ -324,14 +324,30 @@ commit/review/validation 근거를 기록하며, 완료 slice를 Remaining에서
 ### Completed Capabilities
 
 ```text
-None yet
+Slice 1 — Goal Baseline and Assessment
+- commit `c70b707` — `docs: add transcript human review decision goal`
+- bounded architectural assessment: no substantive blocker
+- reuse existing review vocab (DecisionKind, HumanActorReference); add one aggregate
+- caller-supplied decision timestamp for deterministic replay; additive schema v7 planned
+- Review: Optional — Skipped (documentation only)
+
+Slice 2 — Review Decision Records
+- `TranscriptReviewDecisionId` added to application identities
+- `TranscriptReviewDecision` aggregate: identity, DomainResult linkage, review item /
+  candidate / revision linkage, reviewer, kind, caller-supplied timestamp, sequence /
+  previous linkage, rationale, Modify-only modified text
+- `ReviewDecisionIdentityPlan` (decision id, result id, caller-supplied timestamp)
+- invariants: Human reviewer, non-negative sequence, timezone-aware timestamp, Modify
+  requires modified text, Accept/Reject forbid it, non-blank rationale, first decision
+  has no previous reference
+- 11 focused record tests passed; complete suite 712 passed
+- Required Claude Review: Inconclusive — no critical findings identified
+  (additive immutable records; no Blueprint, lifecycle, identity or contract defect)
 ```
 
 ### Remaining Milestones
 
 ```text
-Slice 1 — Goal Baseline and Assessment
-Slice 2 — Review Decision Records
 Slice 3 — Deterministic Review Decision Service
 Slice 4 — Atomic SQLite Persistence, Restart and Replay
 Slice 5 — Fake-Review Acceptance
@@ -340,7 +356,7 @@ Slice 5 — Fake-Review Acceptance
 ### Immediate Next Slice
 
 ```text
-Slice 1 — Goal Baseline and Assessment
+Slice 3 — Deterministic Review Decision Service
 ```
 
 ## 12. Consolidated Completion Report
