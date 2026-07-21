@@ -455,8 +455,12 @@ selection, Transcript Ready, subtitle or artifact behavior was introduced.
 ## Transcript Applicability
 
 - Goal: `docs/goals/LectureOS_Codex_Goal_Transcript_Applicability.md`
-- Status: **IN PROGRESS**
-- Immediate next slice: Slice 5 — Fake-Review Acceptance
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema v8
+- Completed slices: Goal Baseline and Assessment; Applicability Records; Deterministic
+  Applicability Evaluation Service; Atomic SQLite Persistence, Restart and Replay;
+  Fake-Review Acceptance
+- Immediate next slice: Goal Complete
 
 This milestone deterministically derives and durably records the applicability of a proposed
 Transcript Revision from a canonical Human Review Decision, without selecting a current revision
@@ -479,3 +483,22 @@ wall-clock is read, so replay is deterministic. The AGENTS.md Architect Checklis
 `No`: no existing Domain contract change, no released-schema meaning change, no lifecycle
 authority change (applicability is derived, not decided), no responsibility shift, no new
 identity semantics, one additive migration, and no Blueprint contradiction.
+
+The Transcript Applicability Goal is complete. `TranscriptApplicabilityEvaluationService`
+loads a canonical Human Review Decision and deterministically derives the applicability of the
+proposed Revision — `APPLICABLE` from Accept, `NOT_APPLICABLE` from Reject,
+`SUPERSEDED_BY_MODIFICATION` from Modify — carrying the decision / review item / candidate /
+revision linkage and execution provenance into an immutable `TranscriptApplicabilityEvaluation`
+aggregate. `SQLiteApplicabilityEvaluationCommandPersistence` writes the evaluation and its
+co-persisted DomainResultReference in one atomic v8 transaction, reconstructs each evaluation
+exactly after restart, and reproduces identical evaluations on deterministic replay into a
+fresh database (no wall-clock is read). An in-process fake-review acceptance records Accept,
+Reject and Modify decisions and derives the three corresponding outcomes, confirming immutable
+Applicability records, Review Decision / Review Item / Candidate / Revision linkage, execution
+provenance, deterministic evaluation, atomic persistence, restart reconstruction, structural
+integrity and deterministic replay. The complete 760-test suite passes. A Blueprint Drift Check
+confirmed no drift relative to any prior completed milestone: the authority chain is preserved,
+the schema change is strictly additive, applicability derives only from canonical Human Review
+Decisions, and no Current Selection, Transcript Ready, subtitle, artifact or other
+forbidden-scope behavior was introduced. The pre-existing in-memory `transcript/applicability.py`
+service remains unchanged.
