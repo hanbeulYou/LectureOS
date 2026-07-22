@@ -154,7 +154,7 @@ class SQLiteSchemaVersionThreeTests(unittest.TestCase):
         try:
             self.assertEqual(
                 connection.execute("SELECT version FROM schema_metadata").fetchone(),
-                (15,),
+                (16,),
             )
             self.assertTrue(V3_TABLES.issubset(table_names(connection)))
             unit = self._unit()

@@ -300,7 +300,6 @@ class SubtitleReviewPreparationService:
                     for finding in findings
                 ),
             ),
-            validation_references=(f"subtitle_validation:{validation.identity.value}",),
         )
         resolved_reason = (
             reason if reason is not None else _default_reason(len(review_items))
