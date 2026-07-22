@@ -54,6 +54,13 @@ from .subtitle_candidate_generation import (
     SubtitleCandidateIdentityPlan,
     SubtitleTranscriptIntakeQuery,
 )
+from .subtitle_reading_representation import (
+    SUBTITLE_READING_REVISION_RESULT_KIND,
+    SubtitleReadingIdentityPlan,
+    SubtitleReadingRevision,
+    SubtitleReadingUnit,
+    compose_reading_lines,
+)
 from .subtitle_transcript_intake import (
     SUBTITLE_TRANSCRIPT_INTAKE_RESULT_KIND,
     AtomicSubtitleIntakePersistence,
@@ -146,6 +153,11 @@ __all__ = [
     "SubtitleCandidateGenerationService",
     "SubtitleCandidateIdentityPlan",
     "SubtitleTranscriptIntakeQuery",
+    "SUBTITLE_READING_REVISION_RESULT_KIND",
+    "SubtitleReadingIdentityPlan",
+    "SubtitleReadingRevision",
+    "SubtitleReadingUnit",
+    "compose_reading_lines",
     "SUBTITLE_TRANSCRIPT_INTAKE_RESULT_KIND",
     "AtomicSubtitleIntakePersistence",
     "PreparedSubtitleIntake",

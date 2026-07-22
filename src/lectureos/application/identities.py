@@ -58,3 +58,13 @@ class SubtitleCandidateId(OpaqueIdentity):
 @dataclass(frozen=True, slots=True)
 class SubtitleCandidateCueId(OpaqueIdentity):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class SubtitleReadingRevisionId(OpaqueIdentity):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class SubtitleReadingUnitId(OpaqueIdentity):
+    pass
