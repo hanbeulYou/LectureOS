@@ -61,6 +61,10 @@ from .lecture_analysis_input import (
     SQLiteEligibleAnalysisInputCommandPersistence,
     SQLiteEligibleAnalysisInputRepository,
 )
+from .analysis_finding import (
+    SQLiteAnalysisFindingCommandPersistence,
+    SQLiteAnalysisFindingRepository,
+)
 from .subtitle_final_subtitle import (
     SQLiteSubtitleFinalSubtitleCommandPersistence,
     SQLiteSubtitleFinalSubtitleRepository,
@@ -129,6 +133,8 @@ __all__ = [
     "SQLiteSubtitleSrtMaterializationRepository",
     "SQLiteEligibleAnalysisInputCommandPersistence",
     "SQLiteEligibleAnalysisInputRepository",
+    "SQLiteAnalysisFindingCommandPersistence",
+    "SQLiteAnalysisFindingRepository",
     "SQLiteSubtitleFinalSubtitleCommandPersistence",
     "SQLiteSubtitleFinalSubtitleRepository",
     "SQLiteSubtitleReviewDecisionCommandPersistence",

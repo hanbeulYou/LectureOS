@@ -128,3 +128,8 @@ class SubtitleSrtMaterializationId(OpaqueIdentity):
 @dataclass(frozen=True, slots=True)
 class EligibleAnalysisInputId(OpaqueIdentity):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class AnalysisFindingId(OpaqueIdentity):
+    pass

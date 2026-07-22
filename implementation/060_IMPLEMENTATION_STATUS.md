@@ -1463,3 +1463,48 @@ restart reconstruction, deterministic replay, and that no analysis / Finding / S
 produced. The complete 1347-test suite passes. Later 042 milestones (Analysis Finding, Segmentation, Edit
 Candidate, Review handoff) remain **product-gated** by the `042 §18` Requires-Validation items and are out of
 scope.
+
+## Analysis Finding Application Foundation (042 Lecture Intelligence Pipeline — Milestone 2)
+
+- Blueprint: approved `docs/042_LECTURE_INTELLIGENCE_PIPELINE.md §8.1` / `patches/PATCH-0010`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema v24 (one insert-only table)
+- Commit: `feat: establish analysis finding application foundation`
+- Immediate next milestone: concrete Analysis Provider (042) — product-gated, deferred
+
+This milestone establishes the **provider-independent Application foundation** for durable canonical
+**Analysis Findings**, implementing approved `042 §8.1` (PATCH-0010). From an already-normalized,
+provider-independent analysis result — admitted **read-only** against exactly one `ELIGIBLE`
+`EligibleAnalysisInput` (`042 §5.1`, Milestone 1) — the `AnalysisFindingApplicationService` deterministically
+records one or more immutable, provenance-bearing `AnalysisFinding` records. Each Finding is anchored to
+exactly one `EligibleAnalysisInput`, carries a required, stable, Application-owned canonical **Finding Type**
+(a canonical `^[a-z][a-z0-9_]*$` token — no fixed taxonomy and no closed enum, so a raw provider
+classification can never be preserved as a canonical type), a required recorded **evidence** rationale with
+provenance, an **optional** recorded confidence and/or uncertainty in `[0, 1]` (never computed, calibrated,
+prioritized, or ranked here), and an **optional single** Source Timeline time range (no Lecture Segment
+relationship; multi-range deferred). It performs **no analysis** and does **not** invoke AI, implement a
+provider, define prompts or models, or create a Lecture Segment, Segment Label, Edit Candidate, or Review
+Item. The admitted `NormalizedAnalysisResult` is an internal Application contract, never a provider API: it
+carries no provider identifier, model, prompt, token usage, transport metadata, raw provider JSON, or internal
+reasoning, so the canonical domain stays entirely provider-agnostic. Admission requires exactly one `ELIGIBLE`
+`EligibleAnalysisInput`, a running unit execution, matching Source Timeline lineage, and an identity plan per
+finding; all upstream objects are consumed read-only. It reuses the established durable-stage pattern:
+caller-owned identities, a `prepare/record` service split, immutable frozen aggregates with `__post_init__`
+invariants, per-finding `DomainResultReference` chaining (kind `analysis_finding`, upstream = the
+`EligibleAnalysisInput` DomainResult), and one atomic v24 transaction persisting all Findings of an admission
+and their Domain Results together (identity-absence checks, complete rollback on any collision, no partial
+writes). No wall-clock is read, so reconstruction and replay are deterministic. The AGENTS.md Architect
+Checklist is entirely `No`: no existing Domain contract change, no released-schema meaning change, no lifecycle
+authority change (Milestone 1 eligibility is only consumed), no responsibility shift, a new additive identity
+(`AnalysisFindingId`), one additive migration, and no Blueprint contradiction; 040/041/044 and the v1..v23
+records are unchanged. Migration compatibility from every released version (v1..v23) to v24 is verified, and
+unsupported downgrade/direct-skip migrations remain rejected. An in-process acceptance reuses the durable
+Transcript Pipeline chain, records the `ELIGIBLE` analysis input, then admits a normalized analysis result and
+records canonical Findings — confirming anchoring, provenance and DomainResult chaining, ordered sequences,
+that no upstream record is mutated, restart reconstruction, deterministic replay, and that no Lecture Segment,
+Segment Label, Edit Candidate, or Review table is produced. The complete 1397-test suite passes. The **concrete
+AI Analysis Provider** (prompt design, model selection, provider retries, network calls), together with
+Finding taxonomy, confidence calculation, uncertainty calibration, prioritization, revision, supersession,
+multi-range Findings, Lecture Segmentation, Segment relationships, Edit Candidates, Review handoff, and
+optional Subtitle/Speaker/Project Context admission, remain later, separately-gated milestones and are out of
+scope.

@@ -20,6 +20,9 @@ from lectureos.application.subtitle_transcript_intake import (
 from lectureos.application.lecture_analysis_input import (
     LectureAnalysisInputService,
 )
+from lectureos.application.analysis_finding import (
+    AnalysisFindingApplicationService,
+)
 from lectureos.application.subtitle_candidate_generation import (
     SubtitleCandidateGenerationService,
 )
@@ -78,6 +81,8 @@ from lectureos.persistence import (
     SQLiteSubtitleSrtMaterializationCommandPersistence,
     SQLiteSubtitleSrtMaterializationRepository,
     SQLiteEligibleAnalysisInputCommandPersistence,
+    SQLiteEligibleAnalysisInputRepository,
+    SQLiteAnalysisFindingCommandPersistence,
     SQLiteSubtitleReadingCommandPersistence,
     SQLiteSubtitleDecisionRevisionCommandPersistence,
     SQLiteSubtitleDecisionRevisionRepository,
@@ -307,6 +312,17 @@ def compose_sqlite_lecture_analysis_input_service(
     return LectureAnalysisInputService(
         readiness, transcripts, execution_query, persistence
     )
+
+
+def compose_sqlite_analysis_finding_service(
+    connection: sqlite3.Connection,
+    execution_query: ExecutionQueryBoundary,
+) -> AnalysisFindingApplicationService:
+    """Build the durable v24 Analysis Finding Application Foundation on one caller connection."""
+
+    inputs = SQLiteEligibleAnalysisInputRepository(connection)
+    persistence = SQLiteAnalysisFindingCommandPersistence(connection)
+    return AnalysisFindingApplicationService(inputs, execution_query, persistence)
 
 
 def compose_sqlite_subtitle_candidate_generation_service(

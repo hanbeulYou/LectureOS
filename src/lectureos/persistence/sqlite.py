@@ -7,8 +7,8 @@ from pathlib import Path
 
 from .errors import PersistenceError, UnsupportedSchemaVersionError
 
-SQLITE_SCHEMA_VERSION = 23
-_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23)
+SQLITE_SCHEMA_VERSION = 24
+_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24)
 
 _V1_TABLE_STATEMENTS = (
     """CREATE TABLE schema_metadata (
@@ -1037,6 +1037,28 @@ _V23_ADDITION_STATEMENTS = (
 )""",
 )
 
+_V24_ADDITION_STATEMENTS = (
+    """CREATE TABLE analysis_findings (
+    identity TEXT PRIMARY KEY,
+    domain_result_id TEXT NOT NULL,
+    source_input_id TEXT NOT NULL,
+    finding_type TEXT NOT NULL CHECK (length(trim(finding_type)) > 0),
+    evidence TEXT NOT NULL CHECK (length(trim(evidence)) > 0),
+    source_media_id TEXT NOT NULL,
+    source_timeline_id TEXT NOT NULL,
+    processing_run_id TEXT NOT NULL,
+    unit_execution_id TEXT NOT NULL,
+    sequence INTEGER NOT NULL CHECK (sequence >= 0),
+    confidence REAL CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
+    uncertainty REAL CHECK (uncertainty IS NULL OR (uncertainty >= 0 AND uncertainty <= 1)),
+    range_start REAL,
+    range_end REAL,
+    CHECK ((range_start IS NULL AND range_end IS NULL)
+           OR (range_start IS NOT NULL AND range_end IS NOT NULL
+               AND range_start >= 0 AND range_end >= range_start))
+)""",
+)
+
 _V9_ADDITION_STATEMENTS = (
     """CREATE TABLE transcript_current_selections (
     identity TEXT PRIMARY KEY,
@@ -1905,6 +1927,26 @@ _V23_EXPECTED_COLUMNS = {
     ),
 }
 
+_V24_EXPECTED_COLUMNS = {
+    **_V23_EXPECTED_COLUMNS,
+    "analysis_findings": (
+        ("identity", "TEXT", 0, 1),
+        ("domain_result_id", "TEXT", 1, 0),
+        ("source_input_id", "TEXT", 1, 0),
+        ("finding_type", "TEXT", 1, 0),
+        ("evidence", "TEXT", 1, 0),
+        ("source_media_id", "TEXT", 1, 0),
+        ("source_timeline_id", "TEXT", 1, 0),
+        ("processing_run_id", "TEXT", 1, 0),
+        ("unit_execution_id", "TEXT", 1, 0),
+        ("sequence", "INTEGER", 1, 0),
+        ("confidence", "REAL", 0, 0),
+        ("uncertainty", "REAL", 0, 0),
+        ("range_start", "REAL", 0, 0),
+        ("range_end", "REAL", 0, 0),
+    ),
+}
+
 
 def initialize_sqlite_database(database_path: str | Path) -> sqlite3.Connection:
     """Create the latest schema for a new path; validate existing databases."""
@@ -1944,7 +1986,7 @@ def migrate_sqlite_database(
 ) -> None:
     """Explicitly perform one approved migration step or validate a no-op target."""
 
-    if target_version not in (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23):
+    if target_version not in (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24):
         raise PersistenceError(f"unsupported SQLite migration target: {target_version}")
     path = _validate_database_path(database_path)
     if not path.is_file():
@@ -2020,6 +2062,9 @@ def migrate_sqlite_database(
         if current_version == 22 and target_version == 23:
             _migrate_v22_to_v23(connection)
             return
+        if current_version == 23 and target_version == 24:
+            _migrate_v23_to_v24(connection)
+            return
         raise PersistenceError(
             f"unsupported SQLite migration: {current_version} to {target_version}"
         )
@@ -2090,6 +2135,7 @@ def _initialize_latest_schema(connection: sqlite3.Connection) -> None:
             *_V21_ADDITION_STATEMENTS,
             *_V22_ADDITION_STATEMENTS,
             *_V23_ADDITION_STATEMENTS,
+            *_V24_ADDITION_STATEMENTS,
         ):
             connection.execute(statement)
         connection.execute(
@@ -2502,6 +2548,24 @@ def _migrate_v22_to_v23(connection: sqlite3.Connection) -> None:
         raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
 
 
+def _migrate_v23_to_v24(connection: sqlite3.Connection) -> None:
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        for statement in _V24_ADDITION_STATEMENTS:
+            connection.execute(statement)
+        connection.execute(
+            "UPDATE schema_metadata SET version = 24 WHERE singleton = 1"
+        )
+        _validate_initialized_connection(connection)
+        _commit(connection)
+    except PersistenceError:
+        _rollback(connection)
+        raise
+    except sqlite3.Error as error:
+        _rollback(connection)
+        raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
+
+
 def _validate_initialized_connection(connection: sqlite3.Connection) -> int:
     try:
         if connection.execute("PRAGMA foreign_keys").fetchone() != (1,):
@@ -2557,6 +2621,7 @@ def _validate_schema_shape(connection: sqlite3.Connection, version: int) -> None
         21: _V21_EXPECTED_COLUMNS,
         22: _V22_EXPECTED_COLUMNS,
         23: _V23_EXPECTED_COLUMNS,
+        24: _V24_EXPECTED_COLUMNS,
     }[version]
     for table, expected in expected_columns.items():
         actual = tuple(
