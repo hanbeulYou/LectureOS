@@ -93,7 +93,9 @@ from .subtitle_srt_artifact import (
     SUBTITLE_SRT_ARTIFACT_RESULT_KIND,
     PreparedSubtitleSrtArtifact,
     SubtitleArtifactFormat,
+    SubtitleArtifactGenerationError,
     SubtitleSrtArtifact,
+    SubtitleSrtArtifactGenerationService,
     SubtitleSrtArtifactIdentityPlan,
 )
 from .subtitle_final_subtitle import (
@@ -291,7 +293,9 @@ __all__ = [
     "SUBTITLE_SRT_ARTIFACT_RESULT_KIND",
     "PreparedSubtitleSrtArtifact",
     "SubtitleArtifactFormat",
+    "SubtitleArtifactGenerationError",
     "SubtitleSrtArtifact",
+    "SubtitleSrtArtifactGenerationService",
     "SubtitleSrtArtifactIdentityPlan",
     "SUBTITLE_FINAL_SUBTITLE_RESULT_KIND",
     "AtomicSubtitleFinalSubtitlePersistence",

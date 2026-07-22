@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from decimal import Decimal, ROUND_HALF_UP
-from math import isfinite
 from typing import Generic, TypeVar
 
+from lectureos.application.srt_payload import format_srt_timestamp, srt_milliseconds
 from lectureos.execution.identities import ArtifactId, WorkingContextReference
 from lectureos.subtitle.boundaries import (
     FinalSubtitleSelectionQueryBoundary,
@@ -349,20 +348,11 @@ class MinimalSrtExportService:
 
     @staticmethod
     def _milliseconds(seconds: float) -> int:
-        if not isfinite(seconds) or seconds < 0:
-            raise ValueError("SRT timestamp must be finite and non-negative")
-        return int(
-            (Decimal(str(seconds)) * Decimal(1000)).quantize(
-                Decimal("1"), rounding=ROUND_HALF_UP
-            )
-        )
+        return srt_milliseconds(seconds)
 
     @staticmethod
     def _format_timestamp(milliseconds: int) -> str:
-        hours, remainder = divmod(milliseconds, 3_600_000)
-        minutes, remainder = divmod(remainder, 60_000)
-        seconds, millis = divmod(remainder, 1_000)
-        return f"{hours:02d}:{minutes:02d}:{seconds:02d},{millis:03d}"
+        return format_srt_timestamp(milliseconds)
 
     @staticmethod
     def _require_same_request(existing, proposed) -> None:
