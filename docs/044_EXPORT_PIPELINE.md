@@ -1,10 +1,11 @@
 # 044_EXPORT_PIPELINE
 
 - Status: Draft
-- Version: Blueprint 0.1
-- Last Updated: 2026-07-15
+- Version: Blueprint 0.2
+- Last Updated: 2026-07-22
 - Depends On: `000_MANIFESTO.md`, `001_PRODUCT.md`, `002_FAQ.md`, `003_VISION.md`, `004_PRINCIPLES.md`, `020_PRODUCT_REQUIREMENTS.md`, `021_SYSTEM_CONTEXT.md`, `030_DATA_MODEL.md`, `031_ARCHITECTURE.md`, `040_TRANSCRIPT_PIPELINE.md`, `041_SUBTITLE_PIPELINE.md`, `042_LECTURE_INTELLIGENCE_PIPELINE.md`, `043_REVIEW_PIPELINE.md`
 - Referenced By:
+- Amended By: `patches/PATCH-0007-physical-materialization.md`
 
 ## Purpose
 
@@ -438,12 +439,145 @@ Review Pipeline은 Human Decision과 Approved Edit Decision을 책임진다. Exp
 
 - 특정 export format과 파일 문법
 - 외부 NLE 명령 또는 프로젝트 구조
-- Artifact 저장과 전달 방식
+- Artifact 전달(Delivery)과 외부 배포 방식 (Final Subtitle SRT Artifact의 Physical Materialization은 §17에서 정의한다)
 - 실행, 재시도 또는 배포 방식
 - Rendering 구현
 - 자동 승인 또는 자동 편집
 - 외부 시스템의 정책과 호환성 보장
 - Source Media, Transcript, Subtitle, Analysis 또는 Review 내부 처리
+
+## 17. Physical Materialization
+
+이 절은 `PATCH-0007`로 승인된 Physical Materialization의 규범적 제품 계약이다. §15.4와 §16이 이전에 유보했던 Artifact 저장(storage) 경계 중 **Final Subtitle SRT Artifact**의 물리 실현(materialization)을 여기서 확정한다. 이 절은 제품 정책만 정의하며 schema, API, record 구조 또는 구현을 정의하지 않는다.
+
+### 17.1 책임과 경계
+
+Physical Materialization은 하나의 canonical SRT Artifact를 물리 파일로 실현하는 단계다. lifecycle 위치는 다음과 같다.
+
+```text
+SubtitleSrtArtifact
+    → Physical Materialization
+    → Materialization Record
+    → Physical File
+    → Delivery
+```
+
+Physical Materialization은 admission, Storage Location 정책, filename 정책, collision 정책, Materialization State, provenance와 recovery를 소유한다. 다음은 소유하지 않는다: Subtitle Assembly, Artifact Generation, Delivery, download, upload, signed URL, cloud/object storage, HTTP, UI. Artifact를 재직렬화하거나 재순서화하거나 timing을 바꾸지 않으며 eligibility를 다시 판단하지 않는다.
+
+### 17.2 Artifact / Materialization Record / Physical File 분리
+
+세 계층은 서로 다른 권위를 가진다.
+
+- **SubtitleSrtArtifact** — 승인된 SRT의 canonical source of truth. identity와 payload는 파일의 존재·위치·실현 횟수에 의존하지 않는다.
+- **Materialization Record** — 하나의 실현 행위와 그 결과를 설명하는 canonical record. 고유한 Materialization Identity를 가지며 물리 파일 존재와 독립적으로 지속된다.
+- **Physical File** — 파생된 외부 상태. 유실·이동·부재할 수 있으며 결코 identity가 아니다.
+
+Artifact identity는 어떤 물리 표현과도 독립적이다. 파일이 존재한다는 사실이 canonical 완료를 뜻하지 않고, 파일이 사라졌다는 사실이 Artifact 손실을 뜻하지 않는다.
+
+### 17.3 Canonical Concepts
+
+- **Materialization Request** — 하나의 SubtitleSrtArtifact를 Storage Location에 실현하라는 승인된 지시. Materialization Identity를 가진다. admission일 뿐이며 Artifact를 재생성·변경하지 않는다.
+- **Materialization Identity** — 하나의 실현 행위의 canonical identity로 Artifact Identity와 구분된다. path, filename, byte 내용, digest에서 파생하지 않는다.
+- **Materialization Record** — 실현 행위의 lifecycle 상태·결과·provenance를 담는 canonical record. 단일 record인지 복수 record인지는 이 계약이 정하지 않는 구현 문제다.
+- **Storage Authority** — 실현이 허용되는 위치 경계를 정하는 권위. Composition Root가 공급하는 하나의 approved Storage Root(운영 구성)이며 Domain 사실이 아니고 canonical identity로 저장하지 않는다.
+- **Storage Location** — approved Storage Root 하위의 Application 소유 상대 위치(파일명 포함)이며 Application 정책이 결정한다. 어디에 파일을 두었는지 설명하는 operational provenance일 뿐 identity가 아니다.
+- **Materialization Provenance** — Materialization Record → SubtitleSrtArtifact → SubtitleApprovedDocument → … → Source Timeline로 이어지는 추적 관계와 실행 문맥.
+- **Materialization State** — 실현 행위의 canonical lifecycle: **PENDING**(admit되어 실현 중, 아직 확정되지 않음), **MATERIALIZED**(실현이 durable하게 확정됨), **FAILED**(실현을 완료할 수 없음). PENDING은 recovery 시 결정적으로 reconcile된다.
+- **Materialization Failure** — 실현을 완료할 수 없을 때의 명시적 canonical 결과(FAILED). 정상으로 숨기지 않으며 Artifact나 provenance를 변경하지 않는다.
+- **Materialized File** — 파생된 외부 물리 객체. 부재·접근불가일 수 있으며 identity가 아니다.
+
+### 17.4 Lifecycle
+
+```text
+PENDING → MATERIALIZED
+        ↘ FAILED
+```
+
+Blueprint은 lifecycle 상태, 상태 의미, 관찰 가능한 동작과 recovery 기대를 정의한다. record가 하나의 진화하는 record로 실현되는지 복수 record로 실현되는지는 정의하지 않는다.
+
+### 17.5 Admission
+
+Physical Materialization은 **정확히 하나의 canonical SubtitleSrtArtifact**와 그것을 참조하는 **하나의 Materialization Request**만 admit한다. payload는 durable Artifact Record에서 읽으며 SRT를 재생성하지 않고 eligibility를 다시 판단하지 않는다. 존재하지 않는 Artifact나 canonical Artifact를 참조하지 않는 Request는 부작용 없이 거부한다.
+
+### 17.6 Storage Authority
+
+approved Storage Root는 **Composition Root가 운영 구성으로 공급**하며 Application이 materialization 정책과 lifecycle을 소유한다. caller는 임의 위치나 절대 경로를 선택할 수 없고 current working directory를 암묵적으로 사용하지 않는다. approved root 하위의 상대 위치는 operational provenance로 저장할 수 있으나 **절대 경로는 canonical이 아니다**. root 변경이나 파일 이동은 어떤 identity도 바꾸지 않는다.
+
+### 17.7 Materialization Identity
+
+**Artifact Identity ≠ Materialization Identity.** 실현 행위는 caller가 공급한 고유 Materialization Identity를 가지며 path·filename·byte·digest에서 파생하지 않는다. 하나의 Artifact는 여러 번(서로 다른 run·위치, 또는 파일 유실 이후) 실현될 수 있고, 각 실현은 고유 identity를 가진 별개의 Materialization Record이며 이전 record는 history로 보존된다. 재실현은 이전 materialization을 참조할 수 있다. record가 단일인지 복수인지는 구현이 정한다. replay는 Materialization Record와 상태를 결정적으로 재구성하며 물리 파일은 그에 맞춰 reconcile된다.
+
+### 17.8 Storage Location과 Filename 정책
+
+Storage Location은 approved Storage Root 하위의 Application 소유 상대 위치로 Application 정책이 결정하며 주어진 정책에서 결정적이다. operational provenance로 기록되며 **identity가 아니다**: 경로를 identity로 파싱하지 않고 경로 변경이 identity를 바꾸지 않는다. **path-as-identity는 금지된다.** Blueprint은 위치를 Artifact나 Materialization identity에서 파생하도록 요구하지 않으며, 구현은 모든 위치가 결정적이고 approved root 하위에 포함되며 identity로 취급되지 않는 한 저장 계층 구조를 자유롭게 조직할 수 있다. filename 생성은 Application 정책이 소유하고 결정적이며 사용자 제어 대상이 아니다. canonical format 확장자는 SRT format 계약이 소유하는 `.srt`다. 사람이 읽기 위한 presentation filename은 별도의 non-canonical Delivery 관심사이며 이 절의 범위 밖이다.
+
+### 17.9 Collision 정책
+
+| 상황 | canonical 동작 |
+| --- | --- |
+| 파일 없음 | 기록 후 **MATERIALIZED** |
+| 동일 byte 파일 존재 | 재기록 없이 **MATERIALIZED**(idempotent 성공) |
+| 다른 byte 파일 존재 | **Materialization Failure**, 절대 덮어쓰지 않음 |
+| 동일 request identity의 terminal record 존재 | 재실행하지 않고 기존 record 반환 |
+| 동일 Materialization Identity의 중복 Request | identity collision, idempotent, 두 번째 행위 생성 안 함 |
+| 다른 Artifact의 파일 또는 foreign 파일 | foreign으로 간주, 절대 덮어쓰지 않음 |
+
+admit한 Artifact와 byte가 일치하지 않는 내용을 조용히 대체하지 않는다.
+
+### 17.10 Missing-File 의미
+
+Artifact가 있고 Materialization Record가 있으며 이후 파일이 사라지면 **Artifact Record와 Materialization Record는 canonical하게 유효한 채로 남는다**. 파일 availability만 잃으며 이는 record 삭제나 provenance 손실이 아니다. Artifact는 무효화되지 않고 rematerialization이 허용된다. missing file은 Artifact나 Decision·provenance history의 삭제·변경을 유발하지 않는다.
+
+### 17.11 Rematerialization
+
+payload가 고정·결정적이므로 rematerialization은 byte-repeatable하다. 각 실현은 새 Materialization Identity를 가진 **새 Materialization Record**이며 이전 materialization을 선택적으로 참조하고 이전 record는 history로 보존된다. 이전 record의 identity를 재사용·덮어쓰지 않는다. 동일 Artifact + 동일 Materialization Identity + 동일 위치는 기존 record를 반환하는 반복 가능한 no-op다.
+
+### 17.12 Database ↔ Filesystem Consistency
+
+SQLite와 filesystem 사이의 cross-resource atomicity는 달성할 수 없으므로 이 계약은 atomic이 아니라 **record-first, crash-consistent, reconcilable** 모델을 정의한다.
+
+고려한 대안: (a) file-first — crash 시 record 없는 orphan 파일을 남겨 거부한다. (b) 단일 atomic DB+FS — 물리적으로 불가능하여 거부한다. (c) **record-first** — 파일 기록 전에 canonical materialization을 PENDING 상태로 확정하고 파일을 canonical record에 맞춰 reconcile한다. **채택.**
+
+채택 모델(lifecycle 기반):
+
+1. 파일 기록 **이전에** 실현 행위를 (이 Artifact·Materialization Identity·선언된 Storage Location으로) **PENDING** 상태로 durable하게 확정한다.
+2. approved root 내 임시 파일에 기록 후 flush·fsync하고 atomic move/link로 선언된 위치에 배치한다.
+3. terminal 상태 **MATERIALIZED**(실현 byte 길이 포함) 또는 **FAILED**(명시적 사유)를 durable하게 기록한다.
+
+Blueprint은 lifecycle과 그 의미를 확정한다. 그 lifecycle을 단일 record로 실현할지 복수 record로 실현할지는 구현 문제다.
+
+실패 순서별 결정적 의미:
+
+- PENDING 확정, FS 기록 실패 → atomic replacement로 부분 파일이 노출되지 않음(임시 파일 폐기); 행위는 FAILED로 resolve되거나 reconcile 가능한 PENDING으로 남는다. Artifact 불변.
+- FS 기록 성공, terminal 상태 durable 이전 → PENDING 행위와 결정적 위치로 recovery 시 reconcile: 파일 byte가 Artifact payload와 일치하면 MATERIALIZED로 완료(idempotent), 다르면 FAILED로 하고 덮어쓰지 않는다.
+- 기록 도중 crash → approved root 임시 영역의 orphan 임시 파일을 결정적으로 정리; PENDING 행위가 reconcile을 유도; 거짓 성공을 기록하지 않는다.
+- orphan 파일(파일 있으나 행위 없음) → tracked 실현에서는 PENDING을 기록 이전에 확정하므로 발생하지 않는다; PENDING/terminal 행위가 없는 위치의 파일은 foreign으로 간주하여 덮어쓰지 않는다.
+- 행위 없음 → reconcile 대상 없음; Artifact는 새 행위로 실현 가능.
+- missing file(MATERIALIZED, 파일 사라짐) → availability 손실; 새 행위로 rematerialize.
+
+payload는 Artifact가 고정하고 위치는 Application 정책으로 결정적이며 lifecycle(PENDING → MATERIALIZED | FAILED)이 결정적이다. 유일한 비결정 요소인 물리 파일 존재 여부는 availability로 명시 모델링되어 reconcile되며 canonical 진실로 취급하지 않는다. **cross-resource atomicity는 주장하지 않는다.**
+
+### 17.13 Provider Boundary
+
+Application은 materialization 정책·lifecycle(admission, Storage Location 정책, filename 정책, collision 정책, Materialization State, provenance, recovery)을 소유한다. Infrastructure는 byte 기록 메커니즘(임시 파일, fsync, atomic move/link, path 안전성)을 Application이 정의한 경계 뒤에서 소유한다. approved Storage Root는 Composition Root 운영 구성이다. 어떤 provider·infrastructure도 Artifact identity, Materialization identity, lifecycle authority, filename 정책, eligibility를 소유하지 않는다. cloud/object storage는 도입하지 않으며 `020_STORAGE_MODEL.md §16.4`의 External Object Storage Boundary는 별도 계약으로 유보한다.
+
+### 17.14 Security
+
+approved-root containment(모든 실현은 approved Storage Root 하위로 resolve, 이탈 거부), path-traversal 방지, symlink-escape 방지, approved root 내 안전한 임시 파일, 우발적 덮어쓰기 금지(다른 byte → 실패), exact byte 보존(실현 파일 byte == Artifact payload의 UTF-8 byte), atomic replacement, payload의 실행 해석 금지, locale 의존 경로 동작 금지를 요구하고 보존한다. 기존 hardened writer의 보장은 재사용하며 약화하지 않는다.
+
+### 17.15 Recovery
+
+재시작 시 모든 materialization 행위와 lifecycle 상태를 재구성한다. PENDING 행위는 결정적으로 reconcile한다(선언 위치의 byte를 Artifact payload와 대조하여 일치 시 MATERIALIZED, 다르거나 기록 불가 시 FAILED). approved root 내 orphan 임시 파일을 정리한다. 실패 후 retry는 새 materialization 행위를 기록한다. deterministic replay는 Materialization Record와 상태를 재구성하며 물리 파일은 reconcile되는 부작용일 뿐 canonical 진실로 replay되지 않는다. recovery는 다른 byte 파일을 덮어쓰지 않고 Artifact나 provenance를 삭제하지 않는다.
+
+### 17.16 Export Boundary와 Invariants
+
+- Artifact Generation은 durable SubtitleSrtArtifact에서 끝난다. Physical Materialization은 payload를 그대로 소비한다.
+- Physical Materialization은 하나의 Artifact를 admit하여 Materialization Record와 (성공 시) Storage Location의 실현 파일에서 끝난다.
+- Delivery(download, upload, transfer, signed URL, HTTP, content-disposition, presentation filename, UI)는 Physical Materialization **이후**에 시작하며 이 절의 범위 밖이다.
+- Artifact identity는 어떤 물리 파일과도 영구히 독립적이다.
+- 파일 경로·URL·object key는 Artifact 또는 Materialization identity가 될 수 없다.
+- Materialization Failure는 정상 결과로 숨기지 않는다.
+- 물리 파일 손실이 Human Decision, provenance 또는 Source Timeline traceability의 손실을 뜻하지 않는다.
 
 ## Related Documents
 
