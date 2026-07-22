@@ -123,3 +123,8 @@ class SubtitleApprovedUnitId(OpaqueIdentity):
 @dataclass(frozen=True, slots=True)
 class SubtitleSrtMaterializationId(OpaqueIdentity):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class EligibleAnalysisInputId(OpaqueIdentity):
+    pass

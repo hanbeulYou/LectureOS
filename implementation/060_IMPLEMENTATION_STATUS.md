@@ -1431,3 +1431,35 @@ file, restart reconstruction, deterministic replay, and that no Delivery/URL tab
 **Delivery** (download/upload/transfer, URLs/signed URLs, presentation filenames, UI), **cloud/object
 storage**, deletion/retention/GC, and additional export formats remain later, separately-gated milestones and
 are out of scope.
+
+## Lecture Analysis Input Eligibility (042 Lecture Intelligence Pipeline — Milestone 1)
+
+- Blueprint: approved `docs/042_LECTURE_INTELLIGENCE_PIPELINE.md §5.1` / `patches/PATCH-0009`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema v23 (one insert-only table)
+- Commit: `feat: admit lecture analysis input eligibility`
+- Immediate next milestone: Lecture Analysis / Analysis Finding (042 Milestone 2) — product-gated, deferred
+
+This milestone opens the **042 Lecture Intelligence Pipeline** (the Edit Pipeline's analysis layer) with its
+first stage, **Lecture Analysis Input Eligibility (Intake)**, implementing approved `042 §5.1` (PATCH-0009).
+From the validated Corrected Transcript selected by the Transcript Pipeline — admitted **read-only** through
+its canonical `TranscriptReadinessEvaluation` — it deterministically records one immutable, provenance-bearing
+`EligibleAnalysisInput` (`ELIGIBLE` iff the readiness outcome is `READY`, else `NOT_ELIGIBLE`). Its sole
+responsibility is establishing a validated, durable analysis basis; it performs **no analysis** and creates
+**no** Analysis Finding, Lecture Segment, Segment Label, Edit Candidate, or Review Item, and performs **no AI
+reasoning**. It reuses the established intake pattern (the Subtitle Transcript Intake stage): a deterministic
+`ReadinessOutcome → LectureAnalysisEligibility` mapping, an immutable aggregate carrying full readiness /
+selection / applicability / decision / review-item / candidate / transcript-revision lineage and source
+media/timeline, execution-provenance and a `DomainResultReference` (kind `eligible_analysis_input`, upstream =
+the readiness DomainResult), a `prepare/record` service split, and atomic v23 persistence. The AGENTS.md
+Architect Checklist is entirely `No`: no existing Domain contract change, no released-schema meaning change,
+no lifecycle authority change (established transcript authority is only consumed), no responsibility shift, a
+new additive identity (`EligibleAnalysisInputId`), one additive migration, and no Blueprint contradiction;
+041/v20/v21/v22 and the Transcript Pipeline records are unchanged. Migration compatibility from every released
+version (v1..v22) to v23 is verified. An in-process fake-review / fake-transcript acceptance reuses the durable
+Transcript Pipeline chain and records the analysis input for the ready and not-ready readiness evaluations,
+confirming ELIGIBLE/NOT_ELIGIBLE, provenance and DomainResult chaining, that no upstream record is mutated,
+restart reconstruction, deterministic replay, and that no analysis / Finding / Segment / Candidate table is
+produced. The complete 1347-test suite passes. Later 042 milestones (Analysis Finding, Segmentation, Edit
+Candidate, Review handoff) remain **product-gated** by the `042 §18` Requires-Validation items and are out of
+scope.

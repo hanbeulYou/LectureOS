@@ -88,6 +88,16 @@ from .subtitle_approved_assembly import (
     SubtitleApprovedUnitOrigin,
     SubtitleExportEligibility,
 )
+from .lecture_analysis_input import (
+    ELIGIBLE_ANALYSIS_INPUT_RESULT_KIND,
+    EligibleAnalysisInput,
+    LectureAnalysisEligibility,
+    LectureAnalysisInputError,
+    LectureAnalysisInputIdentityPlan,
+    LectureAnalysisInputService,
+    PreparedEligibleAnalysisInput,
+    eligibility_for_readiness_outcome,
+)
 from .subtitle_srt_materialization import (
     SUBTITLE_SRT_MATERIALIZATION_RESULT_KIND,
     PreparedSubtitleSrtMaterialization,
@@ -301,6 +311,14 @@ __all__ = [
     "SubtitleApprovedUnit",
     "SubtitleApprovedUnitOrigin",
     "SubtitleExportEligibility",
+    "ELIGIBLE_ANALYSIS_INPUT_RESULT_KIND",
+    "EligibleAnalysisInput",
+    "LectureAnalysisEligibility",
+    "LectureAnalysisInputError",
+    "LectureAnalysisInputIdentityPlan",
+    "LectureAnalysisInputService",
+    "PreparedEligibleAnalysisInput",
+    "eligibility_for_readiness_outcome",
     "SUBTITLE_SRT_MATERIALIZATION_RESULT_KIND",
     "PreparedSubtitleSrtMaterialization",
     "SubtitleMaterializationState",

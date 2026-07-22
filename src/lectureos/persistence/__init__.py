@@ -57,6 +57,10 @@ from .subtitle_srt_materialization import (
     SQLiteSubtitleSrtMaterializationCommandPersistence,
     SQLiteSubtitleSrtMaterializationRepository,
 )
+from .lecture_analysis_input import (
+    SQLiteEligibleAnalysisInputCommandPersistence,
+    SQLiteEligibleAnalysisInputRepository,
+)
 from .subtitle_final_subtitle import (
     SQLiteSubtitleFinalSubtitleCommandPersistence,
     SQLiteSubtitleFinalSubtitleRepository,
@@ -123,6 +127,8 @@ __all__ = [
     "SQLiteSubtitleSrtArtifactRepository",
     "SQLiteSubtitleSrtMaterializationCommandPersistence",
     "SQLiteSubtitleSrtMaterializationRepository",
+    "SQLiteEligibleAnalysisInputCommandPersistence",
+    "SQLiteEligibleAnalysisInputRepository",
     "SQLiteSubtitleFinalSubtitleCommandPersistence",
     "SQLiteSubtitleFinalSubtitleRepository",
     "SQLiteSubtitleReviewDecisionCommandPersistence",

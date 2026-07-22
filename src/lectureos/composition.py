@@ -17,6 +17,9 @@ from lectureos.application.transcript_current_selection import (
 from lectureos.application.subtitle_transcript_intake import (
     SubtitleTranscriptIntakeService,
 )
+from lectureos.application.lecture_analysis_input import (
+    LectureAnalysisInputService,
+)
 from lectureos.application.subtitle_candidate_generation import (
     SubtitleCandidateGenerationService,
 )
@@ -74,6 +77,7 @@ from lectureos.persistence import (
     SQLiteSubtitleSrtArtifactRepository,
     SQLiteSubtitleSrtMaterializationCommandPersistence,
     SQLiteSubtitleSrtMaterializationRepository,
+    SQLiteEligibleAnalysisInputCommandPersistence,
     SQLiteSubtitleReadingCommandPersistence,
     SQLiteSubtitleDecisionRevisionCommandPersistence,
     SQLiteSubtitleDecisionRevisionRepository,
@@ -287,6 +291,20 @@ def compose_sqlite_subtitle_transcript_intake_service(
     transcripts = compose_sqlite_transcript_service(connection, execution_query)
     persistence = SQLiteSubtitleIntakeCommandPersistence(connection)
     return SubtitleTranscriptIntakeService(
+        readiness, transcripts, execution_query, persistence
+    )
+
+
+def compose_sqlite_lecture_analysis_input_service(
+    connection: sqlite3.Connection,
+    execution_query: ExecutionQueryBoundary,
+) -> LectureAnalysisInputService:
+    """Build durable v23 Lecture Analysis Input Eligibility (Intake) on one caller connection."""
+
+    readiness = SQLiteTranscriptReadinessEvaluationRepository(connection)
+    transcripts = compose_sqlite_transcript_service(connection, execution_query)
+    persistence = SQLiteEligibleAnalysisInputCommandPersistence(connection)
+    return LectureAnalysisInputService(
         readiness, transcripts, execution_query, persistence
     )
 
