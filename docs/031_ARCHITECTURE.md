@@ -186,7 +186,7 @@ Review Coordinator는 UI나 독립적인 판단 엔진이 아니다. 최소 Revi
 
 - **Responsibility:** 생성된 Artifact를 외부 NLE 또는 export consumer에 전달하는 시스템 경계를 조정한다.
 - **Owns:** 외부 전달 경계와 전달 결과 노출의 책임.
-- **Does Not Own:** Artifact의 도메인 의미, 외부 시스템의 처리 결과, FCPXML round trip, 외부 편집 완료본 재수입.
+- **Does Not Own:** Artifact의 도메인 의미, 외부 시스템의 처리 결과, FCPXML round trip, 외부 편집 완료본 재수입. **v1에서는** transport, download, upload, transfer, URL/signed URL 생성, content distribution, recipient 관리, presentation filename 정책, delivery identity, delivery 지속성 또는 delivery lifecycle을 소유하지 않는다. 이 경계는 개념적 조정일 뿐 durable Delivery 도메인을 함의하지 않으며, v1에서 LectureOS 소유 Export Pipeline은 Physical Materialization에서 끝난다(`044_EXPORT_PIPELINE.md §17`, §18; `patches/PATCH-0008`).
 
 ### 4.11 Processing State Manager
 

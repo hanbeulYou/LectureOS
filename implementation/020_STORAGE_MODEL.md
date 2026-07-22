@@ -472,7 +472,7 @@ Artifact Record는 Artifact의 identity, provenance, availability와 Approved Re
 
 Artifact availability는 물리 표현의 존재, 접근 가능성, 완전성과 외부 consumer 상태를 구분해 설명해야 한다.
 
-외부 consumer 처리 성공이나 실패를 LectureOS의 Export Validation 또는 Approval 상태와 합치지 않는다.
+외부 consumer 처리 성공이나 실패를 LectureOS의 Export Validation 또는 Approval 상태와 합치지 않는다. v1에서 외부 consumer로의 delivery/transport는 LectureOS 소유 능력이 아니며, LectureOS Export Pipeline은 Physical Materialization에서 끝난다(`044_EXPORT_PIPELINE.md §18`, `patches/PATCH-0008`).
 
 ### 11.3 Reproducibility
 

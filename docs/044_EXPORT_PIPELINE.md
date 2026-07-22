@@ -1,11 +1,11 @@
 # 044_EXPORT_PIPELINE
 
 - Status: Draft
-- Version: Blueprint 0.2
-- Last Updated: 2026-07-22
+- Version: Blueprint 0.3
+- Last Updated: 2026-07-23
 - Depends On: `000_MANIFESTO.md`, `001_PRODUCT.md`, `002_FAQ.md`, `003_VISION.md`, `004_PRINCIPLES.md`, `020_PRODUCT_REQUIREMENTS.md`, `021_SYSTEM_CONTEXT.md`, `030_DATA_MODEL.md`, `031_ARCHITECTURE.md`, `040_TRANSCRIPT_PIPELINE.md`, `041_SUBTITLE_PIPELINE.md`, `042_LECTURE_INTELLIGENCE_PIPELINE.md`, `043_REVIEW_PIPELINE.md`
 - Referenced By:
-- Amended By: `patches/PATCH-0007-physical-materialization.md`
+- Amended By: `patches/PATCH-0007-physical-materialization.md`, `patches/PATCH-0008-delivery-deferral.md`
 
 ## Purpose
 
@@ -573,11 +573,27 @@ approved-root containment(모든 실현은 approved Storage Root 하위로 resol
 
 - Artifact Generation은 durable SubtitleSrtArtifact에서 끝난다. Physical Materialization은 payload를 그대로 소비한다.
 - Physical Materialization은 하나의 Artifact를 admit하여 Materialization Record와 (성공 시) Storage Location의 실현 파일에서 끝난다.
-- Delivery(download, upload, transfer, signed URL, HTTP, content-disposition, presentation filename, UI)는 Physical Materialization **이후**에 시작하며 이 절의 범위 밖이다.
+- Delivery(download, upload, transfer, signed URL, HTTP, content-disposition, presentation filename, UI)는 이 절의 범위 밖이며, **v1에서는 LectureOS 소유 능력으로 구현하지 않는다**(§18, `patches/PATCH-0008`).
 - Artifact identity는 어떤 물리 파일과도 영구히 독립적이다.
 - 파일 경로·URL·object key는 Artifact 또는 Materialization identity가 될 수 없다.
 - Materialization Failure는 정상 결과로 숨기지 않는다.
 - 물리 파일 손실이 Human Decision, provenance 또는 Source Timeline traceability의 손실을 뜻하지 않는다.
+
+## 18. Delivery — Deferred for v1
+
+이 절은 `PATCH-0008`로 승인된 Product Owner 결정을 기록한다. **v1에서 Physical Materialization(§17)이 LectureOS가 소유하는 Export Pipeline의 마지막 단계다.** MATERIALIZED Materialization Record와 그 물리 파일이 최종 내부 export 결과이며, 그 이후의 "Delivery"는 **외부 consumer의 사용** 또는 **향후 별도로 승인되는 능력**만을 뜻한다(`044 §12.5`).
+
+v1에서 LectureOS는 다음을 소유하지 않는다: transport, download, upload, transfer, URL 또는 signed URL 생성, content distribution, recipient 관리, presentation filename 정책, delivery identity, delivery 지속성(persistence), delivery lifecycle. `031_ARCHITECTURE.md §4.10`의 Export Coordinator는 외부 전달 경계의 개념적 조정만을 뜻하며, 위 항목을 소유하는 durable Delivery 도메인·Record·lifecycle·transport provider·network endpoint를 함의하지 않는다.
+
+확정 사항:
+
+- 외부 consumer는 canonical Artifact와 Materialization 결과를 **read-only**로 사용할 수 있으나, 그 처리 결과는 LectureOS canonical authority가 되지 않는다(`044 §11.5`, `§12.5`; `020_STORAGE_MODEL.md §11.2`).
+- Presentation filename은 non-canonical이며 계속 deferred다(`§17.8`). URL은 canonical이 아니며 정의하지 않는다. delivery identity와 delivery lifecycle은 존재하지 않는다.
+- Artifact 또는 Materialization Record에 delivery 상태를 추가하지 않는다.
+- missing-file reconciliation과 rematerialization은 Physical Materialization(§17.10/§17.15)의 배타적 책임으로 남는다.
+- Delivery는 구현 세부로 몰래 도입되지 않는다.
+
+향후 LectureOS 소유의 Delivery 능력은 새로운 architecture-first 조사, 명시적 Product Owner 승인, 별도 Blueprint PATCH, 새로 경계 지어진 구현 milestone을 통해서만 도입된다.
 
 ## Related Documents
 
