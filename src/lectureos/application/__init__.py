@@ -94,8 +94,11 @@ from .subtitle_srt_materialization import (
     SubtitleMaterializationState,
     SubtitleMaterializationStorageKind,
     SubtitleSrtMaterialization,
+    SubtitleSrtMaterializationError,
     SubtitleSrtMaterializationIdentityPlan,
     SubtitleSrtMaterializationOutcome,
+    SubtitleSrtMaterializationRecord,
+    SubtitleSrtMaterializationService,
 )
 from .subtitle_srt_artifact import (
     SUBTITLE_ARTIFACT_ENCODING,
@@ -303,8 +306,11 @@ __all__ = [
     "SubtitleMaterializationState",
     "SubtitleMaterializationStorageKind",
     "SubtitleSrtMaterialization",
+    "SubtitleSrtMaterializationError",
     "SubtitleSrtMaterializationIdentityPlan",
     "SubtitleSrtMaterializationOutcome",
+    "SubtitleSrtMaterializationRecord",
+    "SubtitleSrtMaterializationService",
     "SUBTITLE_ARTIFACT_ENCODING",
     "SUBTITLE_SRT_ARTIFACT_RESULT_KIND",
     "PreparedSubtitleSrtArtifact",

@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Protocol
 
+from lectureos.execution.boundaries import ExecutionQueryBoundary
 from lectureos.execution.identities import (
     ArtifactId,
     DomainResultId,
@@ -29,9 +30,10 @@ from lectureos.execution.identities import (
     SourceTimelineId,
     UnitExecutionId,
 )
-from lectureos.execution.models import DomainResultReference
+from lectureos.execution.models import DomainResultReference, ProcessingState
 
 from .identities import SubtitleSrtMaterializationId
+from .subtitle_srt_artifact import SubtitleSrtArtifact
 
 SUBTITLE_SRT_MATERIALIZATION_RESULT_KIND = "subtitle_srt_materialization"
 
@@ -160,8 +162,208 @@ class MaterializedFileWriter(Protocol):
     def read(self, *, relative_location: str) -> bytes | None: ...
 
 
+@dataclass(frozen=True, slots=True)
+class SubtitleSrtMaterializationRecord:
+    """The materialization intent together with its terminal outcome."""
+
+    materialization: SubtitleSrtMaterialization
+    outcome: SubtitleSrtMaterializationOutcome
+
+
+class SubtitleSrtArtifactQuery(Protocol):
+    def get(self, identity): ...
+
+
+class SubtitleSrtMaterializationQuery(Protocol):
+    def get(self, identity): ...
+
+    def get_outcome(self, identity): ...
+
+
+class AtomicSubtitleSrtMaterializationPersistence(Protocol):
+    def persist_materialization_intent(
+        self,
+        *,
+        materialization: SubtitleSrtMaterialization,
+        materialization_result: DomainResultReference,
+    ) -> None: ...
+
+    def persist_materialization_outcome(
+        self, *, outcome: SubtitleSrtMaterializationOutcome
+    ) -> None: ...
+
+
+class SubtitleSrtMaterializationError(ValueError):
+    """A structurally valid request that cannot begin a canonical materialization act."""
+
+
+class SubtitleSrtMaterializationService:
+    """Realizes one SRT artifact as a physical file record-first, mutating nothing upstream."""
+
+    def __init__(
+        self,
+        artifact_query: SubtitleSrtArtifactQuery,
+        materialization_query: SubtitleSrtMaterializationQuery,
+        execution_query: ExecutionQueryBoundary,
+        file_writer: MaterializedFileWriter,
+        persistence: AtomicSubtitleSrtMaterializationPersistence,
+    ) -> None:
+        self._artifacts = artifact_query
+        self._materializations = materialization_query
+        self._executions = execution_query
+        self._writer = file_writer
+        self._persistence = persistence
+
+    def record_materialization(
+        self,
+        *,
+        source_artifact_id: ArtifactId,
+        run_id: ProcessingRunId,
+        unit_execution_id: UnitExecutionId,
+        identities: SubtitleSrtMaterializationIdentityPlan,
+        sequence: int = 0,
+        previous_materialization_id: SubtitleSrtMaterializationId | None = None,
+        reason: str | None = None,
+    ) -> SubtitleSrtMaterializationRecord:
+        # Duplicate Materialization Identity is idempotent; a dangling PENDING is completed (§17.9/§17.12).
+        existing = self._materializations.get(identities.materialization_id)
+        if existing is not None:
+            outcome = self._materializations.get_outcome(existing.identity)
+            if outcome is not None:
+                return SubtitleSrtMaterializationRecord(existing, outcome)
+            artifact = self._require_artifact(existing.source_artifact_id)
+            return SubtitleSrtMaterializationRecord(
+                existing, self._finalize(existing, artifact)
+            )
+
+        artifact = self._require_artifact(source_artifact_id)
+        self._require_running_execution(run_id, unit_execution_id)
+        materialization = SubtitleSrtMaterialization(
+            identity=identities.materialization_id,
+            domain_result_id=identities.materialization_result_id,
+            source_artifact_id=artifact.identity,
+            storage_kind=SubtitleMaterializationStorageKind.LOCAL_FILE,
+            relative_location=srt_materialization_relative_location(
+                identities.materialization_id
+            ),
+            source_media_id=artifact.source_media_id,
+            source_timeline_id=artifact.source_timeline_id,
+            run_id=run_id,
+            unit_execution_id=unit_execution_id,
+            sequence=sequence,
+            reason=reason if reason is not None else _default_reason(),
+            previous_materialization_id=previous_materialization_id,
+        )
+        materialization_result = DomainResultReference(
+            identity=identities.materialization_result_id,
+            kind=SUBTITLE_SRT_MATERIALIZATION_RESULT_KIND,
+            source_media=artifact.source_media_id,
+            source_timeline=artifact.source_timeline_id,
+            upstream_results=(artifact.domain_result_id,),
+        )
+        # Record-first: the PENDING act is durable before any file write.
+        self._persistence.persist_materialization_intent(
+            materialization=materialization,
+            materialization_result=materialization_result,
+        )
+        return SubtitleSrtMaterializationRecord(
+            materialization, self._finalize(materialization, artifact)
+        )
+
+    def reconcile_materialization(
+        self, *, materialization_id: SubtitleSrtMaterializationId
+    ) -> SubtitleSrtMaterializationRecord:
+        materialization = self._materializations.get(materialization_id)
+        if materialization is None:
+            raise KeyError("unknown subtitle srt materialization")
+        outcome = self._materializations.get_outcome(materialization_id)
+        if outcome is not None:
+            return SubtitleSrtMaterializationRecord(materialization, outcome)  # already terminal
+        artifact = self._artifacts.get(materialization.source_artifact_id)
+        if not isinstance(artifact, SubtitleSrtArtifact):
+            outcome = self._persist_outcome(
+                materialization.identity,
+                None,
+                "source artifact unavailable for reconciliation",
+            )
+            return SubtitleSrtMaterializationRecord(materialization, outcome)
+        return SubtitleSrtMaterializationRecord(
+            materialization, self._finalize(materialization, artifact)
+        )
+
+    def _finalize(
+        self, materialization: SubtitleSrtMaterialization, artifact: SubtitleSrtArtifact
+    ) -> SubtitleSrtMaterializationOutcome:
+        content = artifact.payload.encode("utf-8")
+        try:
+            byte_length = self._writer.write(
+                relative_location=materialization.relative_location, content=content
+            )
+        except (
+            MaterializationCollisionError,
+            MaterializationContainmentError,
+            MaterializationWriteError,
+        ) as error:
+            return self._persist_outcome(
+                materialization.identity, None, f"{type(error).__name__}: {error}"
+            )
+        return self._persist_outcome(materialization.identity, byte_length, None)
+
+    def _persist_outcome(
+        self,
+        materialization_id: SubtitleSrtMaterializationId,
+        byte_length: int | None,
+        failure_reason: str | None,
+    ) -> SubtitleSrtMaterializationOutcome:
+        if failure_reason is None:
+            outcome = SubtitleSrtMaterializationOutcome(
+                materialization_id=materialization_id,
+                state=SubtitleMaterializationState.MATERIALIZED,
+                byte_length=byte_length,
+            )
+        else:
+            outcome = SubtitleSrtMaterializationOutcome(
+                materialization_id=materialization_id,
+                state=SubtitleMaterializationState.FAILED,
+                failure_reason=failure_reason,
+            )
+        self._persistence.persist_materialization_outcome(outcome=outcome)
+        return outcome
+
+    def _require_artifact(self, artifact_id: ArtifactId) -> SubtitleSrtArtifact:
+        artifact = self._artifacts.get(artifact_id)
+        if artifact is None:
+            raise KeyError("unknown subtitle srt artifact")
+        if not isinstance(artifact, SubtitleSrtArtifact):
+            raise SubtitleSrtMaterializationError(
+                "materialization must derive from a canonical SRT Artifact"
+            )
+        return artifact
+
+    def _require_running_execution(self, run_id, unit_execution_id) -> None:
+        run = self._executions.get_run(run_id)
+        if run is None:
+            raise KeyError("unknown processing run")
+        execution = self._executions.get_unit_execution(unit_execution_id)
+        if execution is None:
+            raise KeyError("unknown unit execution")
+        if execution.run_id != run.identity:
+            raise SubtitleSrtMaterializationError(
+                "unit execution must belong to processing run"
+            )
+        if execution.state is not ProcessingState.RUNNING:
+            raise SubtitleSrtMaterializationError(
+                "materializing an srt artifact requires a running unit execution"
+            )
+
+
+def _default_reason() -> str:
+    return "materialized the srt artifact to a physical file"
+
+
 __all__ = [
     "SUBTITLE_SRT_MATERIALIZATION_RESULT_KIND",
+    "AtomicSubtitleSrtMaterializationPersistence",
     "MaterializationCollisionError",
     "MaterializationContainmentError",
     "MaterializationWriteError",
@@ -169,8 +371,13 @@ __all__ = [
     "PreparedSubtitleSrtMaterialization",
     "SubtitleMaterializationState",
     "SubtitleMaterializationStorageKind",
+    "SubtitleSrtArtifactQuery",
     "SubtitleSrtMaterialization",
+    "SubtitleSrtMaterializationError",
     "SubtitleSrtMaterializationIdentityPlan",
     "SubtitleSrtMaterializationOutcome",
+    "SubtitleSrtMaterializationQuery",
+    "SubtitleSrtMaterializationRecord",
+    "SubtitleSrtMaterializationService",
     "srt_materialization_relative_location",
 ]

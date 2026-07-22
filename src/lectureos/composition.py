@@ -44,6 +44,9 @@ from lectureos.application.subtitle_approved_assembly import (
 from lectureos.application.subtitle_srt_artifact import (
     SubtitleSrtArtifactGenerationService,
 )
+from lectureos.application.subtitle_srt_materialization import (
+    SubtitleSrtMaterializationService,
+)
 from lectureos.application.subtitle_final_subtitle import (
     SubtitleFinalSubtitleService,
 )
@@ -68,6 +71,9 @@ from lectureos.persistence import (
     SQLiteSubtitleApprovedDocumentCommandPersistence,
     SQLiteSubtitleApprovedDocumentRepository,
     SQLiteSubtitleSrtArtifactCommandPersistence,
+    SQLiteSubtitleSrtArtifactRepository,
+    SQLiteSubtitleSrtMaterializationCommandPersistence,
+    SQLiteSubtitleSrtMaterializationRepository,
     SQLiteSubtitleReadingCommandPersistence,
     SQLiteSubtitleDecisionRevisionCommandPersistence,
     SQLiteSubtitleDecisionRevisionRepository,
@@ -427,6 +433,24 @@ def compose_sqlite_subtitle_srt_artifact_generation_service(
     documents = SQLiteSubtitleApprovedDocumentRepository(connection)
     persistence = SQLiteSubtitleSrtArtifactCommandPersistence(connection)
     return SubtitleSrtArtifactGenerationService(documents, execution_query, persistence)
+
+
+def compose_sqlite_subtitle_srt_materialization_service(
+    connection: sqlite3.Connection,
+    execution_query: ExecutionQueryBoundary,
+    storage_root,
+) -> SubtitleSrtMaterializationService:
+    """Build durable v22 SRT Physical Materialization on one caller connection and approved root."""
+
+    from lectureos.infrastructure.local_srt_file_writer import LocalSrtFileWriter
+
+    artifacts = SQLiteSubtitleSrtArtifactRepository(connection)
+    materializations = SQLiteSubtitleSrtMaterializationRepository(connection)
+    persistence = SQLiteSubtitleSrtMaterializationCommandPersistence(connection)
+    writer = LocalSrtFileWriter(storage_root)
+    return SubtitleSrtMaterializationService(
+        artifacts, materializations, execution_query, writer, persistence
+    )
 
 
 def _compose_sqlite_transcript_service(
