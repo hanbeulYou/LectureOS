@@ -38,6 +38,9 @@ from lectureos.application.subtitle_review_decision import (
 from lectureos.application.subtitle_decision_application import (
     SubtitleDecisionRevisionService,
 )
+from lectureos.application.subtitle_final_subtitle import (
+    SubtitleFinalSubtitleService,
+)
 from lectureos.application.transcript_readiness_evaluation import (
     TranscriptReadinessEvaluationService,
 )
@@ -58,6 +61,8 @@ from lectureos.persistence import (
     SQLiteSubtitleIntakeCommandPersistence,
     SQLiteSubtitleReadingCommandPersistence,
     SQLiteSubtitleDecisionRevisionCommandPersistence,
+    SQLiteSubtitleDecisionRevisionRepository,
+    SQLiteSubtitleFinalSubtitleCommandPersistence,
     SQLiteSubtitleReadingRevisionRepository,
     SQLiteSubtitleReviewDecisionCommandPersistence,
     SQLiteSubtitleReviewDecisionRepository,
@@ -369,6 +374,17 @@ def compose_sqlite_subtitle_decision_application_service(
     return SubtitleDecisionRevisionService(
         decisions, validations, execution_query, persistence
     )
+
+
+def compose_sqlite_subtitle_final_subtitle_service(
+    connection: sqlite3.Connection,
+    execution_query: ExecutionQueryBoundary,
+) -> SubtitleFinalSubtitleService:
+    """Build durable v19 Subtitle Final Subtitle selection on one caller connection."""
+
+    revisions = SQLiteSubtitleDecisionRevisionRepository(connection)
+    persistence = SQLiteSubtitleFinalSubtitleCommandPersistence(connection)
+    return SubtitleFinalSubtitleService(revisions, execution_query, persistence)
 
 
 def _compose_sqlite_transcript_service(

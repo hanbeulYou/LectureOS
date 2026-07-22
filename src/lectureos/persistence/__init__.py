@@ -45,6 +45,10 @@ from .subtitle_decision_application import (
     SQLiteSubtitleDecisionRevisionCommandPersistence,
     SQLiteSubtitleDecisionRevisionRepository,
 )
+from .subtitle_final_subtitle import (
+    SQLiteSubtitleFinalSubtitleCommandPersistence,
+    SQLiteSubtitleFinalSubtitleRepository,
+)
 from .subtitle_review_decision import (
     SQLiteSubtitleReviewDecisionCommandPersistence,
     SQLiteSubtitleReviewDecisionRepository,
@@ -101,6 +105,8 @@ __all__ = [
     "SQLiteSubtitleTimeRevisionRepository",
     "SQLiteSubtitleDecisionRevisionCommandPersistence",
     "SQLiteSubtitleDecisionRevisionRepository",
+    "SQLiteSubtitleFinalSubtitleCommandPersistence",
+    "SQLiteSubtitleFinalSubtitleRepository",
     "SQLiteSubtitleReviewDecisionCommandPersistence",
     "SQLiteSubtitleReviewDecisionRepository",
     "SQLiteSubtitleReviewPreparationCommandPersistence",

@@ -7,8 +7,8 @@ from pathlib import Path
 
 from .errors import PersistenceError, UnsupportedSchemaVersionError
 
-SQLITE_SCHEMA_VERSION = 18
-_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18)
+SQLITE_SCHEMA_VERSION = 19
+_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19)
 
 _V1_TABLE_STATEMENTS = (
     """CREATE TABLE schema_metadata (
@@ -866,6 +866,46 @@ _V18_ADDITION_STATEMENTS = (
 )""",
 )
 
+_V19_ADDITION_STATEMENTS = (
+    """CREATE TABLE subtitle_final_subtitles (
+    identity TEXT PRIMARY KEY,
+    domain_result_id TEXT NOT NULL,
+    source_decision_revision_id TEXT NOT NULL,
+    decision_kind TEXT NOT NULL CHECK (decision_kind IN ('accept', 'reject', 'modify')),
+    applied_outcome TEXT NOT NULL CHECK (applied_outcome IN ('accepted', 'rejected', 'modified')),
+    final_outcome TEXT NOT NULL CHECK (final_outcome IN ('final', 'not_final')),
+    applied_text TEXT,
+    source_review_decision_id TEXT NOT NULL,
+    review_item_id TEXT NOT NULL,
+    candidate_reference_id TEXT NOT NULL,
+    source_preparation_id TEXT NOT NULL,
+    source_validation_id TEXT NOT NULL,
+    source_time_revision_id TEXT NOT NULL,
+    source_reading_revision_id TEXT NOT NULL,
+    source_candidate_id TEXT NOT NULL,
+    source_finding_id TEXT NOT NULL,
+    rule TEXT NOT NULL CHECK (length(trim(rule)) > 0),
+    target_timed_unit_id TEXT,
+    source_transcript_id TEXT NOT NULL,
+    source_revision_id TEXT NOT NULL,
+    source_media_id TEXT NOT NULL,
+    source_timeline_id TEXT NOT NULL,
+    processing_run_id TEXT NOT NULL,
+    unit_execution_id TEXT NOT NULL,
+    sequence INTEGER NOT NULL CHECK (sequence >= 0),
+    reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),
+    previous_final_id TEXT,
+    CHECK ((decision_kind = 'accept' AND applied_outcome = 'accepted')
+           OR (decision_kind = 'reject' AND applied_outcome = 'rejected')
+           OR (decision_kind = 'modify' AND applied_outcome = 'modified')),
+    CHECK ((applied_outcome IN ('accepted', 'modified') AND final_outcome = 'final')
+           OR (applied_outcome = 'rejected' AND final_outcome = 'not_final')),
+    CHECK ((applied_outcome = 'modified' AND applied_text IS NOT NULL) OR
+           (applied_outcome IN ('accepted', 'rejected') AND applied_text IS NULL)),
+    CHECK ((sequence = 0 AND previous_final_id IS NULL) OR sequence > 0)
+)""",
+)
+
 _V9_ADDITION_STATEMENTS = (
     """CREATE TABLE transcript_current_selections (
     identity TEXT PRIMARY KEY,
@@ -1590,6 +1630,39 @@ _V18_EXPECTED_COLUMNS = {
     ),
 }
 
+_V19_EXPECTED_COLUMNS = {
+    **_V18_EXPECTED_COLUMNS,
+    "subtitle_final_subtitles": (
+        ("identity", "TEXT", 0, 1),
+        ("domain_result_id", "TEXT", 1, 0),
+        ("source_decision_revision_id", "TEXT", 1, 0),
+        ("decision_kind", "TEXT", 1, 0),
+        ("applied_outcome", "TEXT", 1, 0),
+        ("final_outcome", "TEXT", 1, 0),
+        ("applied_text", "TEXT", 0, 0),
+        ("source_review_decision_id", "TEXT", 1, 0),
+        ("review_item_id", "TEXT", 1, 0),
+        ("candidate_reference_id", "TEXT", 1, 0),
+        ("source_preparation_id", "TEXT", 1, 0),
+        ("source_validation_id", "TEXT", 1, 0),
+        ("source_time_revision_id", "TEXT", 1, 0),
+        ("source_reading_revision_id", "TEXT", 1, 0),
+        ("source_candidate_id", "TEXT", 1, 0),
+        ("source_finding_id", "TEXT", 1, 0),
+        ("rule", "TEXT", 1, 0),
+        ("target_timed_unit_id", "TEXT", 0, 0),
+        ("source_transcript_id", "TEXT", 1, 0),
+        ("source_revision_id", "TEXT", 1, 0),
+        ("source_media_id", "TEXT", 1, 0),
+        ("source_timeline_id", "TEXT", 1, 0),
+        ("processing_run_id", "TEXT", 1, 0),
+        ("unit_execution_id", "TEXT", 1, 0),
+        ("sequence", "INTEGER", 1, 0),
+        ("reason", "TEXT", 1, 0),
+        ("previous_final_id", "TEXT", 0, 0),
+    ),
+}
+
 
 def initialize_sqlite_database(database_path: str | Path) -> sqlite3.Connection:
     """Create the latest schema for a new path; validate existing databases."""
@@ -1629,7 +1702,7 @@ def migrate_sqlite_database(
 ) -> None:
     """Explicitly perform one approved migration step or validate a no-op target."""
 
-    if target_version not in (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18):
+    if target_version not in (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19):
         raise PersistenceError(f"unsupported SQLite migration target: {target_version}")
     path = _validate_database_path(database_path)
     if not path.is_file():
@@ -1689,6 +1762,9 @@ def migrate_sqlite_database(
             return
         if current_version == 17 and target_version == 18:
             _migrate_v17_to_v18(connection)
+            return
+        if current_version == 18 and target_version == 19:
+            _migrate_v18_to_v19(connection)
             return
         raise PersistenceError(
             f"unsupported SQLite migration: {current_version} to {target_version}"
@@ -1755,6 +1831,7 @@ def _initialize_latest_schema(connection: sqlite3.Connection) -> None:
             *_V16_ADDITION_STATEMENTS,
             *_V17_ADDITION_STATEMENTS,
             *_V18_ADDITION_STATEMENTS,
+            *_V19_ADDITION_STATEMENTS,
         ):
             connection.execute(statement)
         connection.execute(
@@ -2077,6 +2154,24 @@ def _migrate_v17_to_v18(connection: sqlite3.Connection) -> None:
         raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
 
 
+def _migrate_v18_to_v19(connection: sqlite3.Connection) -> None:
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        for statement in _V19_ADDITION_STATEMENTS:
+            connection.execute(statement)
+        connection.execute(
+            "UPDATE schema_metadata SET version = 19 WHERE singleton = 1"
+        )
+        _validate_initialized_connection(connection)
+        _commit(connection)
+    except PersistenceError:
+        _rollback(connection)
+        raise
+    except sqlite3.Error as error:
+        _rollback(connection)
+        raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
+
+
 def _validate_initialized_connection(connection: sqlite3.Connection) -> int:
     try:
         if connection.execute("PRAGMA foreign_keys").fetchone() != (1,):
@@ -2127,6 +2222,7 @@ def _validate_schema_shape(connection: sqlite3.Connection, version: int) -> None
         16: _V16_EXPECTED_COLUMNS,
         17: _V17_EXPECTED_COLUMNS,
         18: _V18_EXPECTED_COLUMNS,
+        19: _V19_EXPECTED_COLUMNS,
     }[version]
     for table, expected in expected_columns.items():
         actual = tuple(
