@@ -970,3 +970,72 @@ verified by an explicit single-step-chain test that preserves existing data and 
 diagnoses only; all numeric quality thresholds, review handoff (§4.6), decisions (§4.7), and final
 gating (§4.8) remain deferred. This advances the Subtitle Pipeline to stage 4.5 (Structural Validation);
 Subtitle Review Preparation and later subtitle/artifact stages remain out of scope and unstarted.
+
+## Subtitle Review Preparation
+
+- Goal: `docs/goals/LectureOS_Codex_Goal_Subtitle_Review_Preparation.md`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema v16 (reusing the common Review tables)
+- Completed slices: Goal Baseline and Assessment; Review Preparation Records; Deterministic Review
+  Preparation Service; Atomic SQLite Persistence, Restart, Replay and Migration Compatibility;
+  Fake-Review / Fake-Transcript Acceptance
+- Immediate next slice: Goal Complete
+
+This milestone advances the Subtitle Pipeline to stage 4.6 (`docs/041_SUBTITLE_PIPELINE.md §4.6 Subtitle
+Review Preparation`, §10): from the supplied canonical `SubtitleValidation` revision (v15) and its
+ordered findings, it deterministically **materializes canonical human-review work** — one **common
+`ReviewItem`** (with its `CandidateReference` and a shared `ReviewContext`) per validation finding —
+wrapped by a new immutable `SubtitleReviewPreparation` aggregate that traces each item to its source
+finding and stable `rule`. `Product → Application → Capability Contract → Provider` and the lifecycle
+position `… → Subtitle Structural Validation → Subtitle Review Preparation → Decision Application →
+Final Subtitle` are preserved, while Decision Application, Final Subtitle, Artifact and export remain out
+of scope. Review Preparation records **no** Review Decision, changes no upstream record, creates review
+work in the **open** common lifecycle, and starts nothing downstream.
+
+Admission boundary: Review Preparation **consumes the supplied validation revision**; whether it is the
+latest, currently selected, superseded, or otherwise eligible is **outside this stage** — it neither
+determines nor enforces currency, selection, or supersession, which belong to an upstream lifecycle
+authority. The bounded architectural assessment found no substantive blocker. The repository already
+owns a **durable common Review lifecycle** (`review/` — `ReviewItem`/`CandidateReference`/`ReviewContext`/
+`ReviewDecision`/`DecisionKind`, persisted in the shared `review_items`/`review_candidate_references`/
+`review_contexts` tables) and a direct precedent (`TranscriptReviewPreparation`, v6). §4.6 explicitly
+delivers subtitle targets to the common Review activity, so Review Preparation **reuses the common
+Review model** (creates common Review Items), plus a subtitle-specific `SubtitleReviewPreparation`
+aggregate and child table linking each Review Item to its source finding + rule. There is **no new
+status enum**: items are created OPEN (empty `decision_references`) in the existing common lifecycle;
+allowed actions are the common `DecisionKind`. Finding→Review-Item cardinality is **1:1** (each finding
+→ one item, finding order, no grouping); review necessity is a fixed deterministic baseline (every
+finding is review work); a clean validation (0 findings) yields a **valid empty preparation** (so a
+subtitle-specific aggregate is used, since `TranscriptReviewPreparation` requires ≥1 item, while the
+common Review records are reused). Additive schema v16 adds a `subtitle_review_preparations` parent and
+an ordered `subtitle_review_preparation_items` child, with atomic persistence (reusing the common review
+insert helpers), restart reconstruction and deterministic replay. No wall-clock is read. The AGENTS.md
+Architect Checklist is entirely `No`: no existing Domain contract change (the common `review/` contracts
+and the in-memory subtitle domain are untouched — rows added, meaning unchanged), no released-schema
+meaning change, no lifecycle authority change (Preparation creates open work and decides nothing), no
+responsibility shift, no new identity semantics, one additive migration, and no Blueprint contradiction.
+Migration compatibility from every released version (v1..v15) to v16 is verified.
+
+The Subtitle Review Preparation Goal is complete. `SubtitleReviewPreparationService.prepare_review(...)`
+consumes the supplied canonical `SubtitleValidation`, requires a running execution, and for each of its
+ordered findings creates one common `CandidateReference` (kind `subtitle_validation_finding`) and one
+OPEN common `ReviewItem` referencing a shared `ReviewContext`, recording a `SubtitleReviewItemLink` that
+traces the item to its source finding identity + stable `rule` + target timed unit; a clean validation
+yields a valid empty preparation. `SQLiteSubtitleReviewPreparationCommandPersistence` writes the common
+candidate references + context + open review items (via the common insert helpers) together with the
+preparation parent, its ordered item-link child, and the co-persisted `DomainResultReference` (kind
+`subtitle_review_preparation`, upstream = the validation DomainResult) in one atomic v16 transaction,
+reconstructs the preparation and ordered item links exactly after restart, and reproduces byte-identical
+records on deterministic replay into a fresh database. An in-process fake-review / fake-transcript
+acceptance drives the full pipeline and confirms a clean validation yields an empty preparation and a
+defective validation yields exactly one OPEN Review Item per finding — each traced to its source finding
+and rule — with the review items remaining OPEN after restart (no decision recorded); idempotency
+(upstream validation byte-identical before and after preparation); restart reconstruction (preparation +
+common review items); deterministic replay; and no downstream final / artifact table produced. The
+complete 1061-test suite passes. A Blueprint Drift Check confirmed no drift relative to any prior
+completed milestone, and migration compatibility from every released version (v1..v15) to v16 is verified
+by an explicit single-step-chain test that preserves existing data and meaning. Review Preparation
+creates open review work and decides nothing; the common `review/` contracts are unchanged; all grouping/
+prioritization/eligibility/UI policy and all decision/final authority remain deferred (§4.7/§4.8). This
+advances the Subtitle Pipeline to stage 4.6 (Review Preparation); Decision Application and later stages
+remain out of scope and unstarted.

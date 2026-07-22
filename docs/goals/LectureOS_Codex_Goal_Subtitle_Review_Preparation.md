@@ -205,19 +205,106 @@ inherited.)
 
 ### Completed Capabilities
 ```text
-None yet
+Slice 1 — Goal Baseline and Assessment
+- commit `ef206b6` — `docs: add subtitle review preparation goal`
+- bounded assessment: no substantive blocker; Review Preparation consumes the supplied canonical
+  SubtitleValidation revision (currency/selection/supersession are an upstream authority's concern);
+  reuses the common Review activity (creates common ReviewItem/CandidateReference/ReviewContext);
+  1:1 finding→Review Item; valid empty preparation; open common lifecycle (no new status enum); no
+  decision; provider-free; additive schema v16
+- Review: Optional — Skipped (documentation only)
+
+Slice 2 — Review Preparation Records
+- commit `e8488b9` — `feat: add subtitle review preparation records`
+- `SubtitleReviewPreparationId` added to application identities
+- `SubtitleReviewItemLink` (review_item_id, candidate_reference_id, source_finding_id, non-blank
+  stable rule, optional target_timed_unit_id) — per-item finding traceability
+- `SubtitleReviewPreparation` aggregate: identity, DomainResult linkage, source validation + full
+  carried lineage, context id, ordered item_links (may be empty), item_count, source_structural_valid,
+  provenance_complete, execution provenance, append-only sequence/previous linkage, deterministic
+  reason; unique review-item/candidate-reference/source-finding ids; empty preparation allowed; no
+  decision/approval/final field
+- `SubtitleReviewTargetIdentityPlan` + `SubtitleReviewPreparationIdentityPlan` (targets may be empty)
+- 16 focused record tests passed; complete suite 1039 passed
+- Required Claude Review: Inconclusive — no critical findings identified (additive immutable records;
+  empty preparation valid; stable rule traceability; reuses common review identities; no defect)
+
+Slice 3 — Deterministic Review Preparation Service
+- commit `a199309` — `feat: derive subtitle review preparation from validation`
+- `SubtitleReviewPreparationService.prepare_review(...)` consumes the supplied validation + its ordered
+  findings, requires a running execution, and creates one common `CandidateReference` (kind
+  `subtitle_validation_finding`, source_domain `subtitle`) + one OPEN `ReviewItem` per finding (1:1,
+  finding order) referencing a shared `ReviewContext`, recording a `SubtitleReviewItemLink` per item;
+  a clean validation (0 findings) yields a valid empty preparation
+- consumes only the validation (currency/selection/supersession left to upstream authority); carries
+  the full validation lineage; preparation DomainResult upstream = the validation DomainResult; no
+  wall-clock; performs no write; mutates no upstream record; records no decision
+- `PreparedSubtitleReview`, `AtomicSubtitleReviewPreparationPersistence` port, `SubtitleValidationQuery`
+  protocol, `SubtitleReviewPreparationError`
+- 8 focused service tests (1:1 open items traced; empty preparation; target-count mismatch; unknown
+  validation/finding; running-execution; determinism; no-persistence) passed; complete suite 1047 passed
+- Required Claude Review: Inconclusive — no critical findings identified (pure deterministic
+  materialization; reuses the common Review model; no decision, no persistence, no upstream mutation)
+
+Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
+- commit `ff9ea68` — `feat: persist subtitle review preparation atomically`
+- additive SQLite schema v16: `subtitle_review_preparations` parent + ordered
+  `subtitle_review_preparation_items` child (composite PK; per-item review_item_id/candidate_reference_id/
+  source_finding_id/rule/target); the common `review_items` / `review_candidate_references` /
+  `review_contexts` tables are reused (no duplication)
+- `_migrate_v15_to_v16` additive; downgrades and direct skips rejected; existing v1–v15 unchanged
+- `SQLiteSubtitleReviewPreparationCommandPersistence.persist_subtitle_review_preparation(...)` writes
+  the common candidate references + context + open review items (via the common insert helpers) + the
+  preparation parent + item-link child + the DomainResultReference in one `BEGIN IMMEDIATE` transaction;
+  validates linkage/cardinality and identity absence (in the shared tables too); rolls back completely
+  on collision/linkage/write/commit failure, including the empty case; no upstream mutation
+- `SQLiteSubtitleReviewPreparationRepository` reconstructs the exact preparation + ordered item links
+  after restart
+- composition `compose_sqlite_subtitle_review_preparation_service` wires the durable validation
+  repository + review preparation persistence
+- the `ReviewContext` carries no validation/diagnostic references (would be rejected by the common
+  helper) and items carry empty decision references (open lifecycle)
+- migration compatibility verified: every released version v1..v15 chains to v16 preserving data;
+  idempotency verified (upstream validation row byte-identical); superseded-latest test expectations
+  updated (v2/v3/v4/v5/processing_units 15→16; v6..v15 unsupported-target guards 16→17; v9..v14 chain
+  helpers extended with the v15 addition block; v15 no-op/fresh-init/version realigned)
+- 13 focused v16 tests (migration, full v1..v15→v16 chain, restart, replay, idempotency, atomic
+  rollback of the empty preparation) passed; complete suite 1060 passed
+- Required Claude Review: PASS — independent bounded review verified atomicity/rollback across the shared
+  common tables (incl. the empty case), ordered item-link reconstruction, identity-collision atomicity,
+  preparation↔item↔reference linkage, additive migration + chain compatibility, DDL/expected-columns
+  exactness, and the required `validation_references` removal; no critical findings
+
+Slice 5 — Fake-Review / Fake-Transcript Acceptance
+- commit `90222b0` — `test: verify subtitle review preparation acceptance`
+- `lectureos.subtitle_review_preparation_acceptance` drives the full pipeline (fake correction provider
+  and fake reviewer, no network, no credential, fixed timestamps) through candidate → reading → time →
+  validation → review preparation → atomic v16 persistence → reopen → exact restart reconstruction →
+  identical deterministic replay
+- verifies a clean validation yields a valid empty preparation (0 items), and a defective validation
+  yields exactly one OPEN common Review Item per finding (kind `subtitle_validation_finding`), each
+  traced to its source finding + stable rule; review items remain OPEN after restart (no decision
+  recorded); result upstream = validation DomainResult; idempotency (upstream validation byte-identical
+  before/after); restart reconstruction (preparation + common review items); deterministic replay; and
+  no downstream final / artifact table produced
+- acceptance summary: every empty / one-item-per-finding / open / traced / candidate-kind / provenance /
+  idempotency / no-decision / restart / replay / no-downstream flag true
+- focused acceptance test passed; complete suite 1061 passed
+- Blueprint Drift Check: PASS — dependency direction unchanged, no provider owns review-preparation
+  identity/lifecycle, no existing enum/aggregate/service meaning changed (the common `review/` contracts
+  and in-memory subtitle domain are untouched; rows added, meaning unchanged), schema strictly additive,
+  no decision/final/artifact responsibility pulled in, Human Authority intact, Review Preparation creates
+  open review work and decides nothing
+- Migration Compatibility: PASS — every released version v1..v15 chains to v16 preserving data
+- Claude Review: Optional — Skipped (acceptance harness/test only; no production or contract change)
 ```
 ### Remaining Milestones
 ```text
-Slice 1 — Goal Baseline and Assessment
-Slice 2 — Review Preparation Records
-Slice 3 — Deterministic Review Preparation Service
-Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
-Slice 5 — Fake-Review / Fake-Transcript Acceptance
+None — Goal complete
 ```
 ### Immediate Next Slice
 ```text
-Slice 1 — Goal Baseline and Assessment
+Goal Complete
 ```
 
 ## 10. Completion Report — Milestone Additions
