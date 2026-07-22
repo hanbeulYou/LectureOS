@@ -108,3 +108,13 @@ class SubtitleDecisionRevisionId(OpaqueIdentity):
 @dataclass(frozen=True, slots=True)
 class SubtitleFinalSubtitleId(OpaqueIdentity):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class SubtitleApprovedDocumentId(OpaqueIdentity):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class SubtitleApprovedUnitId(OpaqueIdentity):
+    pass

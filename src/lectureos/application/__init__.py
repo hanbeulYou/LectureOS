@@ -77,6 +77,15 @@ from .subtitle_decision_application import (
     SubtitleDecisionRevisionService,
     applied_outcome_for_kind,
 )
+from .subtitle_approved_assembly import (
+    SUBTITLE_APPROVED_DOCUMENT_RESULT_KIND,
+    PreparedSubtitleApprovedDocument,
+    SubtitleApprovedAssemblyIdentityPlan,
+    SubtitleApprovedDocument,
+    SubtitleApprovedUnit,
+    SubtitleApprovedUnitOrigin,
+    SubtitleExportEligibility,
+)
 from .subtitle_final_subtitle import (
     SUBTITLE_FINAL_SUBTITLE_RESULT_KIND,
     AtomicSubtitleFinalSubtitlePersistence,
@@ -259,6 +268,13 @@ __all__ = [
     "SubtitleDecisionRevisionIdentityPlan",
     "SubtitleDecisionRevisionService",
     "applied_outcome_for_kind",
+    "SUBTITLE_APPROVED_DOCUMENT_RESULT_KIND",
+    "PreparedSubtitleApprovedDocument",
+    "SubtitleApprovedAssemblyIdentityPlan",
+    "SubtitleApprovedDocument",
+    "SubtitleApprovedUnit",
+    "SubtitleApprovedUnitOrigin",
+    "SubtitleExportEligibility",
     "SUBTITLE_FINAL_SUBTITLE_RESULT_KIND",
     "AtomicSubtitleFinalSubtitlePersistence",
     "PreparedSubtitleFinalSubtitle",
