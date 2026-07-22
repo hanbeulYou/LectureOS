@@ -66,6 +66,11 @@ from .subtitle_reading_representation import (
     SubtitleReadingUnit,
     compose_reading_lines,
 )
+from .subtitle_review_decision import (
+    SUBTITLE_REVIEW_DECISION_RESULT_KIND,
+    SubtitleReviewDecision,
+    SubtitleReviewDecisionIdentityPlan,
+)
 from .subtitle_review_preparation import (
     SUBTITLE_REVIEW_PREPARATION_RESULT_KIND,
     SUBTITLE_VALIDATION_FINDING_KIND,
@@ -218,6 +223,9 @@ __all__ = [
     "SubtitleReadingRevision",
     "SubtitleReadingUnit",
     "compose_reading_lines",
+    "SUBTITLE_REVIEW_DECISION_RESULT_KIND",
+    "SubtitleReviewDecision",
+    "SubtitleReviewDecisionIdentityPlan",
     "SUBTITLE_REVIEW_PREPARATION_RESULT_KIND",
     "SUBTITLE_VALIDATION_FINDING_KIND",
     "SUBTITLE_VALIDATION_FINDING_SOURCE_DOMAIN",
