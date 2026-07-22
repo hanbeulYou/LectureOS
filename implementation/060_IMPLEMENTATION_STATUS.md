@@ -1164,3 +1164,65 @@ explicit single-step-chain test that preserves existing data and meaning. This s
 decision into the next revision only; Final Subtitle selection (§4.8), current selection, readiness, and
 applicability derivation remain out of scope and unstarted — §4.8 Final Subtitle is the next
 dependency-ordered milestone.
+
+## Subtitle Final Subtitle
+
+- Goal: `docs/goals/LectureOS_Codex_Goal_Subtitle_Final_Subtitle.md`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema v19
+- Completed slices: Goal Baseline and Assessment; Final Subtitle Records; Deterministic Final Subtitle
+  Service; Atomic SQLite Persistence, Restart, Replay and Migration Compatibility; Fake-Review /
+  Fake-Transcript Acceptance
+- Immediate next slice: Goal Complete
+
+This milestone advances the Subtitle Pipeline to its final stage 4.8 (`docs/041_SUBTITLE_PIPELINE.md §4.8
+Final Subtitle`): from exactly one canonical `SubtitleDecisionRevision` (v18), it deterministically
+**selects** the authoritative, approved-state Subtitle representation — the Final Subtitle — reflecting the
+applicable Review Decision, and preserves provenance to the Corrected Transcript, Source Timeline, subtitle
+revision and user decision. `Product → Application → Capability Contract → Provider` and the lifecycle
+position `… → Subtitle Human Review Decision → Subtitle Decision Application → Subtitle Final Subtitle` are
+preserved. Final Subtitle is a **deterministic selection** stage, not a transformation: the consumed
+decision revision remains immutable and **no existing canonical artifact is modified** — the
+`SubtitleDecisionRevision`, `SubtitleReviewDecision`, `ReviewItem`, `SubtitleReviewPreparation` and
+`SubtitleValidation` are never mutated. The only newly created canonical artifact is the
+`SubtitleFinalSubtitle` and its `DomainResultReference`; per §4.8 it is a finalization/selection record and
+**not a separate approved-Subtitle content entity**. The FINAL outcome is the logical "Artifact Generation
+Ready State" — a status, not an artifact.
+
+The bounded architectural assessment found no substantive blocker. The `SubtitleDecisionRevision` (v18) is
+the sole admission authority; because it already carries the full lineage Final needs, Final admits only the
+decision revision and reads nothing else. A new Application-owned aggregate `SubtitleFinalSubtitle` (identity
+`SubtitleFinalSubtitleId`) and enum `SubtitleFinalOutcome` (`FINAL` | `NOT_FINAL`, a pure deterministic
+function of the applied outcome: `ACCEPTED → FINAL`, `MODIFIED → FINAL`, `REJECTED → NOT_FINAL`) are added,
+with names distinct from the **legacy in-memory** `subtitle/` domain (`FinalSubtitleSelectionId`,
+`final_selection.py`), which is untouched. No wall-clock is read, so reconstruction and replay are
+deterministic. Additive SQLite schema v19 adds one flat `subtitle_final_subtitles` table (with the
+decision_kind⇔applied_outcome, applied_outcome⇔final_outcome, MODIFIED⇔applied_text and sequence/previous
+CHECKs), with atomic persistence, restart reconstruction and deterministic replay. The AGENTS.md Architect
+Checklist is entirely `No`: no existing Domain contract change, no released-schema meaning change, no
+lifecycle authority change (an approved representation is only selected, never constructed), no
+responsibility shift, no new identity semantics, one additive migration, and no Blueprint contradiction.
+Migration compatibility from every released version (v1..v18) to v19 is verified.
+
+The Subtitle Final Subtitle Goal is complete. `SubtitleFinalSubtitleService.select_final(...)` admits one
+canonical `SubtitleDecisionRevision`, requires a running execution, derives the Final outcome
+(Accept/Modify → FINAL, Reject → NOT_FINAL), carries the modified text for Modify, and builds the
+`SubtitleFinalSubtitle` carrying the decision revision / review decision / review item / candidate reference
+/ preparation / validation / time & reading revision / candidate / finding + stable rule / target timed unit
+/ transcript & revision / media & timeline lineage and append-only sequence/previous linkage.
+`SQLiteSubtitleFinalSubtitleCommandPersistence` writes the Final Subtitle and its co-persisted
+`DomainResultReference` (kind `subtitle_final_subtitle`, upstream = the decision revision DomainResult) in
+one atomic v19 transaction, reconstructs it exactly after restart, and reproduces byte-identical records on
+deterministic replay into a fresh database. An in-process fake-review / fake-transcript acceptance drives
+the full pipeline and selects the Final Subtitle from the applied Accept, Modify and Reject revisions,
+confirming each Final outcome (FINAL/FINAL/NOT_FINAL), the Modify applied text, subtitle provenance and
+DomainResult chaining, and finding/rule/decision traceability; that selection mutates no existing canonical
+artifact (decision revision / review decision / validation / preparation / review item byte-identical before
+and after); restart reconstruction; deterministic replay; and no downstream export / artifact table is
+produced. One independent bounded review of the atomic-persistence slice returned PASS with no critical
+findings. The complete 1176-test suite passes. A Blueprint Drift Check confirmed no drift relative to any
+prior completed milestone, and migration compatibility from every released version (v1..v18) to v19 is
+verified by an explicit single-step-chain test that preserves existing data and meaning. With this stage the
+**041 Subtitle Pipeline (§4.2–§4.8) is fully implemented**; downstream Artifact Generation / Export
+(`044` Export Pipeline) — external subtitle files, export, playback rendering — is a separate pipeline and
+remains out of scope.

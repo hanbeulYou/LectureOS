@@ -172,19 +172,19 @@ recording/application, structural validation, export, playback, provider, or AI 
 
 ### Completed Capabilities
 ```text
-None yet
+Slice 1 — Goal Baseline and Assessment (commit docs: add subtitle final subtitle goal)
+Slice 2 — Final Subtitle Records (commit feat: add subtitle final subtitle records)
+Slice 3 — Deterministic Final Subtitle Service (commit feat: select final subtitle from decision revision)
+Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility (commit feat: persist subtitle final subtitle atomically)
+Slice 5 — Fake-Review / Fake-Transcript Acceptance (commit test: verify subtitle final subtitle acceptance)
 ```
 ### Remaining Milestones
 ```text
-Slice 1 — Goal Baseline and Assessment
-Slice 2 — Final Subtitle Records
-Slice 3 — Deterministic Final Subtitle Service
-Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
-Slice 5 — Fake-Review / Fake-Transcript Acceptance
+None — milestone complete (SQLITE_SCHEMA_VERSION 19).
 ```
 ### Immediate Next Slice
 ```text
-Slice 1 — Goal Baseline and Assessment
+None — milestone complete. The 041 Subtitle Pipeline (§4.2–§4.8) is fully implemented.
 ```
 
 ## 10. Completion Report — Milestone Additions
