@@ -116,7 +116,7 @@ Media
 - 교육적 판단이 필요한 후보의 우선 검수
 - 승인된 편집 결정 보존
 
-자동 삭제가 아니라 설명 가능한 후보 생성과 사람의 결정을 기본으로 한다.
+자동 삭제가 아니라 설명 가능한 후보 생성과 사람의 결정을 기본으로 한다. Lecture Intelligence의 분석 계층과 Analysis Finding 계약은 `042_LECTURE_INTELLIGENCE_PIPELINE.md`가 정의한다.
 
 ## 5. Functional Requirements
 

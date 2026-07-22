@@ -165,7 +165,7 @@ Corrected Transcript는 Subtitle이 아니다. 발화 의미 보존과 교정이
 
 Transcript Unit은 Transcript 안의 발화 또는 텍스트를 안정적으로 참조하기 위한 최소 개념적 단위의 자리다. 이 문서는 그 단위를 Word, Utterance, Sentence, Block 중 하나로 확정하지 않는다.
 
-원본 시간축 기반 발화·단어 데이터는 Transcript Unit이 Source Timeline의 어디에 존재하는지 추적하는 시스템 기준 정보다. `Word Timeline`을 확정 용어로 사용하지 않는다. 후속 Pipeline 문서는 시간 추적, 교정 계보, Review 연결에 필요한 최소 단위와 정식 명칭을 정해야 한다. `Segment`는 Lecture Segment와 혼동되므로 Transcript 단위의 대표 용어로 사용하지 않는다.
+원본 시간축 기반 발화·단어 데이터는 Transcript Unit이 Source Timeline의 어디에 존재하는지 추적하는 시스템 기준 정보다. `Word Timeline`을 확정 용어로 사용하지 않는다. 후속 Pipeline 문서는 시간 추적, 교정 계보, Review 연결에 필요한 최소 단위와 정식 명칭을 정해야 한다. `Segment`는 Lecture Segment와 혼동되므로 Transcript 단위의 대표 용어로 사용하지 않는다. Analysis Finding의 최소 참조 단위는 `042_LECTURE_INTELLIGENCE_PIPELINE.md §8.1`(`patches/PATCH-0010`)에서 확정되었다(하나의 Eligible Analysis Input + 선택적 Source Timeline range).
 
 ### 6.4 Speaker Information
 
