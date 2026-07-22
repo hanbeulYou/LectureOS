@@ -17,7 +17,7 @@ V16_TABLES = {"subtitle_review_preparations", "subtitle_review_preparation_items
 
 _ADDITION_BLOCKS = tuple(
     (level, getattr(sqlite_lifecycle, f"_V{level}_ADDITION_STATEMENTS"))
-    for level in range(2, 17)
+    for level in range(2, 18)
 )
 
 
@@ -105,7 +105,7 @@ class SQLiteSchemaVersionSixteenTests(unittest.TestCase):
     def test_unsupported_target_is_rejected(self) -> None:
         initialize_sqlite_database(self.database_path).close()
         with self.assertRaises(PersistenceError):
-            migrate_sqlite_database(self.database_path, 18)
+            migrate_sqlite_database(self.database_path, 19)
 
     def test_repository_rejects_pre_v16_schema(self) -> None:
         create_legacy_database(self.database_path, 15)
