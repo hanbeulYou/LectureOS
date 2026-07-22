@@ -89,6 +89,33 @@ class SQLiteSubtitleFinalSubtitleRepository:
                 f"could not read Subtitle Final Subtitle: {error}"
             ) from error
 
+    def list_for_time_revision(
+        self, identity: SubtitleTimeRevisionId
+    ) -> tuple[SubtitleFinalSubtitle, ...]:
+        """All finalized decisions for one subtitle document, ordered by append sequence."""
+
+        try:
+            rows = self._connection.execute(
+                """
+                SELECT identity, domain_result_id, source_decision_revision_id, decision_kind,
+                       applied_outcome, final_outcome, applied_text, source_review_decision_id,
+                       review_item_id, candidate_reference_id, source_preparation_id,
+                       source_validation_id, source_time_revision_id, source_reading_revision_id,
+                       source_candidate_id, source_finding_id, rule, target_timed_unit_id,
+                       source_transcript_id, source_revision_id, source_media_id, source_timeline_id,
+                       processing_run_id, unit_execution_id, sequence, reason, previous_final_id
+                FROM subtitle_final_subtitles
+                WHERE source_time_revision_id = ?
+                ORDER BY sequence, identity
+                """,
+                (identity.value,),
+            ).fetchall()
+            return tuple(_restore_final(row) for row in rows)
+        except sqlite3.Error as error:
+            raise PersistenceError(
+                f"could not read Subtitle Final Subtitles: {error}"
+            ) from error
+
 
 class SQLiteSubtitleFinalSubtitleCommandPersistence:
     """Owns one atomic v19 transaction persisting a Final Subtitle and its Result reference."""

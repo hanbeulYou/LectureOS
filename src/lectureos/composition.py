@@ -38,6 +38,9 @@ from lectureos.application.subtitle_review_decision import (
 from lectureos.application.subtitle_decision_application import (
     SubtitleDecisionRevisionService,
 )
+from lectureos.application.subtitle_approved_assembly import (
+    SubtitleApprovedSubtitleAssemblyService,
+)
 from lectureos.application.subtitle_final_subtitle import (
     SubtitleFinalSubtitleService,
 )
@@ -59,10 +62,12 @@ from lectureos.persistence import (
     SQLiteSubtitleCandidateCommandPersistence,
     SQLiteSubtitleCandidateRepository,
     SQLiteSubtitleIntakeCommandPersistence,
+    SQLiteSubtitleApprovedDocumentCommandPersistence,
     SQLiteSubtitleReadingCommandPersistence,
     SQLiteSubtitleDecisionRevisionCommandPersistence,
     SQLiteSubtitleDecisionRevisionRepository,
     SQLiteSubtitleFinalSubtitleCommandPersistence,
+    SQLiteSubtitleFinalSubtitleRepository,
     SQLiteSubtitleReadingRevisionRepository,
     SQLiteSubtitleReviewDecisionCommandPersistence,
     SQLiteSubtitleReviewDecisionRepository,
@@ -385,6 +390,27 @@ def compose_sqlite_subtitle_final_subtitle_service(
     revisions = SQLiteSubtitleDecisionRevisionRepository(connection)
     persistence = SQLiteSubtitleFinalSubtitleCommandPersistence(connection)
     return SubtitleFinalSubtitleService(revisions, execution_query, persistence)
+
+
+def compose_sqlite_subtitle_approved_assembly_service(
+    connection: sqlite3.Connection,
+    execution_query: ExecutionQueryBoundary,
+) -> SubtitleApprovedSubtitleAssemblyService:
+    """Build durable v20 Approved Subtitle Assembly on one caller connection."""
+
+    time_revisions = SQLiteSubtitleTimeRevisionRepository(connection)
+    reading_revisions = SQLiteSubtitleReadingRevisionRepository(connection)
+    finals = SQLiteSubtitleFinalSubtitleRepository(connection)
+    decision_revisions = SQLiteSubtitleDecisionRevisionRepository(connection)
+    persistence = SQLiteSubtitleApprovedDocumentCommandPersistence(connection)
+    return SubtitleApprovedSubtitleAssemblyService(
+        time_revisions,
+        reading_revisions,
+        finals,
+        decision_revisions,
+        execution_query,
+        persistence,
+    )
 
 
 def _compose_sqlite_transcript_service(

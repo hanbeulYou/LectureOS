@@ -7,8 +7,8 @@ from pathlib import Path
 
 from .errors import PersistenceError, UnsupportedSchemaVersionError
 
-SQLITE_SCHEMA_VERSION = 19
-_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19)
+SQLITE_SCHEMA_VERSION = 20
+_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20)
 
 _V1_TABLE_STATEMENTS = (
     """CREATE TABLE schema_metadata (
@@ -906,6 +906,57 @@ _V19_ADDITION_STATEMENTS = (
 )""",
 )
 
+_V20_ADDITION_STATEMENTS = (
+    """CREATE TABLE subtitle_approved_documents (
+    identity TEXT PRIMARY KEY,
+    domain_result_id TEXT NOT NULL,
+    source_time_revision_id TEXT NOT NULL,
+    source_reading_revision_id TEXT NOT NULL,
+    eligibility TEXT NOT NULL CHECK (eligibility IN ('eligible', 'ineligible')),
+    ineligibility_reason TEXT,
+    source_candidate_id TEXT NOT NULL,
+    source_transcript_id TEXT NOT NULL,
+    source_revision_id TEXT NOT NULL,
+    source_media_id TEXT NOT NULL,
+    source_timeline_id TEXT NOT NULL,
+    omitted_unit_count INTEGER NOT NULL CHECK (omitted_unit_count >= 0),
+    processing_run_id TEXT NOT NULL,
+    unit_execution_id TEXT NOT NULL,
+    sequence INTEGER NOT NULL CHECK (sequence >= 0),
+    reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),
+    previous_document_id TEXT,
+    CHECK ((eligibility = 'eligible' AND ineligibility_reason IS NULL) OR
+           (eligibility = 'ineligible' AND ineligibility_reason IS NOT NULL
+            AND length(trim(ineligibility_reason)) > 0)),
+    CHECK ((sequence = 0 AND previous_document_id IS NULL) OR sequence > 0)
+)""",
+    """CREATE TABLE subtitle_approved_units (
+    identity TEXT PRIMARY KEY,
+    subtitle_approved_document_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    source_timed_unit_id TEXT NOT NULL,
+    source_reading_unit_id TEXT NOT NULL,
+    origin TEXT NOT NULL CHECK (origin IN ('accepted', 'modified', 'untouched')),
+    display_order INTEGER NOT NULL CHECK (display_order >= 0),
+    start REAL NOT NULL CHECK (start >= 0),
+    end REAL NOT NULL CHECK (end >= start),
+    source_final_subtitle_id TEXT,
+    CHECK ((origin = 'untouched' AND source_final_subtitle_id IS NULL) OR
+           (origin IN ('accepted', 'modified') AND source_final_subtitle_id IS NOT NULL)),
+    UNIQUE (subtitle_approved_document_id, ordinal),
+    FOREIGN KEY (subtitle_approved_document_id)
+        REFERENCES subtitle_approved_documents(identity) ON DELETE CASCADE
+)""",
+    """CREATE TABLE subtitle_approved_unit_lines (
+    subtitle_approved_unit_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    line TEXT NOT NULL CHECK (length(trim(line)) > 0),
+    PRIMARY KEY (subtitle_approved_unit_id, ordinal),
+    FOREIGN KEY (subtitle_approved_unit_id)
+        REFERENCES subtitle_approved_units(identity) ON DELETE CASCADE
+)""",
+)
+
 _V9_ADDITION_STATEMENTS = (
     """CREATE TABLE transcript_current_selections (
     identity TEXT PRIMARY KEY,
@@ -1663,6 +1714,46 @@ _V19_EXPECTED_COLUMNS = {
     ),
 }
 
+_V20_EXPECTED_COLUMNS = {
+    **_V19_EXPECTED_COLUMNS,
+    "subtitle_approved_documents": (
+        ("identity", "TEXT", 0, 1),
+        ("domain_result_id", "TEXT", 1, 0),
+        ("source_time_revision_id", "TEXT", 1, 0),
+        ("source_reading_revision_id", "TEXT", 1, 0),
+        ("eligibility", "TEXT", 1, 0),
+        ("ineligibility_reason", "TEXT", 0, 0),
+        ("source_candidate_id", "TEXT", 1, 0),
+        ("source_transcript_id", "TEXT", 1, 0),
+        ("source_revision_id", "TEXT", 1, 0),
+        ("source_media_id", "TEXT", 1, 0),
+        ("source_timeline_id", "TEXT", 1, 0),
+        ("omitted_unit_count", "INTEGER", 1, 0),
+        ("processing_run_id", "TEXT", 1, 0),
+        ("unit_execution_id", "TEXT", 1, 0),
+        ("sequence", "INTEGER", 1, 0),
+        ("reason", "TEXT", 1, 0),
+        ("previous_document_id", "TEXT", 0, 0),
+    ),
+    "subtitle_approved_units": (
+        ("identity", "TEXT", 0, 1),
+        ("subtitle_approved_document_id", "TEXT", 1, 0),
+        ("ordinal", "INTEGER", 1, 0),
+        ("source_timed_unit_id", "TEXT", 1, 0),
+        ("source_reading_unit_id", "TEXT", 1, 0),
+        ("origin", "TEXT", 1, 0),
+        ("display_order", "INTEGER", 1, 0),
+        ("start", "REAL", 1, 0),
+        ("end", "REAL", 1, 0),
+        ("source_final_subtitle_id", "TEXT", 0, 0),
+    ),
+    "subtitle_approved_unit_lines": (
+        ("subtitle_approved_unit_id", "TEXT", 1, 1),
+        ("ordinal", "INTEGER", 1, 2),
+        ("line", "TEXT", 1, 0),
+    ),
+}
+
 
 def initialize_sqlite_database(database_path: str | Path) -> sqlite3.Connection:
     """Create the latest schema for a new path; validate existing databases."""
@@ -1702,7 +1793,7 @@ def migrate_sqlite_database(
 ) -> None:
     """Explicitly perform one approved migration step or validate a no-op target."""
 
-    if target_version not in (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19):
+    if target_version not in (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20):
         raise PersistenceError(f"unsupported SQLite migration target: {target_version}")
     path = _validate_database_path(database_path)
     if not path.is_file():
@@ -1765,6 +1856,9 @@ def migrate_sqlite_database(
             return
         if current_version == 18 and target_version == 19:
             _migrate_v18_to_v19(connection)
+            return
+        if current_version == 19 and target_version == 20:
+            _migrate_v19_to_v20(connection)
             return
         raise PersistenceError(
             f"unsupported SQLite migration: {current_version} to {target_version}"
@@ -1832,6 +1926,7 @@ def _initialize_latest_schema(connection: sqlite3.Connection) -> None:
             *_V17_ADDITION_STATEMENTS,
             *_V18_ADDITION_STATEMENTS,
             *_V19_ADDITION_STATEMENTS,
+            *_V20_ADDITION_STATEMENTS,
         ):
             connection.execute(statement)
         connection.execute(
@@ -2172,6 +2267,24 @@ def _migrate_v18_to_v19(connection: sqlite3.Connection) -> None:
         raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
 
 
+def _migrate_v19_to_v20(connection: sqlite3.Connection) -> None:
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        for statement in _V20_ADDITION_STATEMENTS:
+            connection.execute(statement)
+        connection.execute(
+            "UPDATE schema_metadata SET version = 20 WHERE singleton = 1"
+        )
+        _validate_initialized_connection(connection)
+        _commit(connection)
+    except PersistenceError:
+        _rollback(connection)
+        raise
+    except sqlite3.Error as error:
+        _rollback(connection)
+        raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
+
+
 def _validate_initialized_connection(connection: sqlite3.Connection) -> int:
     try:
         if connection.execute("PRAGMA foreign_keys").fetchone() != (1,):
@@ -2223,6 +2336,7 @@ def _validate_schema_shape(connection: sqlite3.Connection, version: int) -> None
         17: _V17_EXPECTED_COLUMNS,
         18: _V18_EXPECTED_COLUMNS,
         19: _V19_EXPECTED_COLUMNS,
+        20: _V20_EXPECTED_COLUMNS,
     }[version]
     for table, expected in expected_columns.items():
         actual = tuple(
