@@ -20,7 +20,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import Protocol
 
+from lectureos.execution.boundaries import ExecutionQueryBoundary
 from lectureos.execution.identities import (
     DomainResultId,
     ProcessingRunId,
@@ -28,7 +30,7 @@ from lectureos.execution.identities import (
     SourceTimelineId,
     UnitExecutionId,
 )
-from lectureos.execution.models import DomainResultReference
+from lectureos.execution.models import DomainResultReference, ProcessingState
 from lectureos.review.identities import CandidateReferenceId, ReviewItemId
 from lectureos.review.models import DecisionKind
 from lectureos.transcript.identities import TranscriptId, TranscriptRevisionId
@@ -47,6 +49,7 @@ from .identities import (
 )
 from .subtitle_decision_application import (
     SubtitleAppliedOutcome,
+    SubtitleDecisionRevision,
     applied_outcome_for_kind,
 )
 
@@ -156,11 +159,140 @@ class PreparedSubtitleFinalSubtitle:
     final_result: DomainResultReference
 
 
+class SubtitleDecisionRevisionQuery(Protocol):
+    def get(self, identity): ...
+
+
+class AtomicSubtitleFinalSubtitlePersistence(Protocol):
+    def persist_subtitle_final_subtitle(
+        self,
+        *,
+        final: SubtitleFinalSubtitle,
+        final_result: DomainResultReference,
+    ) -> None: ...
+
+
+class SubtitleFinalSubtitleError(ValueError):
+    """A structurally valid request that cannot become a canonical Final Subtitle."""
+
+
+class SubtitleFinalSubtitleService:
+    """Selects the Final Subtitle from one decision revision, mutating nothing upstream."""
+
+    def __init__(
+        self,
+        decision_revision_query: SubtitleDecisionRevisionQuery,
+        execution_query: ExecutionQueryBoundary,
+        persistence: AtomicSubtitleFinalSubtitlePersistence | None = None,
+    ) -> None:
+        self._revisions = decision_revision_query
+        self._executions = execution_query
+        self._persistence = persistence
+
+    def record_final(self, **kwargs) -> PreparedSubtitleFinalSubtitle:
+        prepared = self.select_final(**kwargs)
+        if self._persistence is None:
+            raise RuntimeError("subtitle final subtitle persistence is not configured")
+        self._persistence.persist_subtitle_final_subtitle(
+            final=prepared.final,
+            final_result=prepared.final_result,
+        )
+        return prepared
+
+    def select_final(
+        self,
+        *,
+        source_decision_revision_id: SubtitleDecisionRevisionId,
+        run_id: ProcessingRunId,
+        unit_execution_id: UnitExecutionId,
+        identities: SubtitleFinalSubtitleIdentityPlan,
+        sequence: int = 0,
+        previous_final_id: SubtitleFinalSubtitleId | None = None,
+        reason: str | None = None,
+    ) -> PreparedSubtitleFinalSubtitle:
+        # Admit exactly one canonical decision revision. It — and every artifact it traces to — is read
+        # only for provenance and is never mutated. It already carries the full lineage Final needs, so
+        # nothing else is read.
+        revision = self._revisions.get(source_decision_revision_id)
+        if revision is None:
+            raise KeyError("unknown subtitle decision revision")
+        if not isinstance(revision, SubtitleDecisionRevision):
+            raise SubtitleFinalSubtitleError(
+                "final subtitle must derive from a canonical Subtitle Decision Revision"
+            )
+        self._require_running_execution(run_id, unit_execution_id)
+
+        final_outcome = final_outcome_for_applied_outcome(revision.outcome)
+        resolved_reason = reason if reason is not None else _default_reason(final_outcome)
+
+        final = SubtitleFinalSubtitle(
+            identity=identities.final_id,
+            domain_result_id=identities.final_result_id,
+            source_decision_revision_id=revision.identity,
+            decision_kind=revision.decision_kind,
+            applied_outcome=revision.outcome,
+            final_outcome=final_outcome,
+            source_review_decision_id=revision.source_review_decision_id,
+            review_item_id=revision.review_item_id,
+            candidate_reference_id=revision.candidate_reference_id,
+            source_preparation_id=revision.source_preparation_id,
+            source_validation_id=revision.source_validation_id,
+            source_time_revision_id=revision.source_time_revision_id,
+            source_reading_revision_id=revision.source_reading_revision_id,
+            source_candidate_id=revision.source_candidate_id,
+            source_finding_id=revision.source_finding_id,
+            rule=revision.rule,
+            source_transcript_id=revision.source_transcript_id,
+            source_revision_id=revision.source_revision_id,
+            source_media_id=revision.source_media_id,
+            source_timeline_id=revision.source_timeline_id,
+            run_id=run_id,
+            unit_execution_id=unit_execution_id,
+            sequence=sequence,
+            reason=resolved_reason,
+            target_timed_unit_id=revision.target_timed_unit_id,
+            applied_text=revision.applied_text,
+            previous_final_id=previous_final_id,
+        )
+        final_result = DomainResultReference(
+            identity=identities.final_result_id,
+            kind=SUBTITLE_FINAL_SUBTITLE_RESULT_KIND,
+            source_media=revision.source_media_id,
+            source_timeline=revision.source_timeline_id,
+            upstream_results=(revision.domain_result_id,),
+        )
+        return PreparedSubtitleFinalSubtitle(final=final, final_result=final_result)
+
+    def _require_running_execution(self, run_id, unit_execution_id) -> None:
+        run = self._executions.get_run(run_id)
+        if run is None:
+            raise KeyError("unknown processing run")
+        execution = self._executions.get_unit_execution(unit_execution_id)
+        if execution is None:
+            raise KeyError("unknown unit execution")
+        if execution.run_id != run.identity:
+            raise SubtitleFinalSubtitleError(
+                "unit execution must belong to processing run"
+            )
+        if execution.state is not ProcessingState.RUNNING:
+            raise SubtitleFinalSubtitleError(
+                "selecting a final subtitle requires a running unit execution"
+            )
+
+
+def _default_reason(outcome: SubtitleFinalOutcome) -> str:
+    return f"selected the authoritative final subtitle representation ({outcome.value})"
+
+
 __all__ = [
     "SUBTITLE_FINAL_SUBTITLE_RESULT_KIND",
+    "AtomicSubtitleFinalSubtitlePersistence",
     "PreparedSubtitleFinalSubtitle",
+    "SubtitleDecisionRevisionQuery",
     "SubtitleFinalOutcome",
     "SubtitleFinalSubtitle",
+    "SubtitleFinalSubtitleError",
     "SubtitleFinalSubtitleIdentityPlan",
+    "SubtitleFinalSubtitleService",
     "final_outcome_for_applied_outcome",
 ]

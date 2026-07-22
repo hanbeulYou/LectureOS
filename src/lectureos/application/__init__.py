@@ -79,10 +79,14 @@ from .subtitle_decision_application import (
 )
 from .subtitle_final_subtitle import (
     SUBTITLE_FINAL_SUBTITLE_RESULT_KIND,
+    AtomicSubtitleFinalSubtitlePersistence,
     PreparedSubtitleFinalSubtitle,
+    SubtitleDecisionRevisionQuery,
     SubtitleFinalOutcome,
     SubtitleFinalSubtitle,
+    SubtitleFinalSubtitleError,
     SubtitleFinalSubtitleIdentityPlan,
+    SubtitleFinalSubtitleService,
     final_outcome_for_applied_outcome,
 )
 from .subtitle_review_decision import (
@@ -256,10 +260,14 @@ __all__ = [
     "SubtitleDecisionRevisionService",
     "applied_outcome_for_kind",
     "SUBTITLE_FINAL_SUBTITLE_RESULT_KIND",
+    "AtomicSubtitleFinalSubtitlePersistence",
     "PreparedSubtitleFinalSubtitle",
+    "SubtitleDecisionRevisionQuery",
     "SubtitleFinalOutcome",
     "SubtitleFinalSubtitle",
+    "SubtitleFinalSubtitleError",
     "SubtitleFinalSubtitleIdentityPlan",
+    "SubtitleFinalSubtitleService",
     "final_outcome_for_applied_outcome",
     "SUBTITLE_REVIEW_DECISION_RESULT_KIND",
     "AtomicSubtitleReviewDecisionPersistence",
