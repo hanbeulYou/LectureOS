@@ -214,19 +214,114 @@ subtitle, provider, or artifact behavior is produced**. (Generic validation inhe
 
 ### Completed Capabilities
 ```text
-None yet
+Slice 1 — Goal Baseline and Assessment
+- commit `e796db7` — `docs: add subtitle structural validation goal`
+- bounded assessment: no substantive blocker; validation consumes the canonical SubtitleTimeRevision
+  (v14) as sole admission authority and reads the reading revision read-only for provenance; produces
+  an immutable Validation Result + immutable, traceable, blocking-classified Findings; diagnoses only
+  (no repair/review/decision); provider-free; additive schema v15; Architect Decisions recorded:
+  canonical artifact = diagnosis (not booleans/repair/review); deterministic derived finding identity;
+  stable per-finding rule identifier independent of description
+- Review: Optional — Skipped (documentation only)
+
+Slice 2 — Validation Records
+- commit `c76f769` — `feat: add subtitle validation records`
+- `SubtitleValidationId`, `SubtitleValidationFindingId` added to application identities
+- `SubtitleValidationCategory` enum (PROVENANCE_INTEGRITY | TIMELINE_TRACEABILITY | UNRESOLVED_TIMING |
+  ORDERING | OVERLAP) + seven stable rule-id constants
+- `SubtitleValidationFinding`: identity, validation linkage, stable non-blank `rule`, category,
+  `blocking` severity, non-blank explanatory `description`, nullable `target_timed_unit_id`; rule is
+  independent of description
+- `SubtitleValidation`: identity, DomainResult linkage, time-revision + full carried lineage, carried
+  transcript validation id, derived summary booleans (structural_valid/provenance_complete/
+  timeline_traceable/ordering_consistent/time_consistent), ordered unique `finding_ids` (empty allowed),
+  execution provenance, append-only sequence/previous linkage, deterministic reason; no
+  human-decision/approval/final field
+- `SubtitleValidationIdentityPlan` (validation id, result id); `finding_identity(validation_id, ordinal)`
+  deterministic finding-id derivation
+- 15 focused record tests passed; complete suite 999 passed
+- Required Claude Review: Inconclusive — no critical findings identified (additive immutable records;
+  stable rule vs description; empty-findings valid case; no Blueprint/lifecycle/contract defect)
+
+Slice 3 — Deterministic Structural Validation Service
+- commit `193457c` — `feat: derive subtitle validation from time revision`
+- `SubtitleStructuralValidationService.validate_timing(...)` loads the time revision (admission) + its
+  timed units, resolves the reading revision read-only, requires a running execution, and runs five
+  deterministic threshold-free structural checks: provenance integrity (reading revision resolves;
+  exact unit coverage), timeline traceability (anchored unit timeline = revision timeline), unresolved
+  timing, ordering (anchored starts non-decreasing in display order), overlap (adjacent anchored units
+  where earlier.end > later.start)
+- emits ordered findings with stable rule ids + deterministic descriptions + affected timed unit;
+  derives the summary booleans and `structural_valid` (= no blocking finding); finding identities are
+  deterministically derived from the caller-owned validation id + ordinal
+- carries the full time-revision lineage into the validation; validation DomainResult upstream = the
+  time-revision DomainResult; no wall-clock; performs no write; mutates no upstream record; creates no
+  Review Item; triggers no downstream capability
+- `PreparedSubtitleValidation`, `diagnose_time_revision`, `AtomicSubtitleValidationPersistence` port,
+  `SubtitleTimeRevisionQuery` + `SubtitleReadingRevisionQuery` protocols,
+  `SubtitleStructuralValidationError`
+- 10 focused service tests (clean valid; overlap; out-of-order; unresolved; timeline mismatch; missing
+  reading revision; determinism; unknown revision; running-execution; no-persistence) passed; complete
+  suite 1009 passed
+- Required Claude Review: Inconclusive — no critical findings identified (pure deterministic diagnosis;
+  no repair, no persistence, no upstream mutation, no downstream trigger, no review item)
+
+Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
+- commit `e07223b` — `feat: persist subtitle validation atomically`
+- additive SQLite schema v15: `subtitle_validations` parent (summary booleans + lineage) + ordered
+  `subtitle_validation_findings` child (UNIQUE(validation, ordinal); rule non-blank; category CHECK IN
+  the five categories; blocking; description non-blank; nullable target_timed_unit_id)
+- `_migrate_v14_to_v15` additive; downgrades and direct skips rejected; existing v1–v14 unchanged
+- `SQLiteSubtitleValidationCommandPersistence.persist_subtitle_validation(...)` writes the validation,
+  its ordered findings and the DomainResultReference in one `BEGIN IMMEDIATE` transaction; validates
+  linkage/finding-ordering, identity absence, and a `structural_valid ⇔ no blocking finding`
+  cross-check; rolls back completely on collision/linkage/write/commit failure (including empty
+  findings); no upstream mutation
+- `SQLiteSubtitleValidationRepository` reconstructs the exact validation + ordered findings after restart
+- composition `compose_sqlite_subtitle_structural_validation_service` wires the durable time repository
+  (admission) + reading repository (provenance basis) + validation persistence
+- migration compatibility verified: every released version v1..v14 chains to v15 preserving data;
+  idempotency verified (upstream time row byte-identical); superseded-latest test expectations updated
+  (v2/v3/v4/v5/processing_units 14→15; v6..v14 unsupported-target guards 15→16; v9..v14 chain helpers
+  extended with the v14 addition block; v14 no-op/fresh-init/version realigned to the superseded pattern;
+  the prior reading acceptance downstream check adapted so the now-existing empty time/validation tables
+  carry zero rows)
+- 13 focused v15 tests (migration, full v1..v14→v15 chain, restart, replay, idempotency, atomic
+  rollback of validation + findings) passed; complete suite 1022 passed
+- Required Claude Review: PASS — independent bounded review verified atomicity/rollback (incl.
+  empty-findings), ordered finding reconstruction, identity-collision atomicity, provenance linkage,
+  additive migration, migration-chain compatibility, and the structural_valid⇔no-blocking-finding
+  cross-check + boolean/column round-trip; no critical findings
+
+Slice 5 — Fake-Review / Fake-Transcript Acceptance
+- commit `f12a03f` — `test: verify subtitle structural validation acceptance`
+- `lectureos.subtitle_validation_acceptance` drives the full pipeline (fake correction provider and
+  fake reviewer, no network, no credential, fixed timestamps) through candidate → reading → time →
+  structural validation → atomic v15 persistence → reopen → exact restart reconstruction → identical
+  deterministic replay
+- verifies the clean pipeline time revision is structurally valid with no findings, and durably
+  persisted defective time revisions produce ORDERING + OVERLAP (out-of-order/overlapping units) and
+  UNRESOLVED findings with `structural_valid=False`; findings carry stable rule identifiers independent
+  of their descriptions; lineage carried; result upstream = time-revision DomainResult; validation
+  mutates no upstream time revision (byte-identical before/after) and creates no Review Item; restart
+  reconstruction; deterministic replay; and no downstream review / final / artifact table produced
+- acceptance summary: every clean / defective / stable-rule / lineage / provenance / restart / replay /
+  idempotency / no-downstream flag true
+- focused acceptance test passed; complete suite 1023 passed
+- Blueprint Drift Check: PASS — dependency direction unchanged, no provider owns validation identity/
+  lifecycle, no existing enum/aggregate/service meaning changed (the in-memory subtitle domain is
+  untouched), schema strictly additive, no repair/review/decision/final/artifact responsibility pulled
+  in, Human Authority intact, Validation diagnoses only
+- Migration Compatibility: PASS — every released version v1..v14 chains to v15 preserving data
+- Claude Review: Optional — Skipped (acceptance harness/test only; no production or contract change)
 ```
 ### Remaining Milestones
 ```text
-Slice 1 — Goal Baseline and Assessment
-Slice 2 — Validation Records
-Slice 3 — Deterministic Structural Validation Service
-Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
-Slice 5 — Fake-Review / Fake-Transcript Acceptance
+None — Goal complete
 ```
 ### Immediate Next Slice
 ```text
-Slice 1 — Goal Baseline and Assessment
+Goal Complete
 ```
 
 ## 10. Completion Report — Milestone Additions

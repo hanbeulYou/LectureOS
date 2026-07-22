@@ -899,3 +899,74 @@ preserves existing data and meaning. Time Representation owns timing representat
 provenance, optimization deferred, validation is §4.5); the in-memory `subtitle/` domain remains
 unchanged. This advances the Subtitle Pipeline to stage 4.4 (Time Representation); Subtitle Structural
 Validation and later subtitle/artifact stages remain out of scope and unstarted.
+
+## Subtitle Structural Validation
+
+- Goal: `docs/goals/LectureOS_Codex_Goal_Subtitle_Structural_Validation.md`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema v15
+- Completed slices: Goal Baseline and Assessment; Validation Records; Deterministic Structural
+  Validation Service; Atomic SQLite Persistence, Restart, Replay and Migration Compatibility;
+  Fake-Review / Fake-Transcript Acceptance
+- Immediate next slice: Goal Complete
+
+This milestone advances the Subtitle Pipeline to stage 4.5 (`docs/041_SUBTITLE_PIPELINE.md §4.5
+Structural Validation`, §9): from a canonical `SubtitleTimeRevision` (v14) and its ordered timed units
+it deterministically **diagnoses** the subtitle revision's structural correctness and produces one
+**immutable Validation Result** (`SubtitleValidation`) plus a collection of **immutable Findings**
+(`SubtitleValidationFinding`) traceable to affected timed units. `Product → Application → Capability
+Contract → Provider` and the lifecycle position `… → Subtitle Time Representation → Structural
+Validation → Subtitle Review Preparation → Decision Application → Final Subtitle` are preserved, while
+Review Preparation, Decision Application, Final Subtitle, Artifact and export remain out of scope. The
+time revision is the sole admission authority; the reading revision is read read-only for provenance;
+validation consumes no provider, produces a new immutable diagnosis (never modifying the time/reading/
+candidate records), creates no Review Item, mutates no upstream record and starts no downstream
+capability.
+
+The bounded architectural assessment found no substantive blocker. Validation's canonical artifact is
+an immutable Validation Result plus immutable, individually-addressable, traceable,
+blocking-classified Findings with an independent append-only revisioned lifecycle (one-to-many
+Validations per Time Revision) — not mere booleans, not repair, not review. It **diagnoses only**: it
+records findings and a derived `structural_valid` verdict (= no blocking finding); it does not repair
+data, create Review Items, adjudicate uncertainty, score/rank, approve, or gate. New Application-owned
+durable types `SubtitleValidation` (identity `SubtitleValidationId`), ordered child
+`SubtitleValidationFinding` (identity `SubtitleValidationFindingId`), and enum
+`SubtitleValidationCategory` (PROVENANCE_INTEGRITY | TIMELINE_TRACEABILITY | UNRESOLVED_TIMING |
+ORDERING | OVERLAP) are added; the in-memory `subtitle/` validation vocabulary is left unchanged and
+informs but is not reused. Two additional Architect Decisions were recorded: finding identities are
+deterministically derived from the caller-owned validation identity plus their ordinal (the finding
+count is defect-dependent), preserving replay; and **each finding carries a stable `rule` identifier
+independent of its human-readable `description`** — the rule identity that Review Preparation, Decision
+Application, UI, analytics, filtering and future policy layers consume, stable across wording changes.
+A new `SubtitleStructuralValidationService` mirrors the established validate/persist split with an
+Application-owned identity plan; additive SQLite schema v15 adds a `subtitle_validations` parent and an
+ordered `subtitle_validation_findings` child, with atomic persistence (including a
+`structural_valid ⇔ no blocking finding` cross-check), restart reconstruction and deterministic replay.
+No wall-clock is read. The AGENTS.md Architect Checklist is entirely `No`: no existing Domain contract
+change, no released-schema meaning change, no lifecycle authority change (validation diagnoses; it does
+not approve, gate, review, or decide), no responsibility shift, no new lifecycle-identity semantics,
+one additive migration, and no Blueprint contradiction. Migration compatibility from every released
+version (v1..v14) to v15 is verified.
+
+The Subtitle Structural Validation Goal is complete. `SubtitleStructuralValidationService.validate_
+timing(...)` loads a canonical `SubtitleTimeRevision`, resolves the reading revision read-only, requires
+a running execution, and runs five deterministic threshold-free structural checks — provenance
+integrity, timeline traceability, unresolved timing, ordering, and overlap — recording each detected
+defect as an immutable finding carrying a stable rule identifier, coarse category, blocking severity,
+explanatory description, and the affected timed unit, and deriving the summary booleans plus overall
+`structural_valid` (= no blocking finding). `SQLiteSubtitleValidationCommandPersistence` writes the
+validation, its ordered findings and the co-persisted `DomainResultReference` (kind
+`subtitle_validation`, upstream = the time-revision DomainResult) in one atomic v15 transaction with a
+structural_valid cross-check, reconstructs the validation and ordered findings exactly after restart,
+and reproduces byte-identical records on deterministic replay into a fresh database. An in-process
+fake-review / fake-transcript acceptance drives the full pipeline and confirms a clean time revision is
+structurally valid with no findings, while durably persisted defective time revisions produce ORDERING,
+OVERLAP and UNRESOLVED findings with `structural_valid=False` and stable rule identifiers independent of
+their descriptions; validation mutates no upstream record and creates no Review Item; restart
+reconstruction; deterministic replay; and no downstream review / final / artifact table is produced. The
+complete 1023-test suite passes. A Blueprint Drift Check confirmed no drift relative to any prior
+completed milestone, and migration compatibility from every released version (v1..v14) to v15 is
+verified by an explicit single-step-chain test that preserves existing data and meaning. Validation
+diagnoses only; all numeric quality thresholds, review handoff (§4.6), decisions (§4.7), and final
+gating (§4.8) remain deferred. This advances the Subtitle Pipeline to stage 4.5 (Structural Validation);
+Subtitle Review Preparation and later subtitle/artifact stages remain out of scope and unstarted.
