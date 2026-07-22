@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import Protocol
 
 from lectureos.execution.identities import (
     ArtifactId,
@@ -125,12 +126,51 @@ class PreparedSubtitleSrtMaterialization:
     materialization_result: DomainResultReference
 
 
+def srt_materialization_relative_location(
+    identity: SubtitleSrtMaterializationId,
+) -> str:
+    """Application-owned deterministic relative location policy (operational provenance, not identity)."""
+
+    return f"{identity.value}.srt"
+
+
+class MaterializationContainmentError(Exception):
+    """A realization would escape the approved Storage Root."""
+
+
+class MaterializationCollisionError(Exception):
+    """The target location holds different bytes or a foreign object; it must not be overwritten."""
+
+
+class MaterializationWriteError(Exception):
+    """The physical file could not be written."""
+
+
+class MaterializedFileWriter(Protocol):
+    """Infrastructure boundary that realizes bytes beneath an approved Storage Root.
+
+    ``write`` returns the realized byte length. Identical existing bytes are an idempotent success; a
+    different-bytes or foreign target raises ``MaterializationCollisionError``; a root escape raises
+    ``MaterializationContainmentError``; an I/O failure raises ``MaterializationWriteError``. ``read``
+    returns the current bytes at a location (for reconciliation) or ``None`` if absent.
+    """
+
+    def write(self, *, relative_location: str, content: bytes) -> int: ...
+
+    def read(self, *, relative_location: str) -> bytes | None: ...
+
+
 __all__ = [
     "SUBTITLE_SRT_MATERIALIZATION_RESULT_KIND",
+    "MaterializationCollisionError",
+    "MaterializationContainmentError",
+    "MaterializationWriteError",
+    "MaterializedFileWriter",
     "PreparedSubtitleSrtMaterialization",
     "SubtitleMaterializationState",
     "SubtitleMaterializationStorageKind",
     "SubtitleSrtMaterialization",
     "SubtitleSrtMaterializationIdentityPlan",
     "SubtitleSrtMaterializationOutcome",
+    "srt_materialization_relative_location",
 ]
