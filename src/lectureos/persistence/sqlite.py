@@ -7,8 +7,8 @@ from pathlib import Path
 
 from .errors import PersistenceError, UnsupportedSchemaVersionError
 
-SQLITE_SCHEMA_VERSION = 14
-_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14)
+SQLITE_SCHEMA_VERSION = 15
+_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
 
 _V1_TABLE_STATEMENTS = (
     """CREATE TABLE schema_metadata (
@@ -710,6 +710,55 @@ _V14_ADDITION_STATEMENTS = (
 )""",
 )
 
+_V15_ADDITION_STATEMENTS = (
+    """CREATE TABLE subtitle_validations (
+    identity TEXT PRIMARY KEY,
+    domain_result_id TEXT NOT NULL,
+    source_time_revision_id TEXT NOT NULL,
+    source_reading_revision_id TEXT NOT NULL,
+    source_candidate_id TEXT NOT NULL,
+    source_intake_id TEXT NOT NULL,
+    source_readiness_id TEXT NOT NULL,
+    source_selection_id TEXT NOT NULL,
+    source_applicability_id TEXT NOT NULL,
+    source_decision_id TEXT NOT NULL,
+    review_item_id TEXT NOT NULL,
+    candidate_reference_id TEXT NOT NULL,
+    source_transcript_id TEXT NOT NULL,
+    source_revision_id TEXT NOT NULL,
+    source_media_id TEXT NOT NULL,
+    source_timeline_id TEXT NOT NULL,
+    source_transcript_validation_id TEXT NOT NULL,
+    structural_valid INTEGER NOT NULL CHECK (structural_valid IN (0, 1)),
+    provenance_complete INTEGER NOT NULL CHECK (provenance_complete IN (0, 1)),
+    timeline_traceable INTEGER NOT NULL CHECK (timeline_traceable IN (0, 1)),
+    ordering_consistent INTEGER NOT NULL CHECK (ordering_consistent IN (0, 1)),
+    time_consistent INTEGER NOT NULL CHECK (time_consistent IN (0, 1)),
+    processing_run_id TEXT NOT NULL,
+    unit_execution_id TEXT NOT NULL,
+    sequence INTEGER NOT NULL CHECK (sequence >= 0),
+    reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),
+    previous_validation_id TEXT,
+    CHECK ((sequence = 0 AND previous_validation_id IS NULL) OR sequence > 0)
+)""",
+    """CREATE TABLE subtitle_validation_findings (
+    identity TEXT PRIMARY KEY,
+    subtitle_validation_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    rule TEXT NOT NULL CHECK (length(trim(rule)) > 0),
+    category TEXT NOT NULL CHECK (category IN (
+        'provenance_integrity', 'timeline_traceability', 'unresolved_timing',
+        'ordering', 'overlap'
+    )),
+    blocking INTEGER NOT NULL CHECK (blocking IN (0, 1)),
+    description TEXT NOT NULL CHECK (length(trim(description)) > 0),
+    target_timed_unit_id TEXT,
+    UNIQUE (subtitle_validation_id, ordinal),
+    FOREIGN KEY (subtitle_validation_id)
+        REFERENCES subtitle_validations(identity) ON DELETE CASCADE
+)""",
+)
+
 _V9_ADDITION_STATEMENTS = (
     """CREATE TABLE transcript_current_selections (
     identity TEXT PRIMARY KEY,
@@ -1294,6 +1343,49 @@ _V14_EXPECTED_COLUMNS = {
     ),
 }
 
+_V15_EXPECTED_COLUMNS = {
+    **_V14_EXPECTED_COLUMNS,
+    "subtitle_validations": (
+        ("identity", "TEXT", 0, 1),
+        ("domain_result_id", "TEXT", 1, 0),
+        ("source_time_revision_id", "TEXT", 1, 0),
+        ("source_reading_revision_id", "TEXT", 1, 0),
+        ("source_candidate_id", "TEXT", 1, 0),
+        ("source_intake_id", "TEXT", 1, 0),
+        ("source_readiness_id", "TEXT", 1, 0),
+        ("source_selection_id", "TEXT", 1, 0),
+        ("source_applicability_id", "TEXT", 1, 0),
+        ("source_decision_id", "TEXT", 1, 0),
+        ("review_item_id", "TEXT", 1, 0),
+        ("candidate_reference_id", "TEXT", 1, 0),
+        ("source_transcript_id", "TEXT", 1, 0),
+        ("source_revision_id", "TEXT", 1, 0),
+        ("source_media_id", "TEXT", 1, 0),
+        ("source_timeline_id", "TEXT", 1, 0),
+        ("source_transcript_validation_id", "TEXT", 1, 0),
+        ("structural_valid", "INTEGER", 1, 0),
+        ("provenance_complete", "INTEGER", 1, 0),
+        ("timeline_traceable", "INTEGER", 1, 0),
+        ("ordering_consistent", "INTEGER", 1, 0),
+        ("time_consistent", "INTEGER", 1, 0),
+        ("processing_run_id", "TEXT", 1, 0),
+        ("unit_execution_id", "TEXT", 1, 0),
+        ("sequence", "INTEGER", 1, 0),
+        ("reason", "TEXT", 1, 0),
+        ("previous_validation_id", "TEXT", 0, 0),
+    ),
+    "subtitle_validation_findings": (
+        ("identity", "TEXT", 0, 1),
+        ("subtitle_validation_id", "TEXT", 1, 0),
+        ("ordinal", "INTEGER", 1, 0),
+        ("rule", "TEXT", 1, 0),
+        ("category", "TEXT", 1, 0),
+        ("blocking", "INTEGER", 1, 0),
+        ("description", "TEXT", 1, 0),
+        ("target_timed_unit_id", "TEXT", 0, 0),
+    ),
+}
+
 
 def initialize_sqlite_database(database_path: str | Path) -> sqlite3.Connection:
     """Create the latest schema for a new path; validate existing databases."""
@@ -1333,7 +1425,7 @@ def migrate_sqlite_database(
 ) -> None:
     """Explicitly perform one approved migration step or validate a no-op target."""
 
-    if target_version not in (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14):
+    if target_version not in (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15):
         raise PersistenceError(f"unsupported SQLite migration target: {target_version}")
     path = _validate_database_path(database_path)
     if not path.is_file():
@@ -1381,6 +1473,9 @@ def migrate_sqlite_database(
             return
         if current_version == 13 and target_version == 14:
             _migrate_v13_to_v14(connection)
+            return
+        if current_version == 14 and target_version == 15:
+            _migrate_v14_to_v15(connection)
             return
         raise PersistenceError(
             f"unsupported SQLite migration: {current_version} to {target_version}"
@@ -1443,6 +1538,7 @@ def _initialize_latest_schema(connection: sqlite3.Connection) -> None:
             *_V12_ADDITION_STATEMENTS,
             *_V13_ADDITION_STATEMENTS,
             *_V14_ADDITION_STATEMENTS,
+            *_V15_ADDITION_STATEMENTS,
         ):
             connection.execute(statement)
         connection.execute(
@@ -1693,6 +1789,24 @@ def _migrate_v13_to_v14(connection: sqlite3.Connection) -> None:
         raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
 
 
+def _migrate_v14_to_v15(connection: sqlite3.Connection) -> None:
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        for statement in _V15_ADDITION_STATEMENTS:
+            connection.execute(statement)
+        connection.execute(
+            "UPDATE schema_metadata SET version = 15 WHERE singleton = 1"
+        )
+        _validate_initialized_connection(connection)
+        _commit(connection)
+    except PersistenceError:
+        _rollback(connection)
+        raise
+    except sqlite3.Error as error:
+        _rollback(connection)
+        raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
+
+
 def _validate_initialized_connection(connection: sqlite3.Connection) -> int:
     try:
         if connection.execute("PRAGMA foreign_keys").fetchone() != (1,):
@@ -1739,6 +1853,7 @@ def _validate_schema_shape(connection: sqlite3.Connection, version: int) -> None
         12: _V12_EXPECTED_COLUMNS,
         13: _V13_EXPECTED_COLUMNS,
         14: _V14_EXPECTED_COLUMNS,
+        15: _V15_EXPECTED_COLUMNS,
     }[version]
     for table, expected in expected_columns.items():
         actual = tuple(

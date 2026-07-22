@@ -6,33 +6,18 @@ from pathlib import Path
 from lectureos.persistence import (
     PersistenceError,
     SQLITE_SCHEMA_VERSION,
-    SQLiteSubtitleCandidateRepository,
+    SQLiteSubtitleValidationRepository,
     initialize_sqlite_database,
     migrate_sqlite_database,
     open_sqlite_database,
 )
 from lectureos.persistence import sqlite as sqlite_lifecycle
 
-V12_TABLES = {
-    "subtitle_candidates",
-    "subtitle_candidate_cues",
-    "subtitle_candidate_cue_segments",
-}
+V15_TABLES = {"subtitle_validations", "subtitle_validation_findings"}
 
-_ADDITION_BLOCKS = (
-    (2, sqlite_lifecycle._V2_ADDITION_STATEMENTS),
-    (3, sqlite_lifecycle._V3_ADDITION_STATEMENTS),
-    (4, sqlite_lifecycle._V4_ADDITION_STATEMENTS),
-    (5, sqlite_lifecycle._V5_ADDITION_STATEMENTS),
-    (6, sqlite_lifecycle._V6_ADDITION_STATEMENTS),
-    (7, sqlite_lifecycle._V7_ADDITION_STATEMENTS),
-    (8, sqlite_lifecycle._V8_ADDITION_STATEMENTS),
-    (9, sqlite_lifecycle._V9_ADDITION_STATEMENTS),
-    (10, sqlite_lifecycle._V10_ADDITION_STATEMENTS),
-    (11, sqlite_lifecycle._V11_ADDITION_STATEMENTS),
-    (12, sqlite_lifecycle._V12_ADDITION_STATEMENTS),
-    (13, sqlite_lifecycle._V13_ADDITION_STATEMENTS),
-    (14, sqlite_lifecycle._V14_ADDITION_STATEMENTS),
+_ADDITION_BLOCKS = tuple(
+    (level, getattr(sqlite_lifecycle, f"_V{level}_ADDITION_STATEMENTS"))
+    for level in range(2, 15)
 )
 
 
@@ -63,7 +48,7 @@ def table_names(connection: sqlite3.Connection) -> set[str]:
     }
 
 
-class SQLiteSchemaVersionTwelveTests(unittest.TestCase):
+class SQLiteSchemaVersionFifteenTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.database_path = Path(self.temporary_directory.name) / "lectureos.sqlite3"
@@ -71,27 +56,26 @@ class SQLiteSchemaVersionTwelveTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
 
-    def test_v12_remains_a_supported_version(self) -> None:
-        self.assertIn(12, sqlite_lifecycle._SUPPORTED_SCHEMA_VERSIONS)
-        self.assertGreaterEqual(SQLITE_SCHEMA_VERSION, 12)
+    def test_schema_version_is_fifteen(self) -> None:
+        self.assertEqual(SQLITE_SCHEMA_VERSION, 15)
 
-    def test_fresh_database_initializes_with_v12_tables(self) -> None:
+    def test_fresh_database_initializes_with_v15_tables(self) -> None:
         connection = initialize_sqlite_database(self.database_path)
         try:
-            self.assertTrue(V12_TABLES.issubset(table_names(connection)))
+            self.assertTrue(V15_TABLES.issubset(table_names(connection)))
             self.assertEqual(
                 connection.execute("SELECT version FROM schema_metadata").fetchone()[0],
-                SQLITE_SCHEMA_VERSION,
+                15,
             )
         finally:
             connection.close()
 
-    def test_migrates_v11_to_v12_preserving_existing_rows(self) -> None:
-        create_legacy_database(self.database_path, 11)
-        migrate_sqlite_database(self.database_path, 12)
+    def test_migrates_v14_to_v15_preserving_existing_rows(self) -> None:
+        create_legacy_database(self.database_path, 14)
+        migrate_sqlite_database(self.database_path, 15)
         connection = open_sqlite_database(self.database_path)
         try:
-            self.assertTrue(V12_TABLES.issubset(table_names(connection)))
+            self.assertTrue(V15_TABLES.issubset(table_names(connection)))
             preserved = connection.execute(
                 "SELECT purpose FROM processing_units WHERE identity = 'unit'"
             ).fetchone()
@@ -99,40 +83,39 @@ class SQLiteSchemaVersionTwelveTests(unittest.TestCase):
         finally:
             connection.close()
 
-    def test_v12_no_op_migration_is_allowed(self) -> None:
-        create_legacy_database(self.database_path, 11)
-        migrate_sqlite_database(self.database_path, 12)
-        migrate_sqlite_database(self.database_path, 12)
+    def test_v15_no_op_migration_is_allowed(self) -> None:
+        initialize_sqlite_database(self.database_path).close()
+        migrate_sqlite_database(self.database_path, 15)
         connection = open_sqlite_database(self.database_path)
         try:
             self.assertEqual(
                 connection.execute("SELECT version FROM schema_metadata").fetchone()[0],
-                12,
+                15,
             )
         finally:
             connection.close()
 
-    def test_direct_v10_to_v12_is_rejected(self) -> None:
-        create_legacy_database(self.database_path, 10)
+    def test_direct_v13_to_v15_is_rejected(self) -> None:
+        create_legacy_database(self.database_path, 13)
         with self.assertRaises(PersistenceError):
-            migrate_sqlite_database(self.database_path, 12)
+            migrate_sqlite_database(self.database_path, 15)
 
     def test_unsupported_target_is_rejected(self) -> None:
         initialize_sqlite_database(self.database_path).close()
         with self.assertRaises(PersistenceError):
             migrate_sqlite_database(self.database_path, 16)
 
-    def test_repository_rejects_pre_v12_schema(self) -> None:
-        create_legacy_database(self.database_path, 11)
+    def test_repository_rejects_pre_v15_schema(self) -> None:
+        create_legacy_database(self.database_path, 14)
         connection = open_sqlite_database(self.database_path)
         try:
             with self.assertRaises(Exception):
-                SQLiteSubtitleCandidateRepository(connection)
+                SQLiteSubtitleValidationRepository(connection)
         finally:
             connection.close()
 
-    def test_every_released_version_chains_to_v12_preserving_data(self) -> None:
-        # Migration compatibility: every released schema version reaches v12 through the
+    def test_every_released_version_chains_to_v15_preserving_data(self) -> None:
+        # Migration compatibility: every released schema version reaches v15 through the
         # supported single-step chain, preserving existing rows and meaning.
         for start in range(1, SQLITE_SCHEMA_VERSION):
             with self.subTest(start=start):
@@ -148,7 +131,7 @@ class SQLiteSchemaVersionTwelveTests(unittest.TestCase):
                         ).fetchone()[0],
                         SQLITE_SCHEMA_VERSION,
                     )
-                    self.assertTrue(V12_TABLES.issubset(table_names(connection)))
+                    self.assertTrue(V15_TABLES.issubset(table_names(connection)))
                     self.assertEqual(
                         connection.execute(
                             "SELECT purpose FROM processing_units WHERE identity = 'unit'"

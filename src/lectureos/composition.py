@@ -26,6 +26,9 @@ from lectureos.application.subtitle_reading_representation import (
 from lectureos.application.subtitle_time_representation import (
     SubtitleTimeRepresentationService,
 )
+from lectureos.application.subtitle_structural_validation import (
+    SubtitleStructuralValidationService,
+)
 from lectureos.application.transcript_readiness_evaluation import (
     TranscriptReadinessEvaluationService,
 )
@@ -47,7 +50,9 @@ from lectureos.persistence import (
     SQLiteSubtitleReadingCommandPersistence,
     SQLiteSubtitleReadingRevisionRepository,
     SQLiteSubtitleTimeCommandPersistence,
+    SQLiteSubtitleTimeRevisionRepository,
     SQLiteSubtitleTranscriptIntakeRepository,
+    SQLiteSubtitleValidationCommandPersistence,
     SQLiteTranscriptReadinessEvaluationRepository,
     SQLiteTranscriptApplicabilityEvaluationRepository,
     SQLiteTranscriptCurrentSelectionRepository,
@@ -288,6 +293,20 @@ def compose_sqlite_subtitle_time_representation_service(
     persistence = SQLiteSubtitleTimeCommandPersistence(connection)
     return SubtitleTimeRepresentationService(
         readings, cues, execution_query, persistence
+    )
+
+
+def compose_sqlite_subtitle_structural_validation_service(
+    connection: sqlite3.Connection,
+    execution_query: ExecutionQueryBoundary,
+) -> SubtitleStructuralValidationService:
+    """Build durable v15 Subtitle Structural Validation on one caller connection."""
+
+    times = SQLiteSubtitleTimeRevisionRepository(connection)
+    readings = SQLiteSubtitleReadingRevisionRepository(connection)
+    persistence = SQLiteSubtitleValidationCommandPersistence(connection)
+    return SubtitleStructuralValidationService(
+        times, readings, execution_query, persistence
     )
 
 

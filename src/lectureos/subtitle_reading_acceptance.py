@@ -143,11 +143,15 @@ def run_subtitle_reading_acceptance() -> dict:
                 "SELECT name FROM sqlite_master WHERE type = 'table'"
             ).fetchall()
         }
-        # Reading Representation is the produced stage; no downstream time-representation /
-        # validation / review / final / artifact table may exist.
-        no_downstream_tables = not {
-            "subtitle_time_ranges",
-            "subtitle_validations",
+        # Reading Representation is the produced stage. Downstream time-representation and
+        # validation tables exist (empty) from later schema versions, so no downstream row may be
+        # produced and no review / final / artifact table may exist.
+        downstream_rows = sum(
+            connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            for table in ("subtitle_time_revisions", "subtitle_validations")
+            if table in existing_tables
+        )
+        no_downstream_tables = downstream_rows == 0 and not {
             "subtitle_reviews",
             "subtitle_final_selections",
             "artifacts",

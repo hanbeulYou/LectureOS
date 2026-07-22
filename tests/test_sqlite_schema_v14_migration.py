@@ -28,6 +28,7 @@ _ADDITION_BLOCKS = (
     (11, sqlite_lifecycle._V11_ADDITION_STATEMENTS),
     (12, sqlite_lifecycle._V12_ADDITION_STATEMENTS),
     (13, sqlite_lifecycle._V13_ADDITION_STATEMENTS),
+    (14, sqlite_lifecycle._V14_ADDITION_STATEMENTS),
 )
 
 
@@ -66,8 +67,9 @@ class SQLiteSchemaVersionFourteenTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
 
-    def test_schema_version_is_fourteen(self) -> None:
-        self.assertEqual(SQLITE_SCHEMA_VERSION, 14)
+    def test_v14_remains_a_supported_version(self) -> None:
+        self.assertIn(14, sqlite_lifecycle._SUPPORTED_SCHEMA_VERSIONS)
+        self.assertGreaterEqual(SQLITE_SCHEMA_VERSION, 14)
 
     def test_fresh_database_initializes_with_v14_tables(self) -> None:
         connection = initialize_sqlite_database(self.database_path)
@@ -75,7 +77,7 @@ class SQLiteSchemaVersionFourteenTests(unittest.TestCase):
             self.assertTrue(V14_TABLES.issubset(table_names(connection)))
             self.assertEqual(
                 connection.execute("SELECT version FROM schema_metadata").fetchone()[0],
-                14,
+                SQLITE_SCHEMA_VERSION,
             )
         finally:
             connection.close()
@@ -94,7 +96,8 @@ class SQLiteSchemaVersionFourteenTests(unittest.TestCase):
             connection.close()
 
     def test_v14_no_op_migration_is_allowed(self) -> None:
-        initialize_sqlite_database(self.database_path).close()
+        create_legacy_database(self.database_path, 13)
+        migrate_sqlite_database(self.database_path, 14)
         migrate_sqlite_database(self.database_path, 14)
         connection = open_sqlite_database(self.database_path)
         try:
@@ -113,7 +116,7 @@ class SQLiteSchemaVersionFourteenTests(unittest.TestCase):
     def test_unsupported_target_is_rejected(self) -> None:
         initialize_sqlite_database(self.database_path).close()
         with self.assertRaises(PersistenceError):
-            migrate_sqlite_database(self.database_path, 15)
+            migrate_sqlite_database(self.database_path, 16)
 
     def test_repository_rejects_pre_v14_schema(self) -> None:
         create_legacy_database(self.database_path, 13)

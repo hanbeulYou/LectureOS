@@ -41,6 +41,10 @@ from .subtitle_time import (
     SQLiteSubtitleTimeCommandPersistence,
     SQLiteSubtitleTimeRevisionRepository,
 )
+from .subtitle_validation import (
+    SQLiteSubtitleValidationCommandPersistence,
+    SQLiteSubtitleValidationRepository,
+)
 from .subtitle_intake import (
     SQLiteSubtitleIntakeCommandPersistence,
     SQLiteSubtitleTranscriptIntakeRepository,
@@ -83,6 +87,8 @@ __all__ = [
     "SQLiteSubtitleReadingRevisionRepository",
     "SQLiteSubtitleTimeCommandPersistence",
     "SQLiteSubtitleTimeRevisionRepository",
+    "SQLiteSubtitleValidationCommandPersistence",
+    "SQLiteSubtitleValidationRepository",
     "SQLiteSubtitleIntakeCommandPersistence",
     "SQLiteSubtitleTranscriptIntakeRepository",
     "SQLiteCorrectionCandidateRepository",
