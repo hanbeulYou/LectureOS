@@ -149,10 +149,10 @@ class SQLiteSchemaVersionFourTests(unittest.TestCase):
     def test_new_database_includes_complete_frozen_v4(self) -> None:
         connection = initialize_sqlite_database(self.database_path)
         try:
-            self.assertEqual(SQLITE_SCHEMA_VERSION, 20)
-            self.assertEqual(connection.execute("SELECT version FROM schema_metadata").fetchone(), (20,))
+            self.assertEqual(SQLITE_SCHEMA_VERSION, 21)
+            self.assertEqual(connection.execute("SELECT version FROM schema_metadata").fetchone(), (21,))
             self.assertTrue(V4_TABLES.issubset(table_names(connection)))
-            self.assertEqual(sqlite_lifecycle.validate_sqlite_connection(connection), 20)
+            self.assertEqual(sqlite_lifecycle.validate_sqlite_connection(connection), 21)
         finally:
             connection.close()
         open_sqlite_database(self.database_path).close()

@@ -49,6 +49,10 @@ from .subtitle_approved_assembly import (
     SQLiteSubtitleApprovedDocumentCommandPersistence,
     SQLiteSubtitleApprovedDocumentRepository,
 )
+from .subtitle_srt_artifact import (
+    SQLiteSubtitleSrtArtifactCommandPersistence,
+    SQLiteSubtitleSrtArtifactRepository,
+)
 from .subtitle_final_subtitle import (
     SQLiteSubtitleFinalSubtitleCommandPersistence,
     SQLiteSubtitleFinalSubtitleRepository,
@@ -111,6 +115,8 @@ __all__ = [
     "SQLiteSubtitleDecisionRevisionRepository",
     "SQLiteSubtitleApprovedDocumentCommandPersistence",
     "SQLiteSubtitleApprovedDocumentRepository",
+    "SQLiteSubtitleSrtArtifactCommandPersistence",
+    "SQLiteSubtitleSrtArtifactRepository",
     "SQLiteSubtitleFinalSubtitleCommandPersistence",
     "SQLiteSubtitleFinalSubtitleRepository",
     "SQLiteSubtitleReviewDecisionCommandPersistence",

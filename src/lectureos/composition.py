@@ -41,6 +41,9 @@ from lectureos.application.subtitle_decision_application import (
 from lectureos.application.subtitle_approved_assembly import (
     SubtitleApprovedSubtitleAssemblyService,
 )
+from lectureos.application.subtitle_srt_artifact import (
+    SubtitleSrtArtifactGenerationService,
+)
 from lectureos.application.subtitle_final_subtitle import (
     SubtitleFinalSubtitleService,
 )
@@ -63,6 +66,8 @@ from lectureos.persistence import (
     SQLiteSubtitleCandidateRepository,
     SQLiteSubtitleIntakeCommandPersistence,
     SQLiteSubtitleApprovedDocumentCommandPersistence,
+    SQLiteSubtitleApprovedDocumentRepository,
+    SQLiteSubtitleSrtArtifactCommandPersistence,
     SQLiteSubtitleReadingCommandPersistence,
     SQLiteSubtitleDecisionRevisionCommandPersistence,
     SQLiteSubtitleDecisionRevisionRepository,
@@ -411,6 +416,17 @@ def compose_sqlite_subtitle_approved_assembly_service(
         execution_query,
         persistence,
     )
+
+
+def compose_sqlite_subtitle_srt_artifact_generation_service(
+    connection: sqlite3.Connection,
+    execution_query: ExecutionQueryBoundary,
+) -> SubtitleSrtArtifactGenerationService:
+    """Build durable v21 SRT Artifact Generation on one caller connection."""
+
+    documents = SQLiteSubtitleApprovedDocumentRepository(connection)
+    persistence = SQLiteSubtitleSrtArtifactCommandPersistence(connection)
+    return SubtitleSrtArtifactGenerationService(documents, execution_query, persistence)
 
 
 def _compose_sqlite_transcript_service(
