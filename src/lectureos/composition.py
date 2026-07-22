@@ -23,6 +23,9 @@ from lectureos.application.subtitle_candidate_generation import (
 from lectureos.application.subtitle_reading_representation import (
     SubtitleReadingRepresentationService,
 )
+from lectureos.application.subtitle_time_representation import (
+    SubtitleTimeRepresentationService,
+)
 from lectureos.application.transcript_readiness_evaluation import (
     TranscriptReadinessEvaluationService,
 )
@@ -42,6 +45,8 @@ from lectureos.persistence import (
     SQLiteSubtitleCandidateRepository,
     SQLiteSubtitleIntakeCommandPersistence,
     SQLiteSubtitleReadingCommandPersistence,
+    SQLiteSubtitleReadingRevisionRepository,
+    SQLiteSubtitleTimeCommandPersistence,
     SQLiteSubtitleTranscriptIntakeRepository,
     SQLiteTranscriptReadinessEvaluationRepository,
     SQLiteTranscriptApplicabilityEvaluationRepository,
@@ -269,6 +274,20 @@ def compose_sqlite_subtitle_reading_representation_service(
     persistence = SQLiteSubtitleReadingCommandPersistence(connection)
     return SubtitleReadingRepresentationService(
         candidates, execution_query, persistence
+    )
+
+
+def compose_sqlite_subtitle_time_representation_service(
+    connection: sqlite3.Connection,
+    execution_query: ExecutionQueryBoundary,
+) -> SubtitleTimeRepresentationService:
+    """Build durable v14 Subtitle Time Representation on one caller connection."""
+
+    readings = SQLiteSubtitleReadingRevisionRepository(connection)
+    cues = SQLiteSubtitleCandidateRepository(connection)
+    persistence = SQLiteSubtitleTimeCommandPersistence(connection)
+    return SubtitleTimeRepresentationService(
+        readings, cues, execution_query, persistence
     )
 
 
