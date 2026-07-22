@@ -204,19 +204,107 @@ validation inherited.)
 
 ### Completed Capabilities
 ```text
-None yet
+Slice 1 — Goal Baseline and Assessment
+- commit `3e75120` — `docs: add subtitle reading representation goal`
+- bounded assessment: no substantive blocker; reading composition consumes the canonical
+  SubtitleCandidate (v12) + its cues; provider-free; additive schema v13; produces a new
+  immutable representation (not a mutation); baseline is a deterministic meaning-preserving
+  normalization (not a pure copy); merge/split is durable-model capability with policy deferred;
+  timing is inherited metadata, not time authority
+- Review: Optional — Skipped (documentation only)
+
+Slice 2 — Reading Records
+- commit `f5f0068` — `feat: add subtitle reading records`
+- `SubtitleReadingRevisionId`, `SubtitleReadingUnitId` added to application identities
+- `compose_reading_lines(text)`: deterministic, meaning-preserving line composition — preserves
+  existing hard-line structure, normalizes whitespace, drops empty lines (non-blank text → ≥1 line)
+- `SubtitleReadingUnit`: identity, revision linkage, ordered unique `source_cue_ids` (≥1), ordered
+  non-blank `lines` (≥1), non-negative display order, inherited optional timing metadata (untimed
+  allowed; timed requires timeline and 0≤start≤end)
+- `SubtitleReadingRevision`: identity, DomainResult linkage, candidate + full carried lineage,
+  transcript/revision/media/timeline, carried `validation_id`, ordered unique `unit_ids`, execution
+  provenance, append-only sequence/previous linkage, deterministic reason
+- `SubtitleReadingIdentityPlan` (revision id, result id, ordered unique unit ids)
+- durable unit model supports many-to-one (merge: multi-cue unit) and one-to-many (split: multiple
+  units per cue) provenance; no human-decision / applicability / final field
+- 27 focused record tests passed; complete suite 921 passed
+- Required Claude Review: Inconclusive — no critical findings identified (additive immutable
+  records; genuine deterministic normalization; merge/split/multi-line model support; no
+  Blueprint/lifecycle/contract defect)
+
+Slice 3 — Deterministic Reading Representation Service
+- commit `e622267` — `feat: derive subtitle reading revision from candidate`
+- `SubtitleReadingRepresentationService.compose_reading(...)` loads the canonical candidate
+  (admission authority), requires a running execution, loads its ordered cues, and derives one
+  reading unit per cue applying `compose_reading_lines` (deterministic meaning-preserving
+  normalization, not a pure copy), inheriting each cue's timing metadata unchanged
+- carries the full candidate lineage into the revision; revision DomainResult upstream = the
+  candidate DomainResult; no wall-clock; performs no write; mutates no upstream record; triggers no
+  downstream capability; owns no time semantics
+- `PreparedSubtitleReading` return; `AtomicSubtitleReadingPersistence` port; `SubtitleCandidateQuery`
+  protocol; `SubtitleReadingRepresentationError` for unsafe input
+- 7 focused service tests (2-unit normalization incl. whitespace + hard-line cases, untimed unit,
+  identity-plan cardinality, unknown candidate, running-execution, determinism, no-persistence)
+  passed; complete suite 928 passed
+- Required Claude Review: Inconclusive — no critical findings identified (pure deterministic
+  derivation; no persistence, no upstream mutation, no downstream trigger, no time logic)
+
+Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
+- commit `1de9ab8` — `feat: persist subtitle reading revision atomically`
+- additive SQLite schema v13: `subtitle_reading_revisions` parent + ordered `subtitle_reading_units`
+  child (UNIQUE(revision, ordinal), timed/untimed CHECK) + `subtitle_reading_unit_source_cues`
+  ordinal grandchild (provenance / merge-split) + `subtitle_reading_unit_lines` ordinal grandchild
+  (line composition)
+- `_migrate_v12_to_v13` additive; downgrades and direct skips rejected; existing v1–v12 unchanged
+- `SQLiteSubtitleReadingCommandPersistence.persist_subtitle_reading(...)` writes the revision, its
+  ordered units (+ source-cue + line children) and the DomainResultReference in one `BEGIN IMMEDIATE`
+  transaction; validates linkage/unit-ordering and identity absence; rolls back completely on
+  collision/linkage/write/commit failure; no upstream mutation
+- `SQLiteSubtitleReadingRevisionRepository` reconstructs the exact revision + ordered units after
+  restart
+- composition `compose_sqlite_subtitle_reading_representation_service` wires the durable candidate
+  repository + reading persistence
+- migration compatibility verified: every released version v1..v12 chains to v13 preserving data;
+  idempotency verified (upstream candidate row byte-identical); superseded-latest test expectations
+  updated (v2/v3/v4/v5/processing_units 12→13; v6..v12 unsupported-target guards 13→14; v9/v10/v11/v12
+  chain helpers extended with the v12 addition block; v12 no-op/fresh-init/version realigned to the
+  superseded-version pattern)
+- 13 focused v13 tests (migration, full v1..v12→v13 chain, restart, replay, idempotency, atomic
+  rollback of revision + units + source-cue + line children) passed; complete suite 941 passed
+- Required Claude Review: PASS — independent bounded review verified atomicity/rollback, ordered
+  unit + source-cue + line reconstruction, identity-collision atomicity, provenance linkage, additive
+  migration, migration-chain compatibility, and DDL/expected-columns exactness; no critical findings
+
+Slice 5 — Fake-Review / Fake-Transcript Acceptance
+- commit `6bfd386` — `test: verify subtitle reading representation acceptance`
+- `lectureos.subtitle_reading_acceptance` drives the full pipeline with a fake correction provider
+  and fake reviewer (no network, no credential, fixed timestamps): fake proposals → proposed
+  Revision → Review Preparation → Accept/Reject → applicability → selection → readiness → subtitle
+  transcript intake → subtitle candidate generation → subtitle reading representation → atomic v13
+  persistence → reopen → exact restart reconstruction → identical deterministic replay
+- verifies one reading revision, 2 ordered units; unit lines equal the deterministic normalization
+  of each cue's text; unit→source-cue lineage; unit ordering; timing inherited (identical to the
+  source cue — nothing computed); revision candidate lineage and media/timeline; execution
+  provenance; result upstream = candidate DomainResult; idempotency (upstream candidate byte-
+  identical); restart reconstruction; deterministic replay; and no downstream time / validation /
+  review / final / artifact table produced
+- acceptance summary: reading_revision_count 1, unit_count 2, every linkage / provenance / restart /
+  replay / idempotency / normalization / no-downstream flag true
+- focused acceptance test passed; complete suite 942 passed
+- Blueprint Drift Check: PASS — dependency direction unchanged, no provider owns reading identity/
+  lifecycle, no existing enum/aggregate/service meaning changed (the in-memory subtitle domain is
+  untouched), schema strictly additive, no time/validation/review/final/artifact responsibility
+  pulled in, Human Authority intact, Reading Representation owns no time semantics
+- Migration Compatibility: PASS — every released version v1..v12 chains to v13 preserving data
+- Claude Review: Optional — Skipped (acceptance harness/test only; no production or contract change)
 ```
 ### Remaining Milestones
 ```text
-Slice 1 — Goal Baseline and Assessment
-Slice 2 — Reading Records
-Slice 3 — Deterministic Reading Representation Service
-Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
-Slice 5 — Fake-Review / Fake-Transcript Acceptance
+None — Goal complete
 ```
 ### Immediate Next Slice
 ```text
-Slice 1 — Goal Baseline and Assessment
+Goal Complete
 ```
 
 ## 10. Completion Report — Milestone Additions

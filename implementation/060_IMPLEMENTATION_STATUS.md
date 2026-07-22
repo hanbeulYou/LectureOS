@@ -754,3 +754,76 @@ one-to-many and many-to-one segment↔cue relationships so downstream stages may
 the in-memory `subtitle/` domain remains unchanged. This advances the Subtitle Pipeline to stage
 4.2 (Subtitle Candidate Generation); Reading/Time Representation and later subtitle/artifact stages
 remain out of scope and unstarted.
+
+## Subtitle Reading Representation
+
+- Goal: `docs/goals/LectureOS_Codex_Goal_Subtitle_Reading_Representation.md`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema v13
+- Completed slices: Goal Baseline and Assessment; Reading Records; Deterministic Reading
+  Representation Service; Atomic SQLite Persistence, Restart, Replay and Migration Compatibility;
+  Fake-Review / Fake-Transcript Acceptance
+- Immediate next slice: Goal Complete
+
+This milestone advances the Subtitle Pipeline to stage 4.3 (`docs/041_SUBTITLE_PIPELINE.md §4.3
+Reading Representation`, §6): from a canonical `SubtitleCandidate` (v12) and its ordered cues it
+deterministically composes one **new immutable** subtitle reading revision (`SubtitleReadingRevision`)
+plus an ordered collection of reading units (`SubtitleReadingUnit`) that carry an explicit,
+reading-oriented text form (line composition). `Product → Application → Capability Contract →
+Provider` and the lifecycle position `… → Subtitle Candidate Generation → Reading Representation →
+Time Representation → Subtitle Structural Validation → …` are preserved, while Time Representation,
+Subtitle structural Validation, Subtitle Review Preparation/Decision, Final Subtitle, Artifact and
+export remain out of scope. Reading composition is admitted only by a durable `SubtitleCandidate`
+(the sole admission authority), consumes no provider, produces a new immutable representation
+(never overwriting the candidate), owns no time semantics, mutates no upstream record and starts no
+downstream capability.
+
+The bounded architectural assessment found no substantive blocker. The `SubtitleCandidate` and its
+immutable cues are the canonical input (via `SQLiteSubtitleCandidateRepository.get` / `get_cue`); no
+transcript access is needed. New Application-owned durable types `SubtitleReadingRevision` (identity
+`SubtitleReadingRevisionId`) and ordered child `SubtitleReadingUnit` (identity
+`SubtitleReadingUnitId`) are added; the pre-existing in-memory `subtitle/` domain is left unchanged
+and unimported. **The baseline performs a deterministic reading transformation, not a pure
+structural copy:** `compose_reading_lines` applies threshold-independent, meaning-preserving
+normalization — whitespace normalization and line composition that preserves the source text's
+existing hard-line structure — to produce each unit's ordered `lines`. **Merge/split cardinality is
+not a domain invariant:** the durable model permanently supports cue merge (a unit references an
+ordered tuple of ≥1 source cues) and split (distinct units reference the same cue) with complete
+deterministic provenance; only policy-based merge/split is deferred, and the baseline emits one unit
+per cue. **Timing is inherited metadata, not time authority:** each unit inherits its source cue's
+timeline and time range unchanged; no timestamp is computed, inferred, or reordered (§4.4 Time
+Representation owns time). A new `SubtitleReadingRepresentationService` mirrors the established
+compose/persist split with an Application-owned identity plan; additive SQLite schema v13 adds a
+`subtitle_reading_revisions` parent table, an ordered `subtitle_reading_units` child and two ordinal
+grandchildren (`subtitle_reading_unit_source_cues`, `subtitle_reading_unit_lines`), with atomic
+persistence, restart reconstruction and deterministic replay. No wall-clock is read. The AGENTS.md
+Architect Checklist is entirely `No`: no existing Domain contract change, no released-schema meaning
+change, no lifecycle authority change, no responsibility shift, no new identity semantics, one
+additive migration, and no Blueprint contradiction. Migration compatibility from every released
+version (v1..v12) to v13 is verified.
+
+The Subtitle Reading Representation Goal is complete. `SubtitleReadingRepresentationService.compose_
+reading(...)` loads a canonical `SubtitleCandidate`, requires a running execution, loads its ordered
+cues and deterministically composes one new immutable `SubtitleReadingRevision` plus an ordered
+collection of `SubtitleReadingUnit` records — each carrying a whitespace-normalized,
+hard-line-preserving line composition of its source cue's text and traceable to its ordered source
+cue(s) (and, via the immutable cues, the transcript segments) — carrying the full candidate lineage
+and the structural `validation_id`, and inheriting each cue's timing metadata unchanged.
+`SQLiteSubtitleReadingCommandPersistence` writes the revision, its ordered units (with their ordered
+source-cue and line children) and the co-persisted `DomainResultReference` (kind
+`subtitle_reading_revision`, upstream = the candidate DomainResult) in one atomic v13 transaction,
+reconstructs the revision and ordered units exactly after restart, and reproduces byte-identical
+records on deterministic replay into a fresh database. An in-process fake-review / fake-transcript
+acceptance drives the full pipeline and confirms the candidate yields one reading revision whose
+units carry the deterministic normalization of each cue's text; unit→source-cue lineage; inherited
+timing (nothing computed); revision candidate lineage and source media/timeline; execution
+provenance; atomic persistence; restart reconstruction; deterministic replay; idempotency (upstream
+candidate byte-identical before and after composition); and that no downstream time-representation /
+validation / review / final / artifact table is produced. The complete 942-test suite passes. A
+Blueprint Drift Check confirmed no drift relative to any prior completed milestone, and migration
+compatibility from every released version (v1..v12) to v13 is verified by an explicit
+single-step-chain test that preserves existing data and meaning. Reading Representation owns no time
+semantics; the durable unit model supports cue merge and split so downstream stages may merge or
+split units; the in-memory `subtitle/` domain remains unchanged. This advances the Subtitle Pipeline
+to stage 4.3 (Reading Representation); Time Representation and later subtitle/artifact stages remain
+out of scope and unstarted.
