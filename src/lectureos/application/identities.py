@@ -68,3 +68,13 @@ class SubtitleReadingRevisionId(OpaqueIdentity):
 @dataclass(frozen=True, slots=True)
 class SubtitleReadingUnitId(OpaqueIdentity):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class SubtitleTimeRevisionId(OpaqueIdentity):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class SubtitleTimedUnitId(OpaqueIdentity):
+    pass

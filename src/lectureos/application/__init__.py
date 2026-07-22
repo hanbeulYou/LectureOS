@@ -66,6 +66,13 @@ from .subtitle_reading_representation import (
     SubtitleReadingUnit,
     compose_reading_lines,
 )
+from .subtitle_time_representation import (
+    SUBTITLE_TIME_REVISION_RESULT_KIND,
+    SubtitleTimeIdentityPlan,
+    SubtitleTimeRevision,
+    SubtitleTimedUnit,
+    SubtitleTimingStatus,
+)
 from .subtitle_transcript_intake import (
     SUBTITLE_TRANSCRIPT_INTAKE_RESULT_KIND,
     AtomicSubtitleIntakePersistence,
@@ -168,6 +175,11 @@ __all__ = [
     "SubtitleReadingRevision",
     "SubtitleReadingUnit",
     "compose_reading_lines",
+    "SUBTITLE_TIME_REVISION_RESULT_KIND",
+    "SubtitleTimeIdentityPlan",
+    "SubtitleTimeRevision",
+    "SubtitleTimedUnit",
+    "SubtitleTimingStatus",
     "SUBTITLE_TRANSCRIPT_INTAKE_RESULT_KIND",
     "AtomicSubtitleIntakePersistence",
     "PreparedSubtitleIntake",
