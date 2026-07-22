@@ -165,19 +165,100 @@ produced**. (Generic validation inherited.)
 
 ### Completed Capabilities
 ```text
-None yet
+Slice 1 — Goal Baseline and Assessment
+- commit `50d093c` — `docs: add subtitle decision application goal`
+- bounded assessment: no substantive blocker; admits exactly one SubtitleReviewDecision; validation +
+  finding read read-only for lineage and the target unit; the only new artifact is the next revision;
+  no existing artifact modified; distinct names from the legacy in-memory subtitle_decision.py;
+  additive schema v18
+- Review: Optional — Skipped (documentation only)
+
+Slice 2 — Subtitle Decision Application Records
+- commit `30e8e82` — `feat: add subtitle decision revision records`
+- `SubtitleDecisionRevisionId` added to application identities
+- `SubtitleAppliedOutcome` enum (ACCEPTED/REJECTED/MODIFIED) + `applied_outcome_for_kind` deterministic
+  mapping (ACCEPT→ACCEPTED, REJECT→REJECTED, MODIFY→MODIFIED)
+- `SubtitleDecisionRevision` aggregate: identity, DomainResult linkage, source review decision, decision
+  kind, derived outcome, optional applied_text, review item + candidate reference, preparation/validation/
+  time & reading revision/candidate/finding + stable rule, optional target timed unit, transcript & revision,
+  media & timeline, execution provenance, append-only sequence/previous linkage, deterministic reason;
+  invariants: outcome matches the kind mapping, MODIFIED requires applied text and ACCEPTED/REJECTED carry
+  none, non-blank rule/reason, non-negative sequence, first has no previous
+- `SubtitleDecisionRevisionIdentityPlan` (revision id, result id); names distinct from the legacy
+  in-memory `SubtitleDecisionApplication*`
+- 14 focused record tests passed; complete suite 1118 passed
+- Required Claude Review: Inconclusive — no critical findings identified (additive immutable records;
+  kind⇔outcome⇔applied_text enforced; no defect)
+
+Slice 3 — Deterministic Decision Application Service
+- commit `bbb5b5d` — `feat: apply subtitle review decision into next revision`
+- `SubtitleDecisionRevisionService.apply_decision(...)` admits exactly one `SubtitleReviewDecision`,
+  requires a running execution, reads the validation + finding read-only (for lineage + target timed
+  unit), derives the outcome (Accept→ACCEPTED, Reject→REJECTED, Modify→MODIFIED), carries the modified
+  text for Modify, and builds the next `SubtitleDecisionRevision`
+- pure deterministic transformation; no wall-clock; performs no write; mutates no upstream record (the
+  decision, review item, preparation and validation are untouched); revision DomainResult upstream = the
+  decision DomainResult
+- `PreparedSubtitleDecisionRevision`, `AtomicSubtitleDecisionRevisionPersistence` port,
+  `SubtitleReviewDecisionQuery` + `SubtitleValidationQuery` protocols, `SubtitleDecisionApplicationError`
+- 8 focused service tests (Accept/Reject/Modify outcomes + applied text; lineage from the validation;
+  unknown decision/finding; running-execution; determinism; no-persistence) passed; complete suite 1126 passed
+- Required Claude Review: Inconclusive — no critical findings identified (pure deterministic application;
+  admits one decision; no upstream mutation, no persistence, no selection/final)
+
+Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
+- commit `28200de` — `feat: persist subtitle decision revision atomically`
+- additive SQLite schema v18: one flat table `subtitle_decision_revisions` (kind⇔outcome and
+  MODIFIED⇔applied_text and sequence/previous CHECKs)
+- `_migrate_v17_to_v18` additive; downgrades and direct skips rejected; existing v1–v17 unchanged
+- `SQLiteSubtitleDecisionRevisionCommandPersistence.persist_subtitle_decision_revision(...)` writes the
+  revision and its co-persisted DomainResultReference in one `BEGIN IMMEDIATE` transaction; validates
+  linkage and identity absence; rolls back completely on collision/linkage/write/commit failure; no
+  upstream mutation
+- `SQLiteSubtitleDecisionRevisionRepository` reconstructs the exact revision after restart
+- composition `compose_sqlite_subtitle_decision_application_service` wires the durable review-decision +
+  validation repositories + decision-revision persistence
+- migration compatibility verified: every released version v1..v17 chains to v18 preserving data;
+  idempotency verified (upstream decision byte-identical); superseded-latest test expectations updated
+  (v2/v3/v4/v5/processing_units 17→18; v6..v17 unsupported-target guards 18→19; v9..v17 chain helpers
+  extended with the v17 addition block; v17 no-op/fresh-init/version realigned)
+- 13 focused v18 tests (migration, full v1..v17→v18 chain, restart, replay incl. Modify applied text,
+  idempotency, atomic rollback) passed; complete suite 1139 passed
+- Required Claude Review: PASS — independent bounded review verified atomicity/rollback,
+  identity-collision atomicity, provenance linkage, additive migration + chain compatibility, the full
+  25-column DDL↔expected-columns↔INSERT↔restore index mapping, and the kind⇔outcome⇔applied_text
+  CHECK↔dataclass consistency; no critical findings
+
+Slice 5 — Fake-Review / Fake-Transcript Acceptance
+- commit `be8bee1` — `test: verify subtitle decision application acceptance`
+- `lectureos.subtitle_decision_application_acceptance` drives the full pipeline (fake correction provider
+  and fake reviewer, no network, no credential, fixed timestamps) through candidate → reading → time →
+  validation → review preparation → human review decision, then applies the recorded Accept, Modify and
+  Reject decisions → next revisions → atomic v18 persistence → reopen → exact restart reconstruction →
+  identical deterministic replay
+- verifies the three next revisions' outcomes (ACCEPTED/REJECTED/MODIFIED), the Modify applied text and
+  Accept/Reject carrying none, subtitle provenance + DomainResult chaining (upstream = decision result)
+  and finding/rule traceability; that application mutates no existing canonical artifact (decision /
+  review item / preparation / validation byte-identical before and after); restart reconstruction;
+  deterministic replay; and no downstream final / artifact table produced
+- acceptance summary: revision_count 3, and every outcome / applied-text / provenance / target-traced /
+  no-upstream-mutation / restart / replay / no-downstream flag true
+- focused acceptance test passed; complete suite 1140 passed
+- Blueprint Drift Check: PASS — dependency direction unchanged, no provider owns revision identity/
+  lifecycle, no existing enum/aggregate/service meaning changed (the common `review/` contracts, the
+  durable review-decision/validation contracts, and the legacy in-memory subtitle domain are untouched),
+  schema strictly additive, no existing canonical artifact modified, no final selection/current selection/
+  readiness/applicability produced, Human Authority preserved (only recorded decisions are applied)
+- Migration Compatibility: PASS — every released version v1..v17 chains to v18 preserving data
+- Claude Review: Optional — Skipped (acceptance harness/test only; no production or contract change)
 ```
 ### Remaining Milestones
 ```text
-Slice 1 — Goal Baseline and Assessment
-Slice 2 — Subtitle Decision Application Records
-Slice 3 — Deterministic Decision Application Service
-Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
-Slice 5 — Fake-Review / Fake-Transcript Acceptance
+None — Goal complete
 ```
 ### Immediate Next Slice
 ```text
-Slice 1 — Goal Baseline and Assessment
+Goal Complete
 ```
 
 ## 10. Completion Report — Milestone Additions

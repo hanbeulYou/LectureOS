@@ -1104,3 +1104,63 @@ is verified by an explicit single-step-chain test that preserves existing data a
 records Human judgement only; Decision Application (§4.7) — applying the decision, producing a Modify-
 reflecting Subtitle revision — and Final Subtitle (§4.8) remain out of scope and unstarted, and are the
 next dependency-ordered milestones.
+
+## Subtitle Decision Application
+
+- Goal: `docs/goals/LectureOS_Codex_Goal_Subtitle_Decision_Application.md`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema v18
+- Completed slices: Goal Baseline and Assessment; Subtitle Decision Application Records; Deterministic
+  Decision Application Service; Atomic SQLite Persistence, Restart, Replay and Migration Compatibility;
+  Fake-Review / Fake-Transcript Acceptance
+- Immediate next slice: Goal Complete
+
+This milestone advances the Subtitle Pipeline to stage 4.7 (`docs/041_SUBTITLE_PIPELINE.md §4.7 Decision
+Application`): from exactly one canonical `SubtitleReviewDecision` (v17), it deterministically **applies**
+the recorded Human Accept/Reject/Modify and produces the **next Subtitle revision** — a new immutable
+`SubtitleDecisionRevision` reflecting the applied outcome (and, for Modify, the user's modified text) —
+together with its provenance. `Product → Application → Capability Contract → Provider` and the lifecycle
+position `… → Subtitle Review Preparation → Subtitle Human Review Decision → Subtitle Decision Application
+→ Final Subtitle` are preserved, while Final Subtitle (§4.8), current selection, readiness, and
+applicability remain out of scope. Application is a **pure deterministic transformation**: the consumed
+decision remains immutable, and **no existing canonical artifact is modified** — the `SubtitleReviewDecision`,
+its `ReviewItem`, its `SubtitleReviewPreparation`, and the `SubtitleValidation` are never mutated. The only
+newly created canonical artifact is the `SubtitleDecisionRevision` and its `DomainResultReference`.
+
+The bounded architectural assessment found no substantive blocker. The `SubtitleReviewDecision` (v17) is
+the sole admission authority; the `SubtitleValidation` (v15) and its finding are read **read-only** to
+resolve the full source lineage and the target timed unit. A new Application-owned aggregate
+`SubtitleDecisionRevision` (identity `SubtitleDecisionRevisionId`) and enum `SubtitleAppliedOutcome`
+(`ACCEPTED` | `REJECTED` | `MODIFIED`, a pure deterministic function of `DecisionKind`) are added, with
+names distinct from the **legacy in-memory** `application/subtitle_decision.py`, which is untouched. It
+reuses the common Review vocabulary (`DecisionKind`, `ReviewItemId`, `CandidateReferenceId`). No wall-clock
+is read, so reconstruction and replay are deterministic. Additive SQLite schema v18 adds one flat
+`subtitle_decision_revisions` table (with the kind⇔outcome and MODIFIED⇔applied_text and sequence/previous
+CHECKs), with atomic persistence, restart reconstruction and deterministic replay. The AGENTS.md Architect
+Checklist is entirely `No`: no existing Domain contract change, no released-schema meaning change, no
+lifecycle authority change (only recorded decisions are applied), no responsibility shift, no new identity
+semantics, one additive migration, and no Blueprint contradiction. Migration compatibility from every
+released version (v1..v17) to v18 is verified.
+
+The Subtitle Decision Application Goal is complete. `SubtitleDecisionRevisionService.apply_decision(...)`
+admits one canonical `SubtitleReviewDecision`, requires a running execution, reads the validation and its
+finding read-only for lineage and the target timed unit, derives the applied outcome (Accept→ACCEPTED,
+Reject→REJECTED, Modify→MODIFIED), carries the modified text for Modify, and builds the next
+`SubtitleDecisionRevision` carrying the review item / candidate reference / preparation / validation / time
+& reading revision / candidate / finding + stable rule / target timed unit / transcript & revision / media
+& timeline lineage and append-only sequence/previous linkage.
+`SQLiteSubtitleDecisionRevisionCommandPersistence` writes the revision and its co-persisted
+`DomainResultReference` (kind `subtitle_decision_revision`, upstream = the review decision DomainResult) in
+one atomic v18 transaction, reconstructs the revision exactly after restart, and reproduces byte-identical
+records on deterministic replay into a fresh database. An in-process fake-review / fake-transcript
+acceptance drives the full pipeline and applies the recorded Accept, Modify and Reject decisions,
+confirming each next revision's outcome (ACCEPTED/REJECTED/MODIFIED), the Modify applied text, subtitle
+provenance and DomainResult chaining, and finding/rule traceability; that application mutates no existing
+canonical artifact (decision / review item / preparation / validation byte-identical before and after);
+restart reconstruction; deterministic replay; and no downstream final / artifact table is produced. The
+complete 1140-test suite passes. A Blueprint Drift Check confirmed no drift relative to any prior completed
+milestone, and migration compatibility from every released version (v1..v17) to v18 is verified by an
+explicit single-step-chain test that preserves existing data and meaning. This stage applies one recorded
+decision into the next revision only; Final Subtitle selection (§4.8), current selection, readiness, and
+applicability derivation remain out of scope and unstarted — §4.8 Final Subtitle is the next
+dependency-ordered milestone.
