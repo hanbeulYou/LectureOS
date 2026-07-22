@@ -32,6 +32,9 @@ from lectureos.application.subtitle_structural_validation import (
 from lectureos.application.subtitle_review_preparation import (
     SubtitleReviewPreparationService,
 )
+from lectureos.application.subtitle_review_decision import (
+    SubtitleReviewDecisionService,
+)
 from lectureos.application.transcript_readiness_evaluation import (
     TranscriptReadinessEvaluationService,
 )
@@ -52,7 +55,9 @@ from lectureos.persistence import (
     SQLiteSubtitleIntakeCommandPersistence,
     SQLiteSubtitleReadingCommandPersistence,
     SQLiteSubtitleReadingRevisionRepository,
+    SQLiteSubtitleReviewDecisionCommandPersistence,
     SQLiteSubtitleReviewPreparationCommandPersistence,
+    SQLiteSubtitleReviewPreparationRepository,
     SQLiteSubtitleTimeCommandPersistence,
     SQLiteSubtitleTimeRevisionRepository,
     SQLiteSubtitleTranscriptIntakeRepository,
@@ -325,6 +330,25 @@ def compose_sqlite_subtitle_review_preparation_service(
     persistence = SQLiteSubtitleReviewPreparationCommandPersistence(connection)
     return SubtitleReviewPreparationService(
         validations, execution_query, persistence
+    )
+
+
+def compose_sqlite_subtitle_review_decision_service(
+    connection: sqlite3.Connection,
+    execution_query: ExecutionQueryBoundary,
+) -> SubtitleReviewDecisionService:
+    """Build durable v17 Subtitle Human Review Decision on one caller connection."""
+
+    preparations = SQLiteSubtitleReviewPreparationRepository(connection)
+    review_items = SQLiteReviewItemRepository(connection)
+    candidate_references = SQLiteReviewCandidateReferenceRepository(connection)
+    persistence = SQLiteSubtitleReviewDecisionCommandPersistence(connection)
+    return SubtitleReviewDecisionService(
+        preparations,
+        review_items,
+        candidate_references,
+        execution_query,
+        persistence,
     )
 
 
