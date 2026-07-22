@@ -1297,3 +1297,67 @@ prior completed milestone, and migration compatibility from every released versi
 verified by an explicit single-step-chain test that preserves existing data and meaning. Downstream
 **Artifact Generation** (SRT/WebVTT serialization, export payloads), **Physical Materialization** (files,
 storage), and **Delivery** remain later, separately-gated `044` milestones and are out of scope.
+
+## SRT Artifact Generation (044 Export Pipeline — stage 2)
+
+- Goal: `docs/goals/LectureOS_Codex_Goal_Srt_Artifact_Generation.md`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema v21 (one table, inline payload)
+- Completed slices: Goal Baseline and Assessment; Durable Artifact and SRT Payload Records; Deterministic
+  SRT Artifact Generation Service; Atomic SQLite Persistence, Restart, Replay and Migration Compatibility;
+  End-to-End Acceptance (co-committed with the persistence slice)
+- Immediate next slice: Goal Complete
+
+This milestone adds the **second stage of the 044 Export Pipeline**, **SRT Artifact Generation**. From
+exactly one eligible `SubtitleApprovedDocument` (v20), it deterministically serializes the ordered approved
+units into a canonical **SRT payload** and creates one canonical, regenerable **Artifact Record**
+(`SubtitleSrtArtifact`, identity = the common `ArtifactId`) with complete provenance. `Product →
+Application → Capability Contract → Provider` and the lifecycle position `… → Approved Subtitle Assembly →
+SubtitleApprovedDocument → SRT Artifact Generation → Physical Materialization → Delivery` are preserved;
+**041 and v20 remain immutable**. The stage **writes no file** and touches no filesystem/path/URL/storage/
+delivery; it performs no Review/Validation/assembly/AI/provider work and reads all approved meaning,
+ordering, timing, omission and modified text from the Approved Subtitle Document **as-is** (read-only).
+
+Generation admits one document, **rejects `INELIGIBLE` input** with a deterministic
+`SubtitleArtifactGenerationError` and no record/payload (never a partial artifact), and serializes only the
+document's included units. The canonical SRT rules: cue order = the document unit order; contiguous 1-based
+numbering; timestamps derived solely from approved unit timing with the released `Decimal`/`ROUND_HALF_UP`
+rounding and `HH:MM:SS,mmm` syntax; cue text = the approved lines verbatim, joined by LF; one blank line
+between blocks; UTF-8; a non-empty payload ends with a single trailing LF; an **eligible zero-unit document**
+(permitted by the v20 contract when all units were rejected) serializes to the **empty payload** (`""`,
+byte length 0, cue count 0); a unit whose duration collapses at millisecond precision is an explicit
+representation failure, never silently emitted. The deterministic timestamp primitives were **extracted**
+into a pure `application/srt_payload.py` module (single-sourcing the algorithm) and the legacy in-memory SRT
+formatter now delegates to it with byte-identical behavior.
+
+A new Application-owned aggregate `SubtitleSrtArtifact` + enum `SubtitleArtifactFormat` (`SRT`, the canonical
+format identifier — never a filename/extension/path/URL) is added; the record stores its deterministic SRT
+payload **inline** so it is durably recoverable after restart, with byte length, cue count, encoding
+(`utf-8`), source document, source media/timeline, execution provenance, and append-only
+`sequence`/`previous_artifact_id`. It carries **no** materialization or delivery status and no path/URL/
+storage field. No wall-clock/locale/randomness is used, so reconstruction and replay are deterministic.
+Additive SQLite schema v21 adds one table `subtitle_srt_artifacts` with atomic persistence, restart
+reconstruction and deterministic replay. The AGENTS.md Architect Checklist is entirely `No`: no existing
+Domain contract change, no released-schema meaning change, no lifecycle authority change (assembly authority
+is only consumed), no responsibility shift, no new identity semantics (the common `ArtifactId` is reused),
+one additive migration, and no Blueprint contradiction. Migration compatibility from every released version
+(v1..v20) to v21 is verified.
+
+`SubtitleSrtArtifactGenerationService.generate_artifact(...)` admits one approved document, requires a
+running execution, rejects ineligible input, serializes the included units and builds the
+`SubtitleSrtArtifact`. `SQLiteSubtitleSrtArtifactCommandPersistence` writes the artifact (with its inline
+payload) and its co-persisted `DomainResultReference` (kind `subtitle_srt_artifact`, upstream = the approved
+document DomainResult) in one atomic v21 transaction, reconstructs it exactly after restart with a
+byte-identical payload, and reproduces byte-identical records on deterministic replay. An in-process
+fake-review / fake-transcript acceptance drives the durable pipeline through Approved Subtitle Assembly and
+generates an SRT Artifact from an eligible document, confirming the **exact serialized SRT payload** and its
+metadata, that an ineligible document produces no artifact, provenance and DomainResult chaining, that
+generation mutates no existing canonical artifact, restart reconstruction (payload byte-equal), deterministic
+replay, and that no physical-file / materialization / delivery table is produced. One independent bounded
+review of the atomic-persistence slice returned PASS with no critical findings. The complete 1260-test suite
+passes. A Blueprint Drift Check confirmed no drift relative to any prior completed milestone, and migration
+compatibility from every released version (v1..v20) to v21 is verified by an explicit single-step-chain test
+that preserves existing data and meaning. Downstream **Physical Materialization** (writing bytes to a file/
+storage, paths/filenames, atomic rename, directory policy) and **Delivery** (download/upload/transfer, URLs,
+UI) remain later, separately-gated `044` milestones and are out of scope; the legacy atomic local file
+writer is deferred to Physical Materialization.

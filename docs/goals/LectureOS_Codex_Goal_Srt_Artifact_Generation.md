@@ -153,19 +153,20 @@ duplicate-identity / DomainResult collisions roll back atomically. (Generic vali
 
 ### Completed Capabilities
 ```text
-None yet
+Slice 1 — Goal Baseline and Assessment (commit docs: add srt artifact generation goal)
+Slice 2 — Durable Artifact and SRT Payload Records (commit feat: add srt artifact records)
+Slice 3 — Deterministic SRT Artifact Generation Service (commit feat: generate srt artifact from approved document)
+Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility (commit feat: persist srt artifact atomically)
+Slice 5 — End-to-End Acceptance (co-committed with Slice 4; the atomic test consumes the acceptance fixture)
 ```
 ### Remaining Milestones
 ```text
-Slice 1 — Goal Baseline and Assessment
-Slice 2 — Durable Artifact and SRT Payload Records
-Slice 3 — Deterministic SRT Artifact Generation Service
-Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
-Slice 5 — End-to-End Acceptance
+None — milestone complete (SQLITE_SCHEMA_VERSION 21). Next Export milestone: Physical Materialization
+(separately gated).
 ```
 ### Immediate Next Slice
 ```text
-Slice 1 — Goal Baseline and Assessment
+None — milestone complete.
 ```
 
 ## 10. Completion Report — Milestone Additions
