@@ -88,6 +88,15 @@ from .subtitle_approved_assembly import (
     SubtitleApprovedUnitOrigin,
     SubtitleExportEligibility,
 )
+from .subtitle_srt_materialization import (
+    SUBTITLE_SRT_MATERIALIZATION_RESULT_KIND,
+    PreparedSubtitleSrtMaterialization,
+    SubtitleMaterializationState,
+    SubtitleMaterializationStorageKind,
+    SubtitleSrtMaterialization,
+    SubtitleSrtMaterializationIdentityPlan,
+    SubtitleSrtMaterializationOutcome,
+)
 from .subtitle_srt_artifact import (
     SUBTITLE_ARTIFACT_ENCODING,
     SUBTITLE_SRT_ARTIFACT_RESULT_KIND,
@@ -289,6 +298,13 @@ __all__ = [
     "SubtitleApprovedUnit",
     "SubtitleApprovedUnitOrigin",
     "SubtitleExportEligibility",
+    "SUBTITLE_SRT_MATERIALIZATION_RESULT_KIND",
+    "PreparedSubtitleSrtMaterialization",
+    "SubtitleMaterializationState",
+    "SubtitleMaterializationStorageKind",
+    "SubtitleSrtMaterialization",
+    "SubtitleSrtMaterializationIdentityPlan",
+    "SubtitleSrtMaterializationOutcome",
     "SUBTITLE_ARTIFACT_ENCODING",
     "SUBTITLE_SRT_ARTIFACT_RESULT_KIND",
     "PreparedSubtitleSrtArtifact",

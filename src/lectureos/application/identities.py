@@ -118,3 +118,8 @@ class SubtitleApprovedDocumentId(OpaqueIdentity):
 @dataclass(frozen=True, slots=True)
 class SubtitleApprovedUnitId(OpaqueIdentity):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class SubtitleSrtMaterializationId(OpaqueIdentity):
+    pass
