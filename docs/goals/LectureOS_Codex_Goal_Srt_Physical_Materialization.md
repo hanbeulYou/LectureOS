@@ -190,20 +190,20 @@ validation inherited.)
 
 ### Completed Capabilities
 ```text
-None yet
+Slice 1 — Goal Baseline and Assessment (commit docs: add srt physical materialization goal)
+Slice 2 — Materialization Records (commit feat: add srt materialization records)
+Slice 3 — Storage Location Policy and Infrastructure Local-File Writer (commit feat: add approved-root local file writer)
+Slice 4 — Atomic SQLite Persistence (v22) and Migration Compatibility (commit feat: persist srt materialization records atomically)
+Slice 5 — Record-First Materialization Service, Reconciliation, and Composition (commit feat: materialize srt artifacts record-first)
+Slice 6 — End-to-End Acceptance, Recovery and Replay (commit test: verify srt physical materialization acceptance)
 ```
 ### Remaining Milestones
 ```text
-Slice 1 — Goal Baseline and Assessment
-Slice 2 — Materialization Records
-Slice 3 — Storage Location Policy and Infrastructure Local-File Writer
-Slice 4 — Atomic SQLite Persistence (v22) and Migration Compatibility
-Slice 5 — Record-First Materialization Service, Reconciliation, and Composition
-Slice 6 — End-to-End Acceptance, Recovery and Replay
+None — milestone complete (SQLITE_SCHEMA_VERSION 22). Next Export milestone: Delivery (separately gated).
 ```
 ### Immediate Next Slice
 ```text
-Slice 1 — Goal Baseline and Assessment
+None — milestone complete.
 ```
 
 ## 10. Completion Report — Milestone Additions

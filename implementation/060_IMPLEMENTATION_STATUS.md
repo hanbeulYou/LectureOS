@@ -1361,3 +1361,73 @@ that preserves existing data and meaning. Downstream **Physical Materialization*
 storage, paths/filenames, atomic rename, directory policy) and **Delivery** (download/upload/transfer, URLs,
 UI) remain later, separately-gated `044` milestones and are out of scope; the legacy atomic local file
 writer is deferred to Physical Materialization.
+
+## SRT Physical Materialization (044 Export Pipeline — stage 3)
+
+- Goal: `docs/goals/LectureOS_Codex_Goal_Srt_Physical_Materialization.md`
+- Blueprint: approved `docs/044_EXPORT_PIPELINE.md §17` / `patches/PATCH-0007`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema v22 (two insert-only tables)
+- Completed slices: Goal Baseline and Assessment; Materialization Records; Storage Location Policy and
+  Infrastructure Local-File Writer; Atomic SQLite Persistence (v22) and Migration Compatibility;
+  Record-First Materialization Service, Reconciliation and Composition; End-to-End Acceptance, Recovery
+  and Replay
+- Immediate next slice: Goal Complete
+
+This milestone adds the **third stage of the 044 Export Pipeline**, **SRT Physical Materialization**,
+implementing the approved Blueprint contract §17 (`PATCH-0007`). From exactly one canonical
+`SubtitleSrtArtifact` (v21) and one Materialization Request, it durably realizes the artifact's inline SRT
+payload as a **physical file** under an approved Storage Root, following the **record-first, crash-consistent,
+reconcilable** model: the act is established **PENDING** durably (intent + `DomainResultReference`) before any
+file is written, the file is written atomically (temp file → fsync → atomic link), and the terminal
+`MATERIALIZED | FAILED` outcome is recorded afterwards. `Product → Application → Capability Contract →
+Provider` and the lifecycle position `… → SRT Artifact Generation → SubtitleSrtArtifact → SRT Physical
+Materialization → Materialization Record + Physical File → Delivery` are preserved; **041, v20 and v21 remain
+immutable**. The stage never regenerates SRT, never re-evaluates eligibility, and keeps **Artifact identity
+permanently independent of any physical file**; the Storage Location is operational provenance, never
+identity. **Delivery remains out of scope.**
+
+The materialization act is modelled as two **immutable, insert-only** records (§17.3 leaves record structure
+to implementation): a `SubtitleSrtMaterialization` (intent, committed first) and a
+`SubtitleSrtMaterializationOutcome` (terminal); Materialization State is **derived** (no outcome ⇒ PENDING).
+The **Storage Authority** is one approved Storage Root supplied by the Composition Root; **Application** owns
+the deterministic relative-location and filename policy (`.srt`), and an **Infrastructure**
+`LocalSrtFileWriter` (a new `infrastructure/` package) owns byte-writing behind an Application
+`MaterializedFileWriter` port, reusing the hardened writer's mechanics (approved-root containment,
+path-traversal and symlink-escape rejection, exact byte preservation, no-overwrite-of-different-bytes,
+identical-bytes idempotency, orphan-tempfile cleanup) — not weakened. **Collision**: identical bytes →
+idempotent MATERIALIZED; different bytes or a foreign object → FAILED, never overwritten; write/containment
+failure → FAILED (explicit, never a silent success). **Idempotency**: a duplicate Materialization Identity
+returns the existing record; a dangling PENDING is completed, not duplicated. **Rematerialization** is a new
+record with a new identity, prior records preserved. **Reconciliation** of a dangling PENDING is
+deterministic (matching file → MATERIALIZED, different → FAILED, absent → write then MATERIALIZED) and does
+not require the original execution to be running. A missing file loses only availability — the Materialization
+and Artifact records and their provenance remain canonical. **No cross-resource atomicity is claimed.**
+
+Additive SQLite schema v22 adds `subtitle_srt_materializations` and `subtitle_srt_materialization_outcomes`
+(insert-only, FK CASCADE), with the intent co-persisted with its `DomainResultReference` (kind
+`subtitle_srt_materialization`, upstream = the artifact's DomainResult) in one atomic transaction and the
+outcome in a separate atomic transaction after the file write. The AGENTS.md Architect Checklist is entirely
+`No`: no existing Domain contract change, no released-schema meaning change, no lifecycle authority change
+(established artifact authority is only consumed), no responsibility shift, no new identity semantics beyond
+the additive materialization identity (distinct from `ArtifactId`), one additive migration, and no Blueprint
+contradiction. Migration compatibility from every released version (v1..v21) to v22 is verified. No
+path/URL/absolute-path or materialization/delivery status column is added to any existing table, and
+`SubtitleSrtArtifact` is unchanged.
+
+`SubtitleSrtMaterializationService.record_materialization(...)` admits one artifact, requires a running
+execution for a new act, persists the PENDING intent record-first, writes the file, and records the terminal
+outcome; `reconcile_materialization(...)` completes a dangling PENDING deterministically. The Infrastructure
+`LocalSrtFileWriter` writes beneath the composed approved root only. Three independent bounded reviews (the
+filesystem/security writer slice, the schema/migration/transaction persistence slice, and the
+service/consistency/recovery slice) each returned PASS with no critical findings. An in-process fake-review /
+fake-transcript acceptance drives the durable pipeline through Artifact Generation and materializes the
+artifact to a **real file** under a temporary approved root, confirming the exact realized bytes, the
+PENDING→MATERIALIZED records, provenance and DomainResult chaining, that no existing canonical artifact is
+mutated (and the Artifact carries no materialization status), rematerialization with a new identity,
+idempotency, different-bytes → FAILED with no overwrite, crash reconciliation of a durable PENDING with no
+file, restart reconstruction, deterministic replay, and that no Delivery/URL table is produced. The complete
+1319-test suite passes. A Blueprint Drift Check confirmed no drift relative to any prior completed milestone.
+**Delivery** (download/upload/transfer, URLs/signed URLs, presentation filenames, UI), **cloud/object
+storage**, deletion/retention/GC, and additional export formats remain later, separately-gated milestones and
+are out of scope.
