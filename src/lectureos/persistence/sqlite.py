@@ -7,8 +7,8 @@ from pathlib import Path
 
 from .errors import PersistenceError, UnsupportedSchemaVersionError
 
-SQLITE_SCHEMA_VERSION = 12
-_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
+SQLITE_SCHEMA_VERSION = 13
+_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13)
 
 _V1_TABLE_STATEMENTS = (
     """CREATE TABLE schema_metadata (
@@ -606,6 +606,65 @@ _V12_ADDITION_STATEMENTS = (
 )""",
 )
 
+_V13_ADDITION_STATEMENTS = (
+    """CREATE TABLE subtitle_reading_revisions (
+    identity TEXT PRIMARY KEY,
+    domain_result_id TEXT NOT NULL,
+    source_candidate_id TEXT NOT NULL,
+    source_intake_id TEXT NOT NULL,
+    source_readiness_id TEXT NOT NULL,
+    source_selection_id TEXT NOT NULL,
+    source_applicability_id TEXT NOT NULL,
+    source_decision_id TEXT NOT NULL,
+    review_item_id TEXT NOT NULL,
+    candidate_reference_id TEXT NOT NULL,
+    source_transcript_id TEXT NOT NULL,
+    source_revision_id TEXT NOT NULL,
+    source_media_id TEXT NOT NULL,
+    source_timeline_id TEXT NOT NULL,
+    validation_id TEXT NOT NULL,
+    processing_run_id TEXT NOT NULL,
+    unit_execution_id TEXT NOT NULL,
+    sequence INTEGER NOT NULL CHECK (sequence >= 0),
+    reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),
+    previous_reading_revision_id TEXT,
+    CHECK ((sequence = 0 AND previous_reading_revision_id IS NULL) OR sequence > 0)
+)""",
+    """CREATE TABLE subtitle_reading_units (
+    identity TEXT PRIMARY KEY,
+    subtitle_reading_revision_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    source_transcript_id TEXT NOT NULL,
+    source_revision_id TEXT NOT NULL,
+    source_timeline_id TEXT,
+    display_order INTEGER NOT NULL CHECK (display_order >= 0),
+    start REAL,
+    end REAL,
+    CHECK ((start IS NULL AND end IS NULL) OR
+           (start IS NOT NULL AND end IS NOT NULL AND
+            source_timeline_id IS NOT NULL AND start >= 0 AND end >= start)),
+    UNIQUE (subtitle_reading_revision_id, ordinal),
+    FOREIGN KEY (subtitle_reading_revision_id)
+        REFERENCES subtitle_reading_revisions(identity) ON DELETE CASCADE
+)""",
+    """CREATE TABLE subtitle_reading_unit_source_cues (
+    subtitle_reading_unit_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    subtitle_candidate_cue_id TEXT NOT NULL,
+    PRIMARY KEY (subtitle_reading_unit_id, ordinal),
+    FOREIGN KEY (subtitle_reading_unit_id)
+        REFERENCES subtitle_reading_units(identity) ON DELETE CASCADE
+)""",
+    """CREATE TABLE subtitle_reading_unit_lines (
+    subtitle_reading_unit_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    line TEXT NOT NULL CHECK (length(trim(line)) > 0),
+    PRIMARY KEY (subtitle_reading_unit_id, ordinal),
+    FOREIGN KEY (subtitle_reading_unit_id)
+        REFERENCES subtitle_reading_units(identity) ON DELETE CASCADE
+)""",
+)
+
 _V9_ADDITION_STATEMENTS = (
     """CREATE TABLE transcript_current_selections (
     identity TEXT PRIMARY KEY,
@@ -1105,6 +1164,53 @@ _V12_EXPECTED_COLUMNS = {
     ),
 }
 
+_V13_EXPECTED_COLUMNS = {
+    **_V12_EXPECTED_COLUMNS,
+    "subtitle_reading_revisions": (
+        ("identity", "TEXT", 0, 1),
+        ("domain_result_id", "TEXT", 1, 0),
+        ("source_candidate_id", "TEXT", 1, 0),
+        ("source_intake_id", "TEXT", 1, 0),
+        ("source_readiness_id", "TEXT", 1, 0),
+        ("source_selection_id", "TEXT", 1, 0),
+        ("source_applicability_id", "TEXT", 1, 0),
+        ("source_decision_id", "TEXT", 1, 0),
+        ("review_item_id", "TEXT", 1, 0),
+        ("candidate_reference_id", "TEXT", 1, 0),
+        ("source_transcript_id", "TEXT", 1, 0),
+        ("source_revision_id", "TEXT", 1, 0),
+        ("source_media_id", "TEXT", 1, 0),
+        ("source_timeline_id", "TEXT", 1, 0),
+        ("validation_id", "TEXT", 1, 0),
+        ("processing_run_id", "TEXT", 1, 0),
+        ("unit_execution_id", "TEXT", 1, 0),
+        ("sequence", "INTEGER", 1, 0),
+        ("reason", "TEXT", 1, 0),
+        ("previous_reading_revision_id", "TEXT", 0, 0),
+    ),
+    "subtitle_reading_units": (
+        ("identity", "TEXT", 0, 1),
+        ("subtitle_reading_revision_id", "TEXT", 1, 0),
+        ("ordinal", "INTEGER", 1, 0),
+        ("source_transcript_id", "TEXT", 1, 0),
+        ("source_revision_id", "TEXT", 1, 0),
+        ("source_timeline_id", "TEXT", 0, 0),
+        ("display_order", "INTEGER", 1, 0),
+        ("start", "REAL", 0, 0),
+        ("end", "REAL", 0, 0),
+    ),
+    "subtitle_reading_unit_source_cues": (
+        ("subtitle_reading_unit_id", "TEXT", 1, 1),
+        ("ordinal", "INTEGER", 1, 2),
+        ("subtitle_candidate_cue_id", "TEXT", 1, 0),
+    ),
+    "subtitle_reading_unit_lines": (
+        ("subtitle_reading_unit_id", "TEXT", 1, 1),
+        ("ordinal", "INTEGER", 1, 2),
+        ("line", "TEXT", 1, 0),
+    ),
+}
+
 
 def initialize_sqlite_database(database_path: str | Path) -> sqlite3.Connection:
     """Create the latest schema for a new path; validate existing databases."""
@@ -1144,7 +1250,7 @@ def migrate_sqlite_database(
 ) -> None:
     """Explicitly perform one approved migration step or validate a no-op target."""
 
-    if target_version not in (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12):
+    if target_version not in (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13):
         raise PersistenceError(f"unsupported SQLite migration target: {target_version}")
     path = _validate_database_path(database_path)
     if not path.is_file():
@@ -1186,6 +1292,9 @@ def migrate_sqlite_database(
             return
         if current_version == 11 and target_version == 12:
             _migrate_v11_to_v12(connection)
+            return
+        if current_version == 12 and target_version == 13:
+            _migrate_v12_to_v13(connection)
             return
         raise PersistenceError(
             f"unsupported SQLite migration: {current_version} to {target_version}"
@@ -1246,6 +1355,7 @@ def _initialize_latest_schema(connection: sqlite3.Connection) -> None:
             *_V10_ADDITION_STATEMENTS,
             *_V11_ADDITION_STATEMENTS,
             *_V12_ADDITION_STATEMENTS,
+            *_V13_ADDITION_STATEMENTS,
         ):
             connection.execute(statement)
         connection.execute(
@@ -1460,6 +1570,24 @@ def _migrate_v11_to_v12(connection: sqlite3.Connection) -> None:
         raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
 
 
+def _migrate_v12_to_v13(connection: sqlite3.Connection) -> None:
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        for statement in _V13_ADDITION_STATEMENTS:
+            connection.execute(statement)
+        connection.execute(
+            "UPDATE schema_metadata SET version = 13 WHERE singleton = 1"
+        )
+        _validate_initialized_connection(connection)
+        _commit(connection)
+    except PersistenceError:
+        _rollback(connection)
+        raise
+    except sqlite3.Error as error:
+        _rollback(connection)
+        raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
+
+
 def _validate_initialized_connection(connection: sqlite3.Connection) -> int:
     try:
         if connection.execute("PRAGMA foreign_keys").fetchone() != (1,):
@@ -1504,6 +1632,7 @@ def _validate_schema_shape(connection: sqlite3.Connection, version: int) -> None
         10: _V10_EXPECTED_COLUMNS,
         11: _V11_EXPECTED_COLUMNS,
         12: _V12_EXPECTED_COLUMNS,
+        13: _V13_EXPECTED_COLUMNS,
     }[version]
     for table, expected in expected_columns.items():
         actual = tuple(
