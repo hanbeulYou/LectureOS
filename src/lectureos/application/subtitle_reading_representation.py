@@ -24,7 +24,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import isfinite
+from typing import Protocol
 
+from lectureos.execution.boundaries import ExecutionQueryBoundary
 from lectureos.execution.identities import (
     DomainResultId,
     ProcessingRunId,
@@ -32,6 +34,7 @@ from lectureos.execution.identities import (
     SourceTimelineId,
     UnitExecutionId,
 )
+from lectureos.execution.models import DomainResultReference, ProcessingState
 from lectureos.review.identities import CandidateReferenceId, ReviewItemId
 from lectureos.transcript.identities import (
     TranscriptId,
@@ -50,6 +53,7 @@ from .identities import (
     TranscriptReadinessEvaluationId,
     TranscriptReviewDecisionId,
 )
+from .subtitle_candidate_generation import SubtitleCandidate
 
 SUBTITLE_READING_REVISION_RESULT_KIND = "subtitle_reading_revision"
 
@@ -168,9 +172,182 @@ class SubtitleReadingIdentityPlan:
             raise ValueError("subtitle reading identity plan unit ids must be unique")
 
 
+@dataclass(frozen=True, slots=True)
+class PreparedSubtitleReading:
+    """Immutable canonical reading revision + ordered units; not yet persisted."""
+
+    revision: SubtitleReadingRevision
+    units: tuple[SubtitleReadingUnit, ...]
+    revision_result: DomainResultReference
+
+
+class SubtitleCandidateQuery(Protocol):
+    def get(self, identity): ...
+
+    def get_cue(self, identity): ...
+
+
+class AtomicSubtitleReadingPersistence(Protocol):
+    def persist_subtitle_reading(
+        self,
+        *,
+        revision: SubtitleReadingRevision,
+        units: tuple[SubtitleReadingUnit, ...],
+        revision_result: DomainResultReference,
+    ) -> None: ...
+
+
+class SubtitleReadingRepresentationError(ValueError):
+    """A structurally valid request that cannot become a canonical reading revision."""
+
+
+class SubtitleReadingRepresentationService:
+    """Composes a subtitle reading revision from one canonical Subtitle Candidate."""
+
+    def __init__(
+        self,
+        candidate_query: SubtitleCandidateQuery,
+        execution_query: ExecutionQueryBoundary,
+        persistence: AtomicSubtitleReadingPersistence | None = None,
+    ) -> None:
+        self._candidates = candidate_query
+        self._executions = execution_query
+        self._persistence = persistence
+
+    def record_reading(self, **kwargs) -> PreparedSubtitleReading:
+        prepared = self.compose_reading(**kwargs)
+        if self._persistence is None:
+            raise RuntimeError("subtitle reading persistence is not configured")
+        self._persistence.persist_subtitle_reading(
+            revision=prepared.revision,
+            units=prepared.units,
+            revision_result=prepared.revision_result,
+        )
+        return prepared
+
+    def compose_reading(
+        self,
+        *,
+        source_candidate_id: SubtitleCandidateId,
+        run_id: ProcessingRunId,
+        unit_execution_id: UnitExecutionId,
+        identities: SubtitleReadingIdentityPlan,
+        sequence: int = 0,
+        previous_reading_revision_id: SubtitleReadingRevisionId | None = None,
+        reason: str | None = None,
+    ) -> PreparedSubtitleReading:
+        candidate = self._candidates.get(source_candidate_id)
+        if candidate is None:
+            raise KeyError("unknown subtitle candidate")
+        if not isinstance(candidate, SubtitleCandidate):
+            raise SubtitleReadingRepresentationError(
+                "subtitle reading must derive from a canonical Subtitle Candidate"
+            )
+        self._require_running_execution(run_id, unit_execution_id)
+
+        cues = tuple(self._require_cue(cue_id) for cue_id in candidate.cue_ids)
+        if not cues:
+            raise SubtitleReadingRepresentationError(
+                "source candidate has no cues to compose reading units"
+            )
+        if len(identities.unit_ids) != len(cues):
+            raise SubtitleReadingRepresentationError(
+                "identity plan unit count must match the derived unit count"
+            )
+
+        # Baseline deterministic, meaning-preserving transformation (not a domain invariant):
+        # one reading unit per ordered source cue, with whitespace-normalized, hard-line-preserving
+        # line composition. Timing is inherited metadata only. Policy-driven merge/split/wrap is
+        # deferred; downstream Time Representation owns time.
+        units = tuple(
+            SubtitleReadingUnit(
+                identity=unit_id,
+                reading_revision_id=identities.reading_revision_id,
+                source_cue_ids=(cue.identity,),
+                source_transcript_id=cue.source_transcript_id,
+                source_revision_id=cue.source_revision_id,
+                lines=compose_reading_lines(cue.text),
+                display_order=index,
+                source_timeline_id=cue.source_timeline_id,
+                start=cue.start,
+                end=cue.end,
+            )
+            for index, (unit_id, cue) in enumerate(zip(identities.unit_ids, cues))
+        )
+
+        resolved_reason = reason if reason is not None else _default_reason(len(units))
+        revision = SubtitleReadingRevision(
+            identity=identities.reading_revision_id,
+            domain_result_id=identities.reading_result_id,
+            source_candidate_id=candidate.identity,
+            source_intake_id=candidate.source_intake_id,
+            source_readiness_id=candidate.source_readiness_id,
+            source_selection_id=candidate.source_selection_id,
+            source_applicability_id=candidate.source_applicability_id,
+            source_decision_id=candidate.source_decision_id,
+            review_item_id=candidate.review_item_id,
+            candidate_reference_id=candidate.candidate_reference_id,
+            source_transcript_id=candidate.source_transcript_id,
+            source_revision_id=candidate.source_revision_id,
+            source_media_id=candidate.source_media_id,
+            source_timeline_id=candidate.source_timeline_id,
+            validation_id=candidate.validation_id,
+            unit_ids=tuple(identities.unit_ids),
+            run_id=run_id,
+            unit_execution_id=unit_execution_id,
+            sequence=sequence,
+            reason=resolved_reason,
+            previous_reading_revision_id=previous_reading_revision_id,
+        )
+        revision_result = DomainResultReference(
+            identity=identities.reading_result_id,
+            kind=SUBTITLE_READING_REVISION_RESULT_KIND,
+            source_media=candidate.source_media_id,
+            source_timeline=candidate.source_timeline_id,
+            upstream_results=(candidate.domain_result_id,),
+        )
+        return PreparedSubtitleReading(
+            revision=revision, units=units, revision_result=revision_result
+        )
+
+    def _require_cue(self, cue_id: SubtitleCandidateCueId):
+        cue = self._candidates.get_cue(cue_id)
+        if cue is None:
+            raise KeyError("unknown subtitle candidate cue")
+        return cue
+
+    def _require_running_execution(self, run_id, unit_execution_id) -> None:
+        run = self._executions.get_run(run_id)
+        if run is None:
+            raise KeyError("unknown processing run")
+        execution = self._executions.get_unit_execution(unit_execution_id)
+        if execution is None:
+            raise KeyError("unknown unit execution")
+        if execution.run_id != run.identity:
+            raise SubtitleReadingRepresentationError(
+                "unit execution must belong to processing run"
+            )
+        if execution.state is not ProcessingState.RUNNING:
+            raise SubtitleReadingRepresentationError(
+                "composing subtitle reading requires a running unit execution"
+            )
+
+
+def _default_reason(unit_count: int) -> str:
+    return (
+        f"baseline reading revision derived from candidate with {unit_count} "
+        "normalized reading unit(s), one per ordered source cue"
+    )
+
+
 __all__ = [
     "SUBTITLE_READING_REVISION_RESULT_KIND",
+    "AtomicSubtitleReadingPersistence",
+    "PreparedSubtitleReading",
+    "SubtitleCandidateQuery",
     "SubtitleReadingIdentityPlan",
+    "SubtitleReadingRepresentationError",
+    "SubtitleReadingRepresentationService",
     "SubtitleReadingRevision",
     "SubtitleReadingUnit",
     "compose_reading_lines",
