@@ -20,7 +20,9 @@ validation (zero findings) yields a valid empty preparation.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Protocol
 
+from lectureos.execution.boundaries import ExecutionQueryBoundary
 from lectureos.execution.identities import (
     DomainResultId,
     ProcessingRunId,
@@ -28,11 +30,13 @@ from lectureos.execution.identities import (
     SourceTimelineId,
     UnitExecutionId,
 )
+from lectureos.execution.models import DomainResultReference, ProcessingState
 from lectureos.review.identities import (
     CandidateReferenceId,
     ReviewContextId,
     ReviewItemId,
 )
+from lectureos.review.models import CandidateReference, ReviewContext, ReviewItem
 from lectureos.transcript.identities import (
     TranscriptId,
     TranscriptRevisionId,
@@ -53,6 +57,7 @@ from .identities import (
     TranscriptReadinessEvaluationId,
     TranscriptReviewDecisionId,
 )
+from .subtitle_structural_validation import SubtitleValidation
 
 SUBTITLE_REVIEW_PREPARATION_RESULT_KIND = "subtitle_review_preparation"
 SUBTITLE_VALIDATION_FINDING_KIND = "subtitle_validation_finding"
@@ -155,12 +160,237 @@ class SubtitleReviewPreparationIdentityPlan:
             raise ValueError("review preparation review item plan must be unique")
 
 
+@dataclass(frozen=True, slots=True)
+class PreparedSubtitleReview:
+    """Immutable canonical review-preparation records; not yet persisted."""
+
+    preparation: SubtitleReviewPreparation
+    preparation_result: DomainResultReference
+    context: ReviewContext
+    candidate_references: tuple[CandidateReference, ...]
+    review_items: tuple[ReviewItem, ...]
+
+
+class SubtitleValidationQuery(Protocol):
+    def get(self, identity): ...
+
+    def get_finding(self, identity): ...
+
+
+class AtomicSubtitleReviewPreparationPersistence(Protocol):
+    def persist_subtitle_review_preparation(
+        self,
+        *,
+        preparation: SubtitleReviewPreparation,
+        preparation_result: DomainResultReference,
+        context: ReviewContext,
+        candidate_references: tuple[CandidateReference, ...],
+        review_items: tuple[ReviewItem, ...],
+    ) -> None: ...
+
+
+class SubtitleReviewPreparationError(ValueError):
+    """A structurally valid request that cannot become canonical review preparation."""
+
+
+class SubtitleReviewPreparationService:
+    """Materializes a validation's findings as canonical open Review Items, deciding nothing."""
+
+    def __init__(
+        self,
+        validation_query: SubtitleValidationQuery,
+        execution_query: ExecutionQueryBoundary,
+        persistence: AtomicSubtitleReviewPreparationPersistence | None = None,
+    ) -> None:
+        self._validations = validation_query
+        self._executions = execution_query
+        self._persistence = persistence
+
+    def generate_review(self, **kwargs) -> PreparedSubtitleReview:
+        prepared = self.prepare_review(**kwargs)
+        if self._persistence is None:
+            raise RuntimeError("subtitle review preparation persistence is not configured")
+        self._persistence.persist_subtitle_review_preparation(
+            preparation=prepared.preparation,
+            preparation_result=prepared.preparation_result,
+            context=prepared.context,
+            candidate_references=prepared.candidate_references,
+            review_items=prepared.review_items,
+        )
+        return prepared
+
+    def prepare_review(
+        self,
+        *,
+        source_validation_id: SubtitleValidationId,
+        run_id: ProcessingRunId,
+        unit_execution_id: UnitExecutionId,
+        identities: SubtitleReviewPreparationIdentityPlan,
+        sequence: int = 0,
+        previous_preparation_id: SubtitleReviewPreparationId | None = None,
+        reason: str | None = None,
+    ) -> PreparedSubtitleReview:
+        # Consume the supplied validation revision. Currency, selection, and supersession are the
+        # responsibility of an upstream lifecycle authority, not of Review Preparation.
+        validation = self._validations.get(source_validation_id)
+        if validation is None:
+            raise KeyError("unknown subtitle validation")
+        if not isinstance(validation, SubtitleValidation):
+            raise SubtitleReviewPreparationError(
+                "subtitle review preparation must derive from a canonical Subtitle Validation"
+            )
+        self._require_running_execution(run_id, unit_execution_id)
+
+        findings = tuple(
+            self._require_finding(finding_id) for finding_id in validation.finding_ids
+        )
+        if len(identities.targets) != len(findings):
+            raise SubtitleReviewPreparationError(
+                "identity plan target count must match the validation finding count"
+            )
+
+        candidate_references: list[CandidateReference] = []
+        review_items: list[ReviewItem] = []
+        item_links: list[SubtitleReviewItemLink] = []
+        revision_reference = (
+            f"subtitle_time_revision:{validation.source_time_revision_id.value}"
+        )
+        for finding, target in zip(findings, identities.targets):
+            reference = CandidateReference(
+                identity=target.candidate_reference_id,
+                kind=SUBTITLE_VALIDATION_FINDING_KIND,
+                source_domain=SUBTITLE_VALIDATION_FINDING_SOURCE_DOMAIN,
+                domain_result_id=validation.domain_result_id,
+                source_media_id=validation.source_media_id,
+                source_timeline_id=validation.source_timeline_id,
+                run_id=validation.run_id,
+                unit_execution_id=validation.unit_execution_id,
+                revision_reference=revision_reference,
+                applicability="undetermined",
+            )
+            item = ReviewItem(
+                identity=target.review_item_id,
+                candidate_id=reference.identity,
+                context_id=identities.context_id,
+                applicability_at_creation="undetermined",
+                run_id=validation.run_id,
+                unit_execution_id=validation.unit_execution_id,
+            )
+            candidate_references.append(reference)
+            review_items.append(item)
+            item_links.append(
+                SubtitleReviewItemLink(
+                    review_item_id=item.identity,
+                    candidate_reference_id=reference.identity,
+                    source_finding_id=finding.identity,
+                    rule=finding.rule,
+                    target_timed_unit_id=finding.target_timed_unit_id,
+                )
+            )
+
+        context = ReviewContext(
+            identity=identities.context_id,
+            source_media_id=validation.source_media_id,
+            source_timeline_id=validation.source_timeline_id,
+            domain_result_references=(validation.domain_result_id,),
+            evidence_references=(
+                f"subtitle_validation:{validation.identity.value}",
+                *(
+                    f"{SUBTITLE_VALIDATION_FINDING_KIND}:{finding.identity.value}"
+                    for finding in findings
+                ),
+            ),
+            validation_references=(f"subtitle_validation:{validation.identity.value}",),
+        )
+        resolved_reason = (
+            reason if reason is not None else _default_reason(len(review_items))
+        )
+        preparation = SubtitleReviewPreparation(
+            identity=identities.preparation_id,
+            domain_result_id=identities.preparation_result_id,
+            source_validation_id=validation.identity,
+            source_time_revision_id=validation.source_time_revision_id,
+            source_reading_revision_id=validation.source_reading_revision_id,
+            source_candidate_id=validation.source_candidate_id,
+            source_intake_id=validation.source_intake_id,
+            source_readiness_id=validation.source_readiness_id,
+            source_selection_id=validation.source_selection_id,
+            source_applicability_id=validation.source_applicability_id,
+            source_decision_id=validation.source_decision_id,
+            source_review_item_id=validation.review_item_id,
+            source_candidate_reference_id=validation.candidate_reference_id,
+            source_transcript_id=validation.source_transcript_id,
+            source_revision_id=validation.source_revision_id,
+            source_media_id=validation.source_media_id,
+            source_timeline_id=validation.source_timeline_id,
+            source_transcript_validation_id=validation.source_transcript_validation_id,
+            context_id=context.identity,
+            item_links=tuple(item_links),
+            item_count=len(item_links),
+            source_structural_valid=validation.structural_valid,
+            provenance_complete=True,
+            run_id=run_id,
+            unit_execution_id=unit_execution_id,
+            sequence=sequence,
+            reason=resolved_reason,
+            previous_preparation_id=previous_preparation_id,
+        )
+        preparation_result = DomainResultReference(
+            identity=identities.preparation_result_id,
+            kind=SUBTITLE_REVIEW_PREPARATION_RESULT_KIND,
+            source_media=validation.source_media_id,
+            source_timeline=validation.source_timeline_id,
+            upstream_results=(validation.domain_result_id,),
+        )
+        return PreparedSubtitleReview(
+            preparation=preparation,
+            preparation_result=preparation_result,
+            context=context,
+            candidate_references=tuple(candidate_references),
+            review_items=tuple(review_items),
+        )
+
+    def _require_finding(self, finding_id: SubtitleValidationFindingId):
+        finding = self._validations.get_finding(finding_id)
+        if finding is None:
+            raise KeyError("unknown subtitle validation finding")
+        return finding
+
+    def _require_running_execution(self, run_id, unit_execution_id) -> None:
+        run = self._executions.get_run(run_id)
+        if run is None:
+            raise KeyError("unknown processing run")
+        execution = self._executions.get_unit_execution(unit_execution_id)
+        if execution is None:
+            raise KeyError("unknown unit execution")
+        if execution.run_id != run.identity:
+            raise SubtitleReviewPreparationError(
+                "unit execution must belong to processing run"
+            )
+        if execution.state is not ProcessingState.RUNNING:
+            raise SubtitleReviewPreparationError(
+                "review preparation requires a running unit execution"
+            )
+
+
+def _default_reason(item_count: int) -> str:
+    return (
+        f"review preparation materializing {item_count} open review item(s), one per "
+        "validation finding"
+    )
+
+
 __all__ = [
     "SUBTITLE_REVIEW_PREPARATION_RESULT_KIND",
     "SUBTITLE_VALIDATION_FINDING_KIND",
     "SUBTITLE_VALIDATION_FINDING_SOURCE_DOMAIN",
+    "AtomicSubtitleReviewPreparationPersistence",
+    "PreparedSubtitleReview",
     "SubtitleReviewItemLink",
     "SubtitleReviewPreparation",
+    "SubtitleReviewPreparationError",
     "SubtitleReviewPreparationIdentityPlan",
+    "SubtitleReviewPreparationService",
     "SubtitleReviewTargetIdentityPlan",
+    "SubtitleValidationQuery",
 ]
