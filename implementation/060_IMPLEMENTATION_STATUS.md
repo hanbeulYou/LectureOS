@@ -827,3 +827,75 @@ semantics; the durable unit model supports cue merge and split so downstream sta
 split units; the in-memory `subtitle/` domain remains unchanged. This advances the Subtitle Pipeline
 to stage 4.3 (Reading Representation); Time Representation and later subtitle/artifact stages remain
 out of scope and unstarted.
+
+## Subtitle Time Representation
+
+- Goal: `docs/goals/LectureOS_Codex_Goal_Subtitle_Time_Representation.md`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema v14
+- Completed slices: Goal Baseline and Assessment; Time Records; Deterministic Time Representation
+  Service; Atomic SQLite Persistence, Restart, Replay and Migration Compatibility; Fake-Review /
+  Fake-Transcript Acceptance
+- Immediate next slice: Goal Complete
+
+This milestone advances the Subtitle Pipeline to stage 4.4 (`docs/041_SUBTITLE_PIPELINE.md §4.4 Time
+Representation`, §7): from a canonical `SubtitleReadingRevision` (v13) and its ordered reading units
+it deterministically composes one **new immutable** subtitle time revision (`SubtitleTimeRevision`)
+whose timed units (`SubtitleTimedUnit`) carry an **authoritative, Source-Timeline-anchored display
+Time Range derived** from each unit's ordered source cues — the minimal enclosing source-timeline
+extent for merged units, the cue range for one-to-one units, and an explicit `UNRESOLVED` state where
+the basis is untimed or spans different timelines. `Product → Application → Capability Contract →
+Provider` and the lifecycle position `… → Subtitle Reading Representation → Time Representation →
+Subtitle Structural Validation → …` are preserved, while structural Validation, Review, Decision,
+Final Subtitle, Artifact and export remain out of scope. The reading revision is the sole admission
+authority; the source cues are read read-only as the Source-Timeline basis; timing composition
+consumes no provider, produces a new immutable representation (never overwriting the reading
+revision), preserves text/line composition and display order exactly, mutates no upstream record and
+starts no downstream capability.
+
+The bounded architectural assessment found no substantive blocker. A key architectural clarification
+was recorded: §4.4 performs genuine deterministic representation work that §4.3 could not — merge and
+split broke the naïve 1:1 correspondence with timed segments, so Time Representation re-establishes a
+coherent per-unit Time Range by anchoring to the Source-Timeline basis (span aggregation for merged
+units). **Source-Timeline anchoring is a canonical representation of provenance, not a timing
+optimization strategy:** the baseline records the minimal enclosing extent of a unit's source cues;
+later timing policies (padding, snapping, overlap resolution, gap insertion, duration adjustment,
+redistribution) may **refine** the interval but never **redefine** this provenance-derived baseline,
+and Structural Validation (§4.5) **evaluates** the represented timing rather than constructing it.
+New Application-owned durable types `SubtitleTimeRevision` (identity `SubtitleTimeRevisionId`), ordered
+child `SubtitleTimedUnit` (identity `SubtitleTimedUnitId`), and enum `SubtitleTimingStatus`
+(`ANCHORED` | `UNRESOLVED`) are added; the in-memory `subtitle/` domain is untouched. A new
+`SubtitleTimeRepresentationService` mirrors the established compose/persist split with an
+Application-owned identity plan; additive SQLite schema v14 adds a `subtitle_time_revisions` parent
+and an ordered `subtitle_timed_units` child (with a CHECK binding `timing_status` to range presence),
+with atomic persistence, restart reconstruction and deterministic replay. No wall-clock is read. The
+AGENTS.md Architect Checklist is entirely `No`: no existing Domain contract change, no released-schema
+meaning change, no lifecycle authority change, no responsibility shift, no new identity semantics, one
+additive migration, and no Blueprint contradiction. Migration compatibility from every released
+version (v1..v13) to v14 is verified.
+
+The Subtitle Time Representation Goal is complete. `SubtitleTimeRepresentationService.compose_
+timing(...)` loads a canonical `SubtitleReadingRevision`, resolves each reading unit's source cues
+read-only as the Source-Timeline basis, requires a running execution, and deterministically derives
+one `SubtitleTimedUnit` per reading unit — ANCHORED to the minimal enclosing source-timeline extent
+`[min(start), max(end)]` when every source cue is timed and shares one timeline (the cue range for
+one-to-one units, the genuine span for merged units), otherwise UNRESOLVED with no range — preserving
+display order and referencing exactly one reading unit, and carrying the full candidate lineage and
+structural `validation_id`. `SQLiteSubtitleTimeCommandPersistence` writes the revision, its ordered
+timed units and the co-persisted `DomainResultReference` (kind `subtitle_time_revision`, upstream =
+the reading revision DomainResult) in one atomic v14 transaction, reconstructs the revision and
+ordered timed units exactly after restart, and reproduces byte-identical records on deterministic
+replay into a fresh database. An in-process fake-review / fake-transcript acceptance drives the full
+pipeline and confirms the durable one-to-one anchoring (each timed unit ANCHORED to its cue range), a
+durable merged-unit span (one reading unit over two source cues anchors the minimal enclosing span),
+and the UNRESOLVED derivation for an untimed basis; timed-unit ordering and display order preserved;
+each timed unit references its reading unit; revision candidate lineage and source media/timeline;
+execution provenance; atomic persistence; restart reconstruction; deterministic replay; idempotency
+(upstream reading row byte-identical before and after composition); and that no downstream validation
+/ review / final / artifact table is produced. The complete 984-test suite passes. A Blueprint Drift
+Check confirmed no drift relative to any prior completed milestone, and migration compatibility from
+every released version (v1..v13) to v14 is verified by an explicit single-step-chain test that
+preserves existing data and meaning. Time Representation owns timing representation only (anchoring =
+provenance, optimization deferred, validation is §4.5); the in-memory `subtitle/` domain remains
+unchanged. This advances the Subtitle Pipeline to stage 4.4 (Time Representation); Subtitle Structural
+Validation and later subtitle/artifact stages remain out of scope and unstarted.

@@ -226,19 +226,109 @@ final subtitle, provider, or artifact behavior is produced**. (Generic validatio
 
 ### Completed Capabilities
 ```text
-None yet
+Slice 1 — Goal Baseline and Assessment
+- commit `4736bf1` — `docs: add subtitle time representation goal`
+- bounded assessment: no substantive blocker; time composition consumes the canonical
+  SubtitleReadingRevision (v13) as sole admission authority and resolves the Source-Timeline basis
+  read-only from the immutable candidate cues via source_cue_ids; provider-free; additive schema v14;
+  produces a new immutable representation (not a mutation); baseline anchors the minimal enclosing
+  Source-Timeline extent (span for merged units, cue range for one-to-one, UNRESOLVED when untimed);
+  Architect Decision recorded: anchoring is provenance representation, not timing optimization —
+  later policies may refine but never redefine the baseline, and §4.5 evaluates rather than constructs
+- Review: Optional — Skipped (documentation only)
+
+Slice 2 — Time Records
+- commit `e9a9913` — `feat: add subtitle time records`
+- `SubtitleTimeRevisionId`, `SubtitleTimedUnitId` added to application identities
+- `SubtitleTimingStatus` enum (ANCHORED | UNRESOLVED)
+- `SubtitleTimedUnit`: identity, revision linkage, source_reading_unit reference, non-negative
+  display order, timing status, optional timeline+range; invariant ANCHORED ⇒ timeline+start+end
+  present and 0≤start≤end, UNRESOLVED ⇒ all null (unresolved timing first-class, never hidden)
+- `SubtitleTimeRevision`: identity, DomainResult linkage, reading revision + full carried candidate
+  lineage, transcript/revision/media/timeline, carried validation_id, ordered unique timed_unit_ids,
+  execution provenance, append-only sequence/previous linkage, deterministic reason
+- `SubtitleTimeIdentityPlan` (revision id, result id, ordered unique timed unit ids)
+- no human-decision / applicability / final field
+- 18 focused record tests passed; complete suite 960 passed
+- Required Claude Review: Inconclusive — no critical findings identified (additive immutable records;
+  status↔range invariant enforced; partially timed aggregate supported; no Blueprint/lifecycle/contract defect)
+
+Slice 3 — Deterministic Time Representation Service
+- commit `f608dd5` — `feat: derive subtitle time revision from reading revision`
+- `SubtitleTimeRepresentationService.compose_timing(...)` loads the reading revision (admission)
+  and, read-only, each reading unit's source cues (Source-Timeline basis), requires a running
+  execution, and derives each timed unit via `anchor_source_timeline_extent`
+- anchoring: ANCHORED `[min(start), max(end)]` iff every source cue is timed and shares one timeline
+  (cue range for one-to-one, genuine span for merged), else UNRESOLVED; display order preserved
+  exactly; provenance representation only — no inference/adjustment/reordering; no time logic beyond
+  the enclosing extent
+- carries the full reading lineage into the revision; revision DomainResult upstream = the reading
+  revision DomainResult; no wall-clock; performs no write; mutates no upstream record; triggers no
+  downstream capability
+- `PreparedSubtitleTiming` return; `AtomicSubtitleTimePersistence` port; `SubtitleReadingRevisionQuery`
+  + `SubtitleCandidateCueQuery` protocols; `SubtitleTimeRepresentationError` for unsafe input
+- 10 focused service tests (one-to-one cue range, merged span, untimed→UNRESOLVED,
+  mixed-timeline→UNRESOLVED, partially timed aggregate, cardinality, unknown revision, unknown cue,
+  running-execution, determinism, no-persistence) passed; complete suite 970 passed
+- Required Claude Review: Inconclusive — no critical findings identified (pure deterministic
+  derivation; genuine span anchoring; no persistence, no upstream mutation, no downstream trigger)
+
+Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
+- commit `e6a80ea` — `feat: persist subtitle time revision atomically`
+- additive SQLite schema v14: `subtitle_time_revisions` parent + ordered `subtitle_timed_units`
+  child (UNIQUE(revision, ordinal); CHECK binding timing_status to range presence — anchored ⇒
+  timeline+start+end present and 0≤start≤end, unresolved ⇒ all null)
+- `_migrate_v13_to_v14` additive; downgrades and direct skips rejected; existing v1–v13 unchanged
+- `SQLiteSubtitleTimeCommandPersistence.persist_subtitle_timing(...)` writes the revision, its
+  ordered timed units and the DomainResultReference in one `BEGIN IMMEDIATE` transaction; validates
+  linkage/unit-ordering and identity absence; rolls back completely on collision/linkage/write/commit
+  failure; no upstream mutation
+- `SQLiteSubtitleTimeRevisionRepository` reconstructs the exact revision + ordered timed units after
+  restart
+- composition `compose_sqlite_subtitle_time_representation_service` wires the durable reading
+  repository (admission) + candidate repository (cue basis) + time persistence
+- migration compatibility verified: every released version v1..v13 chains to v14 preserving data;
+  idempotency verified (upstream reading row byte-identical); superseded-latest test expectations
+  updated (v2/v3/v4/v5/processing_units 13→14; v6..v13 unsupported-target guards 14→15;
+  v9/v10/v11/v12/v13 chain helpers extended with the v13 addition block; v13 no-op/fresh-init/version
+  realigned to the superseded-version pattern)
+- 13 focused v14 tests (migration, full v1..v13→v14 chain, restart, replay, idempotency, atomic
+  rollback of revision + timed units) passed; complete suite 983 passed
+- Required Claude Review: PASS — independent bounded review verified atomicity/rollback, ordered
+  timed-unit reconstruction, identity-collision atomicity, provenance linkage, additive migration,
+  migration-chain compatibility, and the timing_status↔range CHECK↔dataclass consistency; no critical findings
+
+Slice 5 — Fake-Review / Fake-Transcript Acceptance
+- commit `80c529b` — `test: verify subtitle time representation acceptance`
+- `lectureos.subtitle_time_acceptance` drives the full pipeline (fake correction provider and fake
+  reviewer, no network, no credential, fixed timestamps) through candidate → reading → time
+  representation → atomic v14 persistence → reopen → exact restart reconstruction → identical
+  deterministic replay
+- verifies the durable one-to-one pipeline (each timed unit ANCHORED to its own cue range on the
+  source timeline), a durable merged-unit case (one reading unit over two source cues anchors the
+  minimal enclosing span [min,max]), and the UNRESOLVED derivation for an untimed basis; timed-unit
+  ordering and display order preserved; each timed unit references its reading unit; revision
+  candidate lineage and source media/timeline; execution provenance; result upstream = reading
+  revision DomainResult; idempotency (upstream reading row byte-identical); restart reconstruction;
+  deterministic replay; and no downstream validation / review / final / artifact table produced
+- acceptance summary: time_revision_count 1, unit_count 2, and every anchoring / span / unresolved /
+  linkage / provenance / restart / replay / idempotency / no-downstream flag true
+- focused acceptance test passed; complete suite 984 passed
+- Blueprint Drift Check: PASS — dependency direction unchanged, no provider owns timing identity/
+  lifecycle, no existing enum/aggregate/service meaning changed (the in-memory subtitle domain is
+  untouched), schema strictly additive, no validation/review/final/artifact responsibility pulled in,
+  Human Authority intact, Time Representation owns timing representation only (anchoring = provenance,
+  optimization deferred, validation is §4.5)
+- Migration Compatibility: PASS — every released version v1..v13 chains to v14 preserving data
+- Claude Review: Optional — Skipped (acceptance harness/test only; no production or contract change)
 ```
 ### Remaining Milestones
 ```text
-Slice 1 — Goal Baseline and Assessment
-Slice 2 — Time Records
-Slice 3 — Deterministic Time Representation Service
-Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
-Slice 5 — Fake-Review / Fake-Transcript Acceptance
+None — Goal complete
 ```
 ### Immediate Next Slice
 ```text
-Slice 1 — Goal Baseline and Assessment
+Goal Complete
 ```
 
 ## 10. Completion Report — Milestone Additions
