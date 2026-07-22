@@ -1039,3 +1039,68 @@ creates open review work and decides nothing; the common `review/` contracts are
 prioritization/eligibility/UI policy and all decision/final authority remain deferred (§4.7/§4.8). This
 advances the Subtitle Pipeline to stage 4.6 (Review Preparation); Decision Application and later stages
 remain out of scope and unstarted.
+
+## Subtitle Human Review Decision
+
+- Goal: `docs/goals/LectureOS_Codex_Goal_Subtitle_Human_Review_Decision.md`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema v17
+- Completed slices: Goal Baseline and Assessment; Subtitle Human Review Decision Records; Deterministic
+  Human Review Decision Service; Atomic SQLite Persistence, Restart, Replay and Migration Compatibility;
+  Fake-Review / Fake-Transcript Acceptance
+- Immediate next slice: Goal Complete
+
+This milestone adds the durable **Subtitle Human Review Decision** stage — the prerequisite to
+`docs/041_SUBTITLE_PIPELINE.md §4.7 Decision Application`. An architecture-first investigation confirmed
+the repository had no durable, subtitle-consumable Review Decision: the common `ReviewDecision` is
+recorded only in-memory, and the sole durable recorder (`TranscriptReviewDecision` / the
+`transcript_review_decisions` table) is transcript-coupled and rejects `subtitle_validation_finding`
+candidate references. `SubtitleReviewDecisionService.prepare_decision(...)` records a Human reviewer's
+Accept/Reject/Modify against **exactly one** common `ReviewItem` produced by Subtitle Review Preparation,
+as an immutable durable `SubtitleReviewDecision` aggregate. The lifecycle is the four-stage form `…
+Structural Validation → Review Preparation → **Human Review Decision (recording)** → Decision Application
+(§4.7) → Final Subtitle`; this stage exercises Human Authority only — it never applies the decision,
+produces no Subtitle revision, no Final Subtitle, no applicability/selection, and no automatic approval.
+
+Admission boundary: the canonical admission authority is the **supplied common `ReviewItem`**. Human
+Authority is exercised against exactly one Review Item; the `SubtitleReviewPreparation` is only the
+immutable container/ordering/provenance boundary — loaded to validate that the Review Item belongs to
+it and to carry subtitle provenance (source validation / time revision / finding / stable rule), never
+operated on as the target and never mutated. The bounded architectural assessment found no substantive
+blocker. The milestone **mirrors the transcript v7 precedent** (`TranscriptReviewDecision`) but is
+**subtitle-scoped** — it admits Review Items whose candidate reference kind is `subtitle_validation_finding`
+and validates a `subtitle_time_revision:` provenance string; it reuses the common Review vocabulary
+(`ReviewItem`, `CandidateReference`, `DecisionKind`, `HumanActorReference`) but does **not** reuse the
+transcript-coupled aggregate. The decision timestamp is a caller-supplied, timezone-aware command input,
+so reconstruction and replay are deterministic (no wall-clock is read). Additive schema v17 adds one flat
+`subtitle_review_decisions` table (with the Modify⇔modified_text and sequence/previous CHECKs mirroring
+the transcript decision table), with atomic persistence, restart reconstruction and deterministic replay.
+The AGENTS.md Architect Checklist is entirely `No`: no existing Domain contract change (the common
+`review/` contracts, the transcript-coupled `TranscriptReviewDecision`, and the in-memory subtitle domain
+are untouched), no released-schema meaning change, no lifecycle authority change (Human Authority records
+the decision; nothing is applied), no responsibility shift, no new identity semantics, one additive
+migration, and no Blueprint contradiction. Migration compatibility from every released version (v1..v16)
+to v17 is verified.
+
+The Subtitle Human Review Decision Goal is complete. `SubtitleReviewDecisionService.prepare_decision(...)`
+admits a supplied common `ReviewItem`, loads its `SubtitleReviewPreparation` container to validate
+membership and resolve the candidate reference (kind `subtitle_validation_finding`) plus its
+`subtitle_time_revision:` provenance, requires a Human actor and a running execution, and records the
+Accept/Reject/Modify as an immutable `SubtitleReviewDecision` carrying the review item + candidate
+reference linkage, subtitle provenance (preparation / validation / time revision / source finding + stable
+rule), a caller-supplied timezone-aware timestamp, append-only sequence/previous lineage, and (for Modify)
+the required modified text. `SQLiteSubtitleReviewDecisionCommandPersistence` writes the decision and its
+co-persisted `DomainResultReference` (kind `subtitle_review_decision`, upstream = the preparation
+DomainResult) in one atomic v17 transaction, reconstructs the decision exactly after restart, and
+reproduces byte-identical records on deterministic replay into a fresh database (the timestamp stored
+verbatim via isoformat/fromisoformat). An in-process fake-review / fake-transcript acceptance drives the
+full pipeline and confirms Accept, an append-only Modify (referencing the Accept), and Reject are recorded
+with subtitle provenance and DomainResult chaining, each traced to its review item's source finding + rule;
+recording mutates no upstream preparation or review item and applies nothing — the review items remain OPEN
+(no automatic approval); restart reconstruction; deterministic replay; and no downstream final / artifact
+table is produced. The complete 1104-test suite passes. A Blueprint Drift Check confirmed no drift relative
+to any prior completed milestone, and migration compatibility from every released version (v1..v16) to v17
+is verified by an explicit single-step-chain test that preserves existing data and meaning. This stage
+records Human judgement only; Decision Application (§4.7) — applying the decision, producing a Modify-
+reflecting Subtitle revision — and Final Subtitle (§4.8) remain out of scope and unstarted, and are the
+next dependency-ordered milestones.

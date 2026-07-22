@@ -168,19 +168,101 @@ subtitle, no provider, no artifact behavior is produced**. (Generic validation i
 
 ### Completed Capabilities
 ```text
-None yet
+Slice 1 — Goal Baseline and Assessment
+- commit `752fe4b` — `docs: add subtitle human review decision goal`
+- bounded assessment: no substantive blocker; the supplied common ReviewItem is the admission
+  authority (the SubtitleReviewPreparation is the container/provenance boundary, never the target);
+  reuses the common Review vocabulary; introduces a subtitle-scoped durable SubtitleReviewDecision
+  (mirrors transcript v7, does not reuse the transcript-coupled aggregate); records only, applies
+  nothing; caller-supplied deterministic timestamp; additive schema v17
+- Review: Optional — Skipped (documentation only)
+
+Slice 2 — Subtitle Human Review Decision Records
+- commit `1a0c841` — `feat: add subtitle human review decision records`
+- `SubtitleReviewDecisionId` added to application identities
+- `SubtitleReviewDecision` aggregate: identity, DomainResult linkage, review item + candidate
+  reference, subtitle provenance (source preparation/validation/time-revision/finding + stable rule),
+  reviewer (HumanActorReference), DecisionKind, caller-supplied tz-aware decided_at, execution
+  provenance, append-only sequence/previous linkage, optional rationale/modified_text; invariants:
+  reviewer human, non-blank rule, non-negative sequence, tz-aware timestamp, Modify requires text and
+  Accept/Reject carry none, non-blank rationale, first has no previous
+- `SubtitleReviewDecisionIdentityPlan` (decision id, result id, tz-aware timestamp)
+- 14 focused record tests passed; complete suite 1075 passed
+- Required Claude Review: Inconclusive — no critical findings identified (additive immutable records;
+  transcript-parity invariants + subtitle provenance; no defect)
+
+Slice 3 — Deterministic Human Review Decision Service
+- commit `32b5be0` — `feat: record subtitle human review decision from review item`
+- `SubtitleReviewDecisionService.prepare_decision(...)` admits the supplied common Review Item (the
+  target), loads the SubtitleReviewPreparation only as the container/provenance boundary, validates the
+  item belongs to it, resolves the candidate reference (kind must be `subtitle_validation_finding`) and
+  its `subtitle_time_revision:` provenance, requires a Human actor + running execution, and records the
+  Accept/Reject/Modify with subtitle provenance carried from the preparation's item link (finding + rule)
+- no wall-clock (caller-supplied timestamp); performs no write; mutates no upstream record; applies
+  nothing
+- `PreparedSubtitleReviewDecision`, `AtomicSubtitleReviewDecisionPersistence` port,
+  `SubtitleReviewPreparationQuery` + `ReviewItemQuery` + `CandidateReferenceQuery` protocols,
+  `SubtitleReviewDecisionError`
+- 15 focused service tests (Accept/Reject/Modify; Modify requires text; Accept carries none; non-human
+  reviewer; item not in preparation; wrong candidate kind; provenance mismatch; unknown preparation/item;
+  running-execution; append-only supersession; determinism; no-persistence) passed; complete suite 1090 passed
+- Required Claude Review: Inconclusive — no critical findings identified (records against one Review
+  Item; no application, no persistence, no upstream mutation, Human Authority exercised)
+
+Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
+- commit `d73d4e5` — `feat: persist subtitle human review decision atomically`
+- additive SQLite schema v17: one flat table `subtitle_review_decisions` (subtitle provenance columns +
+  reviewer/kind/decided_at/sequence/previous/rationale/modified_text; Modify⇔modified_text and
+  sequence/previous CHECKs mirror the transcript decision table)
+- `_migrate_v16_to_v17` additive; downgrades and direct skips rejected; existing v1–v16 unchanged
+- `SQLiteSubtitleReviewDecisionCommandPersistence.persist_subtitle_review_decision(...)` writes the
+  decision and its co-persisted DomainResultReference in one `BEGIN IMMEDIATE` transaction; validates
+  linkage and identity absence; rolls back completely on collision/linkage/write/commit failure; the
+  caller-supplied timestamp is stored verbatim via isoformat/fromisoformat; no upstream mutation
+- `SQLiteSubtitleReviewDecisionRepository` reconstructs the exact decision after restart
+- composition `compose_sqlite_subtitle_review_decision_service` wires the durable preparation +
+  common review-item + common candidate-reference repositories + decision persistence
+- migration compatibility verified: every released version v1..v16 chains to v17 preserving data;
+  idempotency verified (upstream preparation + review items byte-identical); superseded-latest test
+  expectations updated (v2/v3/v4/v5/processing_units 16→17; v6..v16 unsupported-target guards 17→18;
+  v9..v16 chain helpers extended with the v16 addition block; v16 no-op/fresh-init/version realigned)
+- 13 focused v17 tests (migration, full v1..v16→v17 chain, restart, replay incl. Modify, idempotency,
+  atomic rollback) passed; complete suite 1103 passed
+- Required Claude Review: PASS — independent bounded review verified atomicity/rollback,
+  identity-collision atomicity, provenance linkage, additive migration + chain compatibility,
+  18-column DDL/expected-columns exactness, the decided_at isoformat round-trip, and the
+  Modify⇔modified_text/sequence CHECK↔dataclass consistency; no critical findings
+
+Slice 5 — Fake-Review / Fake-Transcript Acceptance
+- commit `5b8b701` — `test: verify subtitle human review decision acceptance`
+- `lectureos.subtitle_review_decision_acceptance` drives the full pipeline (fake correction provider and
+  fake reviewer, no network, no credential, fixed timestamps) through candidate → reading → time →
+  validation → review preparation, then records Accept, an append-only Modify (with text), and Reject
+  against the prepared Review Items → atomic v17 persistence → reopen → exact restart reconstruction →
+  identical deterministic replay
+- verifies the three decisions are recorded with subtitle provenance + DomainResult chaining, each
+  traced to its review item's source finding + rule; append-only supersession (Modify references the
+  Accept, sequence 1); recording mutates no upstream preparation/items and applies nothing — the review
+  items remain OPEN (no automatic approval); restart reconstruction; deterministic replay; and no
+  downstream final / artifact table produced
+- acceptance summary: decision_count 3, and every kind / append-only / provenance / finding-traced /
+  idempotency / items-open / restart / replay / no-downstream flag true
+- focused acceptance test passed; complete suite 1104 passed
+- Blueprint Drift Check: PASS — dependency direction unchanged, no provider owns decision identity/
+  lifecycle, no existing enum/aggregate/service meaning changed (the common `review/` contracts and
+  in-memory subtitle domain are untouched; the transcript-coupled TranscriptReviewDecision is not
+  reused), schema strictly additive, nothing applied (no decision application/selection/final/artifact),
+  Human Authority exercised (Human actor records the decision), append-only immutable lifecycle
+- Migration Compatibility: PASS — every released version v1..v16 chains to v17 preserving data
+- Claude Review: Optional — Skipped (acceptance harness/test only; no production or contract change)
 ```
 ### Remaining Milestones
 ```text
-Slice 1 — Goal Baseline and Assessment
-Slice 2 — Subtitle Human Review Decision Records
-Slice 3 — Deterministic Human Review Decision Service
-Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
-Slice 5 — Fake-Review / Fake-Transcript Acceptance
+None — Goal complete
 ```
 ### Immediate Next Slice
 ```text
-Slice 1 — Goal Baseline and Assessment
+Goal Complete
 ```
 
 ## 10. Completion Report — Milestone Additions
