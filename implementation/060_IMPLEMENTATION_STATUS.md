@@ -1226,3 +1226,74 @@ verified by an explicit single-step-chain test that preserves existing data and 
 **041 Subtitle Pipeline (§4.2–§4.8) is fully implemented**; downstream Artifact Generation / Export
 (`044` Export Pipeline) — external subtitle files, export, playback rendering — is a separate pipeline and
 remains out of scope.
+
+## Approved Subtitle Assembly (044 Export Pipeline — stage 1)
+
+- Goal: `docs/goals/LectureOS_Codex_Goal_Approved_Subtitle_Assembly.md`
+- Blueprint: approved `patches/PATCH-0006` (Approved Subtitle Assembly — Export Pipeline Input Contract)
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema v20 (three tables)
+- Completed slices: Goal Baseline and Assessment; Approved Subtitle Assembly Records; Deterministic
+  Assembly Service; Atomic SQLite Persistence, Restart, Replay and Migration Compatibility; End-to-End
+  Acceptance (co-committed with the persistence slice)
+- Immediate next slice: Goal Complete
+
+This milestone opens the **044 Export Pipeline** with its first stage, **Approved Subtitle Assembly**,
+implementing approved PATCH-0006. From exactly one canonical subtitle document (its `SubtitleTimeRevision`
+(v14) + `SubtitleReadingRevision` (v13)), it deterministically **reconstructs the complete, ordered,
+approved subtitle representation** — the `SubtitleApprovedDocument` — by reconciling the base
+timed/reading representation with the applicable finalized decisions (`SubtitleFinalSubtitle` (v19),
+reaching `SubtitleDecisionRevision` (v18) through provenance), and it establishes export eligibility. This
+is the canonical **Export Input**. `Product → Application → Capability Contract → Provider` and the
+lifecycle position `… → Subtitle Final Subtitle → Approved Subtitle Assembly → Artifact Generation` are
+preserved; **041 remains immutable**. This stage generates **no artifact**, writes **no file**, serializes
+**no format** (no SRT/WebVTT/bytes), and performs no Review, Validation, Human Decision, AI, or provider
+work — every upstream record is read read-only. The only newly created canonical artifact is the
+`SubtitleApprovedDocument` (with its ordered approved units and approved lines) and its
+`DomainResultReference`; per PATCH-0006 it is a finalization/selection reconstruction, not a separate
+approved-Subtitle content entity beyond the document representation.
+
+The canonical reconciliation (approved PATCH-0006 §4, ruled for this milestone) applies each unit's current
+finalization: **Modify (FINAL) → included with the approved `applied_text`; Accept (FINAL) → included with
+the original reading text; Reject (NOT_FINAL) → omitted while the document stays eligible; Untouched →
+included with the original reading text.** Unit order comes solely from the timed units' `display_order`.
+Export **eligibility** is document completeness: a document is `ELIGIBLE` unless it cannot be completely
+reconstructed (an included unit lacks `ANCHORED` timing or resolvable reading text, or a collected
+finalization's provenance does not resolve to the document), in which case it is `INELIGIBLE` with a reason
+and carries **no** units — never a silent partial document. Zero-finding documents are eligible directly
+(all units Untouched). The reconciliation/eligibility fork on Reject vs NOT_FINAL was raised as a
+contradiction between the milestone prompt and PATCH-0006 §4 and resolved by explicit ruling (a finalized
+Reject omits its unit and the document stays eligible) before implementation.
+
+A new Application-owned aggregate pair `SubtitleApprovedDocument` (identity `SubtitleApprovedDocumentId`) +
+`SubtitleApprovedUnit` (identity `SubtitleApprovedUnitId`), with enums `SubtitleExportEligibility`
+(`ELIGIBLE`/`INELIGIBLE`) and `SubtitleApprovedUnitOrigin` (`ACCEPTED`/`MODIFIED`/`UNTOUCHED`), is added. No
+wall-clock is read, so reconstruction and replay are deterministic. Additive SQLite schema v20 adds three
+tables (`subtitle_approved_documents` parent, `subtitle_approved_units` ordered children with FK ON DELETE
+CASCADE, `subtitle_approved_unit_lines` grandchildren) with atomic persistence, restart reconstruction and
+deterministic replay; a read-only `list_for_time_revision` query is added to the v19 final-subtitle
+repository (no v19 schema change). The AGENTS.md Architect Checklist is entirely `No`: no existing Domain
+contract change, no released-schema meaning change, no lifecycle authority change (established authority is
+only consumed), no responsibility shift, no new identity semantics beyond the additive aggregate, one
+additive migration, and no Blueprint contradiction. Migration compatibility from every released version
+(v1..v19) to v20 is verified.
+
+`SubtitleApprovedSubtitleAssemblyService.assemble(...)` admits one time revision + reading revision,
+requires a running execution, collects the document's finalized decisions, keeps the current finalization
+per unit, reconciles per the table above, resolves eligibility, and builds the ordered
+`SubtitleApprovedDocument`. `SQLiteSubtitleApprovedDocumentCommandPersistence` writes the document, its
+ordered units and their lines together with the co-persisted `DomainResultReference` (kind
+`subtitle_approved_document`, upstream = the time-revision DomainResult) in one atomic v20 transaction,
+reconstructs them exactly after restart, and reproduces byte-identical records on deterministic replay. An
+in-process fake-review / fake-transcript acceptance drives the durable pipeline and assembles three
+documents — a modify+reject document (one modified unit included, one omitted), an accept+untouched document
+(both units included with original text), and an unresolved-timing document (INELIGIBLE, no units) —
+confirming reconciliation, ordering, provenance and DomainResult chaining, that assembly mutates no existing
+canonical artifact (time revision / reading revision / finals / decision revisions byte-identical before and
+after), restart reconstruction, deterministic replay, and that no downstream artifact/export table is
+produced. One independent bounded review of the atomic-persistence slice returned PASS with no critical
+findings. The complete 1224-test suite passes. A Blueprint Drift Check confirmed no drift relative to any
+prior completed milestone, and migration compatibility from every released version (v1..v19) to v20 is
+verified by an explicit single-step-chain test that preserves existing data and meaning. Downstream
+**Artifact Generation** (SRT/WebVTT serialization, export payloads), **Physical Materialization** (files,
+storage), and **Delivery** remain later, separately-gated `044` milestones and are out of scope.

@@ -173,19 +173,20 @@ plan → byte-identical document; replay after restart → byte-equivalent. (Gen
 
 ### Completed Capabilities
 ```text
-None yet
+Slice 1 — Goal Baseline and Assessment (commit docs: add approved subtitle assembly goal)
+Slice 2 — Approved Subtitle Assembly Records (commit feat: add approved subtitle assembly records)
+Slice 3 — Deterministic Assembly Service (commit feat: assemble approved subtitle document from finals)
+Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility (commit feat: persist approved subtitle document atomically)
+Slice 5 — End-to-End Acceptance (co-committed with Slice 4; the atomic test consumes the acceptance fixture)
 ```
 ### Remaining Milestones
 ```text
-Slice 1 — Goal Baseline and Assessment
-Slice 2 — Approved Subtitle Assembly Records
-Slice 3 — Deterministic Assembly Service
-Slice 4 — Atomic SQLite Persistence, Restart, Replay and Migration Compatibility
-Slice 5 — End-to-End Acceptance
+None — milestone complete (SQLITE_SCHEMA_VERSION 20). Approved Subtitle Assembly is the canonical
+Export Input. Next Export milestone: Artifact Generation (separately gated).
 ```
 ### Immediate Next Slice
 ```text
-Slice 1 — Goal Baseline and Assessment
+None — milestone complete.
 ```
 
 ## 10. Completion Report — Milestone Additions
