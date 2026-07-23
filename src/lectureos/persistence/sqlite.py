@@ -7,8 +7,8 @@ from pathlib import Path
 
 from .errors import PersistenceError, UnsupportedSchemaVersionError
 
-SQLITE_SCHEMA_VERSION = 25
-_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25)
+SQLITE_SCHEMA_VERSION = 26
+_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26)
 
 _V1_TABLE_STATEMENTS = (
     """CREATE TABLE schema_metadata (
@@ -1075,6 +1075,24 @@ _V25_ADDITION_STATEMENTS = (
 )""",
 )
 
+_V26_ADDITION_STATEMENTS = (
+    """CREATE TABLE edit_candidates (
+    identity TEXT PRIMARY KEY,
+    domain_result_id TEXT NOT NULL,
+    source_finding_id TEXT NOT NULL,
+    source_media_id TEXT NOT NULL,
+    source_timeline_id TEXT NOT NULL,
+    processing_run_id TEXT NOT NULL,
+    unit_execution_id TEXT NOT NULL,
+    sequence INTEGER NOT NULL CHECK (sequence >= 0),
+    candidate_type TEXT NOT NULL CHECK (length(trim(candidate_type)) > 0),
+    rationale TEXT NOT NULL CHECK (length(trim(rationale)) > 0),
+    range_start REAL NOT NULL,
+    range_end REAL NOT NULL,
+    CHECK (range_start >= 0 AND range_end >= range_start)
+)""",
+)
+
 _V9_ADDITION_STATEMENTS = (
     """CREATE TABLE transcript_current_selections (
     identity TEXT PRIMARY KEY,
@@ -1979,6 +1997,24 @@ _V25_EXPECTED_COLUMNS = {
     ),
 }
 
+_V26_EXPECTED_COLUMNS = {
+    **_V25_EXPECTED_COLUMNS,
+    "edit_candidates": (
+        ("identity", "TEXT", 0, 1),
+        ("domain_result_id", "TEXT", 1, 0),
+        ("source_finding_id", "TEXT", 1, 0),
+        ("source_media_id", "TEXT", 1, 0),
+        ("source_timeline_id", "TEXT", 1, 0),
+        ("processing_run_id", "TEXT", 1, 0),
+        ("unit_execution_id", "TEXT", 1, 0),
+        ("sequence", "INTEGER", 1, 0),
+        ("candidate_type", "TEXT", 1, 0),
+        ("rationale", "TEXT", 1, 0),
+        ("range_start", "REAL", 1, 0),
+        ("range_end", "REAL", 1, 0),
+    ),
+}
+
 
 def initialize_sqlite_database(database_path: str | Path) -> sqlite3.Connection:
     """Create the latest schema for a new path; validate existing databases."""
@@ -2018,7 +2054,7 @@ def migrate_sqlite_database(
 ) -> None:
     """Explicitly perform one approved migration step or validate a no-op target."""
 
-    if target_version not in (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25):
+    if target_version not in (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26):
         raise PersistenceError(f"unsupported SQLite migration target: {target_version}")
     path = _validate_database_path(database_path)
     if not path.is_file():
@@ -2100,6 +2136,9 @@ def migrate_sqlite_database(
         if current_version == 24 and target_version == 25:
             _migrate_v24_to_v25(connection)
             return
+        if current_version == 25 and target_version == 26:
+            _migrate_v25_to_v26(connection)
+            return
         raise PersistenceError(
             f"unsupported SQLite migration: {current_version} to {target_version}"
         )
@@ -2172,6 +2211,7 @@ def _initialize_latest_schema(connection: sqlite3.Connection) -> None:
             *_V23_ADDITION_STATEMENTS,
             *_V24_ADDITION_STATEMENTS,
             *_V25_ADDITION_STATEMENTS,
+            *_V26_ADDITION_STATEMENTS,
         ):
             connection.execute(statement)
         connection.execute(
@@ -2620,6 +2660,24 @@ def _migrate_v24_to_v25(connection: sqlite3.Connection) -> None:
         raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
 
 
+def _migrate_v25_to_v26(connection: sqlite3.Connection) -> None:
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        for statement in _V26_ADDITION_STATEMENTS:
+            connection.execute(statement)
+        connection.execute(
+            "UPDATE schema_metadata SET version = 26 WHERE singleton = 1"
+        )
+        _validate_initialized_connection(connection)
+        _commit(connection)
+    except PersistenceError:
+        _rollback(connection)
+        raise
+    except sqlite3.Error as error:
+        _rollback(connection)
+        raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
+
+
 def _validate_initialized_connection(connection: sqlite3.Connection) -> int:
     try:
         if connection.execute("PRAGMA foreign_keys").fetchone() != (1,):
@@ -2677,6 +2735,7 @@ def _validate_schema_shape(connection: sqlite3.Connection, version: int) -> None
         23: _V23_EXPECTED_COLUMNS,
         24: _V24_EXPECTED_COLUMNS,
         25: _V25_EXPECTED_COLUMNS,
+        26: _V26_EXPECTED_COLUMNS,
     }[version]
     for table, expected in expected_columns.items():
         actual = tuple(

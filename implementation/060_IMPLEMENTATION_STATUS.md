@@ -1552,3 +1552,58 @@ Segment Labels and label taxonomy, multiple segmentation views / perspective gro
 confidence / uncertainty / rationale semantics (and their ownership), overlap / nesting / hierarchy / multi-range
 and boundary-uncertainty representation, revision / supersession / reconciliation, and the concrete segmentation
 provider remain later, separately-gated milestones and are out of scope.
+
+## Edit Candidate Application Foundation (042 Lecture Intelligence Pipeline — Milestone 4)
+
+- Blueprint: approved `docs/042_LECTURE_INTELLIGENCE_PIPELINE.md §9.1` / `patches/PATCH-0012`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema v26 (one insert-only table)
+- Commit: `feat: establish edit candidate application foundation`
+- Immediate next milestone: concrete Candidate Generation Provider / Review handoff (042/043) — product-gated, deferred
+
+This milestone establishes the **provider-independent Application foundation** for durable canonical **Edit
+Candidates**, implementing approved `042 §9.1` (PATCH-0012). From an already-normalized, provider-independent
+Edit Candidate result — admitted **read-only** against exactly one canonical `AnalysisFinding` (`042 §8.1`,
+Milestone 2) — the `EditCandidateApplicationService` deterministically records one or more immutable,
+provenance-bearing `EditCandidate` records: optional, evaluative, advisory edit proposals derived from
+analysis, prepared for later Review handoff. Each Candidate is anchored to **exactly one Analysis Finding**
+(mandatory; **no Lecture Segment anchor or reference**, no second `EligibleAnalysisInput` anchor), carries
+**exactly one required** Source Timeline Time Range (`range_start`, `range_end`; finite, non-negative,
+`start <= end`; required even when the anchoring Finding has no range, and need not equal it), a required
+**open Application-owned Candidate Type** key (`^[a-z][a-z0-9_]*$`, following the §8.1 Finding-Type canonical
+key precedent — not a closed enum or taxonomy), and a required **rationale** (recorded, provider-independent,
+human-reviewable, non-empty). Source Media and Source Timeline are inherited from the Finding. It performs
+**no candidate generation** and does **not** invoke AI, implement a provider, define prompts/models, create a
+Segment Label, Review CandidateReference, Review Item, or Approved Edit Decision, assign Review status, or
+support Accept/Reject/Modify. The admitted `NormalizedCandidateResult` is an internal Application contract,
+never a provider API: it carries no provider identifier, model, prompt, token usage, transport metadata, raw
+provider JSON, classification, confidence, uncertainty, Review state, Segment reference, or executable
+operation. Admission requires exactly one canonical Analysis Finding, a running unit execution, matching
+Source Timeline lineage, and an identity plan per candidate; all upstream objects are consumed read-only.
+Because a persisted Analysis Finding is the durable output of an ELIGIBLE Eligible Analysis Input (§8.1),
+anchoring to a canonical Finding transitively guarantees ELIGIBLE provenance and no separate eligibility
+check is re-run. It reuses the established durable-stage pattern: caller-owned identities, a `prepare/record`
+service split, immutable frozen aggregates with `__post_init__` invariants, per-candidate
+`DomainResultReference` chaining (kind `edit_candidate`, sole direct upstream = the `AnalysisFinding`
+DomainResult), and one atomic v26 transaction persisting all Candidates of an admission and their Domain
+Results together (identity-absence checks, complete rollback on any collision, no partial writes). No
+wall-clock is read, so reconstruction and replay are deterministic. The AGENTS.md Architect Checklist is
+entirely `No`: no existing Domain contract change, no released-schema meaning change, no lifecycle authority
+change (Milestone 2 findings are only consumed), no responsibility shift, a new additive identity
+(`EditCandidateId`), one additive migration, and no Blueprint contradiction; 040/041/044 and the v1..v25
+records are unchanged. The §9.1 reprocessing contract is satisfied at the minimum by immutability plus
+provenance (Candidates are never mutated or deleted; revision/supersession/stale-detection/reconciliation
+remain deferred). Migration compatibility from every released version (v1..v25) to v26 is verified, and
+unsupported downgrade/direct-skip migrations remain rejected. An in-process acceptance reuses the durable
+Transcript Pipeline chain, records the ELIGIBLE analysis input and a canonical Analysis Finding (without its
+own range), then admits a normalized Candidate result and records canonical Candidates — confirming anchoring,
+provenance and DomainResult chaining directly to the Finding, required Type/rationale/range payload (including
+a Candidate with a required range from a non-located Finding), ordered sequences, that no upstream record is
+mutated, restart reconstruction, deterministic replay, and that no Segment Label / Review / Approved-Edit-
+Decision table and no Lecture Segment row is produced. The complete 1483-test suite passes. Segment Label
+linkage, multi-Finding / multi-Segment / many-to-many provenance, multi-range / discontinuous / non-timeline
+Candidates, confidence / uncertainty / priority / severity / expected time savings / structured evidence /
+source-replacement text / proposed treatment operations, Candidate revision / supersession / stale detection /
+Review reconciliation / current-candidate selection, Review CandidateReferences / Review Items / Review status /
+Accept-Reject-Modify / Approved Edit Decisions (043), and the concrete Candidate Generation Provider remain
+later, separately-gated milestones and are out of scope.

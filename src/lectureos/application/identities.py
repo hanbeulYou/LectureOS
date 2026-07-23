@@ -138,3 +138,8 @@ class AnalysisFindingId(OpaqueIdentity):
 @dataclass(frozen=True, slots=True)
 class LectureSegmentId(OpaqueIdentity):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class EditCandidateId(OpaqueIdentity):
+    pass

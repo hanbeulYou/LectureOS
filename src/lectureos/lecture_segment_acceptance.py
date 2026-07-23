@@ -136,15 +136,16 @@ def run_lecture_segment_acceptance() -> dict:
                 "SELECT name FROM sqlite_master WHERE type = 'table'"
             ).fetchall()
         }
-        # No downstream stage runs: Label/Candidate/Review tables do not exist, and no Analysis Finding row
-        # is produced by segmentation.
-        analysis_findings_rows = connection.execute(
-            "SELECT COUNT(*) FROM analysis_findings"
-        ).fetchone()[0]
+        # No downstream stage runs: Label/Review tables do not exist, and while the canonical Analysis
+        # Finding (v24) and Edit Candidate (v26) tables exist they must stay empty — segmentation records
+        # neither a Finding nor a Candidate.
+        downstream_rows = tuple(
+            connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            for table in ("analysis_findings", "edit_candidates")
+        )
         no_downstream_tables = (
-            not {"segment_labels", "edit_candidates", "review_items_analysis"}
-            & existing_tables
-            and analysis_findings_rows == 0
+            not {"segment_labels", "review_items_analysis"} & existing_tables
+            and all(count == 0 for count in downstream_rows)
         )
         connection.close()
 

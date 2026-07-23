@@ -69,6 +69,10 @@ from .lecture_segment import (
     SQLiteLectureSegmentCommandPersistence,
     SQLiteLectureSegmentRepository,
 )
+from .edit_candidate import (
+    SQLiteEditCandidateCommandPersistence,
+    SQLiteEditCandidateRepository,
+)
 from .subtitle_final_subtitle import (
     SQLiteSubtitleFinalSubtitleCommandPersistence,
     SQLiteSubtitleFinalSubtitleRepository,
@@ -141,6 +145,8 @@ __all__ = [
     "SQLiteAnalysisFindingRepository",
     "SQLiteLectureSegmentCommandPersistence",
     "SQLiteLectureSegmentRepository",
+    "SQLiteEditCandidateCommandPersistence",
+    "SQLiteEditCandidateRepository",
     "SQLiteSubtitleFinalSubtitleCommandPersistence",
     "SQLiteSubtitleFinalSubtitleRepository",
     "SQLiteSubtitleReviewDecisionCommandPersistence",
