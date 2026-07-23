@@ -1,8 +1,9 @@
 # 043_REVIEW_PIPELINE
 
 - Status: Draft
-- Version: Blueprint 0.1
-- Last Updated: 2026-07-15
+- Version: Blueprint 0.2
+- Last Updated: 2026-07-23
+- Amended By: `patches/PATCH-0014-edit-pipeline-review-application-foundation.md`
 - Depends On: `000_MANIFESTO.md`, `001_PRODUCT.md`, `002_FAQ.md`, `003_VISION.md`, `004_PRINCIPLES.md`, `020_PRODUCT_REQUIREMENTS.md`, `021_SYSTEM_CONTEXT.md`, `030_DATA_MODEL.md`, `031_ARCHITECTURE.md`, `040_TRANSCRIPT_PIPELINE.md`, `041_SUBTITLE_PIPELINE.md`, `042_LECTURE_INTELLIGENCE_PIPELINE.md`
 - Referenced By: `044_EXPORT_PIPELINE.md`
 
@@ -266,6 +267,28 @@ Modify는 사용자가 원래 제안과 다른 결과 또는 의도를 확정했
 
 Transcript 또는 Subtitle에 대한 Modify는 해당 Pipeline이 반영할 변경 의도를 제공한다. Edit Candidate에 대한 Modify는 변경된 최종 편집 의도를 가진 Approved Edit Decision으로 발전할 수 있다.
 
+### 7.4 First Edit-Pipeline Review Milestone — Edit-Pipeline Review Application Foundation (First Slice)
+
+이 소절은 `PATCH-0014`로 승인된 Product Owner 결정을 기록한다. Review Pipeline의 **첫 dependency-ordered milestone**은 **Edit-Pipeline Review Application Foundation**이며, 완성된 Edit Candidate Application Foundation(`042_LECTURE_INTELLIGENCE_PIPELINE.md §9.1`)에서 admit된 durable `EditCandidate`로부터 사람의 `ReviewDecision`과, 해당되는 경우 durable `ApprovedEditDecision`으로 이어지는 canonical 경로를 확정한다. **§9.1/§9.2와 완료된 042 계약은 이 소절에 의해 변경되지 않는다.** 이 소절은 §3.4·§3.8·§7이 정의한 개념 위에서 최소 durable-record 계약만 확정하며, UI, 상태 머신, export format, 저장·실행 구현은 정의하지 않는다.
+
+**ReviewDecision Record (Confirmed):** `ReviewDecision`은 **durable canonical domain record**이며 **immutable**, **insert-only**, **identity-owning**(Application 소유 identity), **provenance-bearing**, **replay-safe**한 독립 식별 기록이다. 모든 `ReviewDecision`은 **정확히 하나의 durable `EditCandidate`**(§9.1)에 anchor되며, 참조된 `EditCandidate`와 모든 upstream 기록은 **immutable·read-only**로 소비된다(변경하지 않는다). 최소 canonical 정보: 자신의 identity, 자신의 Domain Result identity, 정확히 하나의 참조 `EditCandidate` identity, **decision kind**(§7.4 Decision Kind), **human actor reference**(Human Authority; AI Candidate는 참조될 뿐 결정으로 승격되지 않는다), 상속된 Source Media·Source Timeline provenance, execution provenance, 그리고 per-admission `sequence`(결정적 순서). 직접 Domain Result upstream은 anchor한 `EditCandidate`의 Domain Result다. 이 기록은 free-text decision note, modify payload, status 필드, Review Session identity, full Review History identity를 가지지 않는다. 이 milestone은 **별도의 durable Review Item 기록을 요구하지 않는다**; 향후 grouping 개념은 single-Candidate `ReviewDecision` 계약을 바꾸지 않고 별도로 추가될 수 있다.
+
+**Decision Kind (Confirmed):** first-slice decision kind는 **닫힌 집합** `accept`·`reject`·`modify`다. unknown 값은 거부되며 alias·coerce·유효값으로의 lowercasing·provider/interface-native 용어 매핑을 하지 않는다. semantics — **accept:** 사용자가 Candidate 제안을 승인된 편집 의도로 수용한다. **reject:** 사용자가 Candidate 제안을 수용하지 않는다. **modify:** 사용자가 변경된 편집 의도를 확정한다. 세 결정 중 어느 것도 편집을 **자동 실행하지 않는다**. 이 닫힌 human-action vocabulary는 042 §9.1의 **open canonical Candidate Type** 계약을 바꾸지 않는다(Candidate Type은 여전히 open Application-owned key다).
+
+**ApprovedEditDecision Creation (Confirmed):** **accept는 정확히 하나의 `ApprovedEditDecision`을 만들고, modify는 정확히 하나를 만들며, reject는 만들지 않는다.** 하나의 `ReviewDecision`은 이 slice에서 **최대 하나의** `ApprovedEditDecision`을 만든다. Reject는 승인 출력이 없어도 durable하고 감사 가능한 사람의 결정으로 남는다. split·merge·multi-output 승인 동작은 승인하지 않는다.
+
+**ApprovedEditDecision Record (Confirmed):** `ApprovedEditDecision`은 **durable·immutable·insert-only·identity-owning·provenance-bearing·canonical** 기록이며 이후 `044` Export의 입력으로 적합한 **self-contained 승인 스냅샷**이다. 다음을 **소유**한다: 자신의 identity, 자신의 Domain Result identity, 승인 decision kind(`accept` 또는 `modify`), 승인된 Source Timeline Time Range, 승인된 Candidate Type 또는 승인된 편집 label, 사람이 검토 가능한 승인된 rationale, 결정적 per-admission `sequence`, 상속된 Source Media identity, 상속된 Source Timeline identity, execution provenance. 다음을 **참조**한다: 원본 `ReviewDecision`, 원본 `EditCandidate`. 직접 Domain Result upstream은 `ReviewDecision`의 Domain Result이며, Candidate와 그 이전 lineage는 transitively 도달 가능하다. 실행 가능한 편집 semantics를 추가하지 않으며 특히 cut/delete 명령, NLE operation, rendering 동작, export serialization, 자동 편집 실행을 **금지**한다.
+
+**Modify Ownership (Confirmed):** 원본 `EditCandidate`는 결코 변경되지 않는다. Modify는 Candidate의 review-relevant 값(승인된 range, 승인된 Candidate Type 또는 label, 승인된 rationale)의 **완전한 승인 대체**로 표현되며, 그 승인된 값은 **오직 `ApprovedEditDecision`이 소유**한다. `ReviewDecision`은 사람의 판단과 Candidate anchor만 기록한다. Modify는 loose patch, delta, Candidate의 mutation, 또는 두 기록에 중복된 canonical 값으로 표현되지 않는다. `ApprovedEditDecision`이 최종 human-approved 값의 **유일한 canonical authority**다.
+
+**Status Representation (Confirmed):** 이 slice는 별도의 durable status 필드, Review state machine, transition 모델을 도입하지 않는다(Alternative A). first-slice 의미는 **decision kind**와 **`ApprovedEditDecision`의 존재/부재**로 표현된다. revision, supersession, withdrawal, revocation, stale status, current-selection은 deferred다. placeholder status 필드를 추가하지 않는다.
+
+**Admission Boundary (Confirmed):** admission은 **running unit execution**을 요구한다. upstream Candidate와 lineage는 read-only이며, canonical admission은 **Application 계층이 소유**한다(interface/UI/API 계층은 canonical 기록을 직접 persist하지 않는다). accept와 modify는 하나의 `ReviewDecision`과 하나의 `ApprovedEditDecision`을 **atomic**하게 admit하고, reject는 하나의 `ReviewDecision`만 admit한다. atomic admission은 all-or-nothing이며 identity collision은 admission을 거부한다. identity는 caller-owned이고, 정규화된 admission은 deterministic·replay-safe이며, 동일 identity로의 replay는 중복을 만들지 않고, 새로운 사람의 판단은 새 identity를 가진 새 insert-only 처리다. 이 first slice는 provenance로서 **human actor reference만 요구**하며 UI 인증이나 완전한 authority-policy 시스템을 정의하지 않는다.
+
+**Lineage (Confirmed):** provenance chain은 `ApprovedEditDecision → ReviewDecision → EditCandidate → AnalysisFinding → EligibleAnalysisInput → corrected transcript/source lineage → SourceTimeline → SourceMedia`다. 직접 Domain Result chaining: `ReviewDecision` upstream = `EditCandidate`의 Domain Result, `ApprovedEditDecision` upstream = `ReviewDecision`의 Domain Result. ownership split: `ApprovedEditDecision`은 승인된 range·승인된 Candidate Type/label·승인된 rationale을 소유하고, Analysis Finding·Eligible Analysis Input·corrected transcript 기록·source 기록은 복제하지 않고 참조한다. Source Media·Source Timeline identity는 기존 durable-stage 관례에 맞춰 denormalize될 수 있으며 upstream 전체 내용을 복제하지 않는다.
+
+**Deferred (이후 milestone):** Review Session persistence, 별도의 full Review History 모델(이력은 insert-only immutability로 보존됨), 다중 Candidate Review Item, multi-user conflict resolution, 포괄적 human authority policy, Candidate reconciliation, revision·supersession, withdrawal·revocation, stale 탐지, current-selection semantics, sufficient Review Context 품질 기준, Review UI, 외부 Review API, export format, NLE 연동, 자동 편집 적용, edit rendering, provider-assisted Review, confidence·priority·severity·quality score(§15.4). 이들 deferred 개념을 위한 placeholder abstraction·field·table·enum·interface는 도입하지 않는다.
+
 ## 8. Review Explainability
 
 Reviewer는 판단에 필요한 다음 근거를 확인할 수 있어야 한다.
@@ -380,6 +403,7 @@ Export Pipeline은 Final Subtitle과 Approved Edit Decision 같은 승인 결과
 - Human Decision은 AI Candidate보다 높은 작업 권위를 가진다.
 - Approved Edit Decision은 Source Timeline의 범위, 라벨, 결정 상태와 provenance를 보존한다.
 - Approval은 실제 편집, Rendering 또는 Artifact 생성을 의미하지 않는다.
+- 첫 Edit-Pipeline Review milestone(Edit-Pipeline Review Application Foundation)의 durable `ReviewDecision`·`ApprovedEditDecision` canonical 기록(durable·immutable·insert-only·identity-owning·provenance-bearing), single-`EditCandidate` anchor, 닫힌 `{accept, reject, modify}` decision kind, accept/modify→하나·reject→0의 Approved 생성 규칙, `ApprovedEditDecision`이 소유하는 승인 스냅샷과 Modify ownership, status 필드 없음(Alternative A), running-execution·Application-owned·atomic·replay-safe admission, 그리고 lineage/ownership split은 `§7.4`(`patches/PATCH-0014`)에서 확정되었다. Review Session/History persistence, 다중 Candidate·multi-user·reconciliation·revision·supersession·status 전이·Review UI/API·export format 등은 여전히 deferred다(§15.4). §9.1/§9.2와 완료된 042 계약은 변경되지 않는다.
 
 ### 15.2 Working Assumption
 

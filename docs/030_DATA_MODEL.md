@@ -285,6 +285,8 @@ Approved Edit Decision은 사용자가 확정한 편집 판단이다. 다음 의
 
 Approved Edit Decision은 외부 편집 과정에서 사용할 수 있지만 실제 컷이 적용된 미디어나 NLE operation이 아니다. 승인된 결정은 재처리로 암묵적으로 사라지거나 새로운 AI 후보에 의해 덮어써지면 안 된다.
 
+Edit-Pipeline의 durable `ReviewDecision`과 `ApprovedEditDecision`의 canonical 기록 계약은 `043_REVIEW_PIPELINE.md §7.4`(`patches/PATCH-0014`)에서 확정되었다: 둘 다 durable·immutable·insert-only·identity-owning·provenance-bearing 기록으로, `ReviewDecision`은 정확히 하나의 `EditCandidate`에 anchor되고 닫힌 `{accept, reject, modify}` decision kind를 가지며, accept/modify는 각각 하나의 `ApprovedEditDecision`을(reject는 0개) 만든다. `ApprovedEditDecision`은 승인된 range·Candidate Type/label·rationale의 self-contained 스냅샷을 소유하고 `ReviewDecision`·`EditCandidate`를 참조한다. status 전이·Review Session/History·reconciliation·revision·supersession·export format은 여전히 deferred다.
+
 ## 12. Artifacts and Exports
 
 Artifact는 LectureOS의 내부 개념과 승인 결정에서 만들어지는 전달 가능한 파생 결과다. 중심 도메인 사실이나 사용자 결정 자체가 아니다.
