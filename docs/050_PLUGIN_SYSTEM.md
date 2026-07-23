@@ -369,6 +369,8 @@ Plugin은 LectureOS 내부 Concept와 외부 provider 사이의 신뢰 경계를
 
 구체적인 보안 정책, 개인정보 처리 기준, 실행 격리와 권한 방식은 후속 책임이다.
 
+첫 번째로 승인된 외부 lecture-analysis provider(Concrete Edit Candidate Generation Provider — First Slice)의 보수적 external data-egress 경계는 `042_LECTURE_INTELLIGENCE_PIPELINE.md §9.2`(`patches/PATCH-0013`)가 정의한다: corrected-transcript 발췌와 bounded context, Finding Type·evidence, 근거 range용 최소 타이밍만 전송하고 Source Media bytes·파일 경로·불필요한 식별자·secret은 전송하지 않는다. 이는 보수적 system boundary일 뿐이며 완전한 redaction·retention·regional·법적 준거 정책은 여전히 후속 책임이다.
+
 ## 8. Plugin Validation and Compatibility
 
 Plugin은 Capability Negotiation에서 선택 가능한 대상으로 사용되기 전에 현재 Contract와 Context에 대한 compatibility를 설명할 수 있어야 한다.
