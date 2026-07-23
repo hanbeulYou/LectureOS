@@ -227,6 +227,8 @@ Edit Candidate는 개념적으로 다음과 연결될 수 있어야 한다.
 
 교육적 가치가 불명확한 Edit Candidate는 자동 삭제 명령이 아니다. Edit Candidate를 NLE operation, FCPXML command 또는 실제 컷이 적용된 미디어로 모델링하지 않는다. 여러 Time Range를 참조할 수 있는지는 Requires Validation이다.
 
+Edit Candidate의 canonical 기록 계약은 `042_LECTURE_INTELLIGENCE_PIPELINE.md §9.1`(`patches/PATCH-0012`)에서 확정되었다: durable·immutable·identity-owning·insert-only·provenance-bearing·provider-independent 기록으로, 정확히 하나의 Analysis Finding에 anchor되고(Lecture Segment 비참조) 정확히 하나의 필수 Source Timeline Time Range와 필수 open Candidate Type·rationale을 가진다. Segment Label linkage, 다중 Time Range/Segment, confidence·예상 절감 시간, revision·supersession, Review 상태와 Accept/Reject/Modify는 여전히 deferred이며 Review 통합은 `043`이 소유한다.
+
 ## 10. Review Model
 
 Review는 Text Pipeline과 Edit Pipeline의 후보, 오류, 실패와 불확실성을 사람이 확인하고 결정하는 공통 활동이다. 읽기 전용 Report가 아니다.
