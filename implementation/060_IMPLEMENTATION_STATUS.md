@@ -1607,3 +1607,46 @@ source-replacement text / proposed treatment operations, Candidate revision / su
 Review reconciliation / current-candidate selection, Review CandidateReferences / Review Items / Review status /
 Accept-Reject-Modify / Approved Edit Decisions (043), and the concrete Candidate Generation Provider remain
 later, separately-gated milestones and are out of scope.
+
+## Concrete Edit Candidate Generation Provider — First Slice (042 Lecture Intelligence Pipeline)
+
+- Blueprint: approved `docs/042_LECTURE_INTELLIGENCE_PIPELINE.md §9.2` / `patches/PATCH-0013`
+- Status: **COMPLETE** (provider-integration complete; product-quality approval deferred)
+- Selected persistence: none new — reuses the v26 Edit Candidate Application Foundation
+- Commit: `feat: add concrete edit candidate generation provider first slice`
+- Immediate next milestone: Review handoff (043) / provider enrichment — product-gated, deferred
+
+This slice implements the **provider-generation layer** above the completed Edit Candidate Application
+Foundation (§9.1), realizing approved `042 §9.2` (PATCH-0013). It adds a **provider-neutral
+`EditCandidateGenerationPort`**, provider-neutral request/proposal/outcome models, an **Application/
+generation-owned closed first-slice Candidate Type registry** (`non_lecture_region`,
+`redundant_restatement`, `delivery_concern`), a **generation/orchestration service** that processes exactly
+one canonical Analysis Finding per invocation and calls the existing admission service, one **concrete OpenAI
+adapter** (`OpenAIEditCandidateGenerationAdapter`, injectable `transport`, strict Structured Outputs,
+versioned adapter-owned prompt), and a **deterministic fake Port** for acceptance. Per invocation it loads
+the Finding read-only, reconstructs bounded located corrected-transcript context (segments overlapping the
+Finding range ± a fixed configuration window, no Lecture Segments, no identities transmitted), invokes the
+provider once, and classifies the result into explicit outcomes: **ALL_VALID, NO_CANDIDATE, PARTIAL_SUCCESS,
+PROVIDER_FAILURE, MALFORMED_OUTPUT, NORMALIZATION_FAILURE, ADMISSION_FAILURE**. A zero-proposal (or
+no-usable-context) result invokes no admission and creates nothing, preserving §9.1's empty-batch rejection;
+partial success admits valid proposals and surfaces rejected-proposal diagnostics (never silently dropped,
+never persisted). Registry membership, non-empty rationale, and range containment within the supplied window
+are enforced in the generation service (the adapter enforces only strict schema, so an unknown Type or
+out-of-context range becomes a normalization diagnostic, not an adapter failure); the canonical Candidate
+Type field remains an **open key** — the registry is a generation/admission constraint only. Caller-owned
+identities are planned by an injected planner invoked **only when at least one valid Candidate will be
+admitted**. Provider/model/prompt/config provenance stays outside the Candidate record; **no raw provider
+response is persisted; no new schema, table, or persistence foundation is added** (`SQLITE_SCHEMA_VERSION`
+stays 26). External egress is bounded to transcript excerpts + Finding Type/evidence + window timing (no
+media bytes, file paths, or identities); provider training/data-use disabling and secret handling are the
+adapter's responsibility and full redaction/retention/compliance policy remains deferred. Replay means
+deterministic fake-Port pipeline replay + durable-record reconstruction; live invocation is not replay-safe.
+The AGENTS.md Architect Checklist is entirely `No`: no Domain contract change, no released-schema meaning
+change, no lifecycle authority change (Findings/transcripts consumed read-only), no responsibility shift, no
+new identity or migration, and no Blueprint contradiction; §9.1 and the v1..v26 records are unchanged. An
+in-process acceptance drives the full slice end to end against the fake Port (bounded context, partial
+success, provenance to the Finding, no Review artifact, no provider metadata persisted, restart
+reconstruction, deterministic replay). The complete 1522-test suite passes. Review handoff (043), Review
+status/decisions, a second provider, provider fallback/selection, provider-result/raw-response persistence,
+automatic repair, rich confidence/priority/enrichment, product-quality thresholds, and full privacy/retention/
+compliance policy remain later, separately-gated milestones and are out of scope.

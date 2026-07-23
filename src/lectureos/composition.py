@@ -29,6 +29,10 @@ from lectureos.application.lecture_segment import (
 from lectureos.application.edit_candidate import (
     EditCandidateApplicationService,
 )
+from lectureos.application.edit_candidate_generation import (
+    EditCandidateGenerationPort,
+    EditCandidateGenerationService,
+)
 from lectureos.application.subtitle_candidate_generation import (
     SubtitleCandidateGenerationService,
 )
@@ -354,6 +358,37 @@ def compose_sqlite_edit_candidate_service(
     findings = SQLiteAnalysisFindingRepository(connection)
     persistence = SQLiteEditCandidateCommandPersistence(connection)
     return EditCandidateApplicationService(findings, execution_query, persistence)
+
+
+DEFAULT_EDIT_CANDIDATE_CONTEXT_WINDOW_SECONDS = 15.0
+
+
+def compose_sqlite_edit_candidate_generation_service(
+    connection: sqlite3.Connection,
+    execution_query: ExecutionQueryBoundary,
+    generation: EditCandidateGenerationPort,
+    *,
+    context_window_seconds: float = DEFAULT_EDIT_CANDIDATE_CONTEXT_WINDOW_SECONDS,
+) -> EditCandidateGenerationService:
+    """Build the v26 provider-neutral Edit Candidate generation orchestration (042 §9.2).
+
+    The concrete or fake provider Port is injected by the caller; this orchestration reuses the completed
+    Edit Candidate Application Foundation for admission and adds no persistence.
+    """
+
+    findings = SQLiteAnalysisFindingRepository(connection)
+    inputs = SQLiteEligibleAnalysisInputRepository(connection)
+    transcripts = compose_sqlite_transcript_service(connection, execution_query)
+    admission = compose_sqlite_edit_candidate_service(connection, execution_query)
+    return EditCandidateGenerationService(
+        findings,
+        inputs,
+        transcripts,
+        execution_query,
+        generation,
+        admission,
+        context_window_seconds=context_window_seconds,
+    )
 
 
 def compose_sqlite_subtitle_candidate_generation_service(
