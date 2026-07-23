@@ -110,6 +110,17 @@ from .analysis_finding import (
     PreparedAnalysisFindings,
     require_canonical_finding_type,
 )
+from .lecture_segment import (
+    LECTURE_SEGMENT_RESULT_KIND,
+    LectureSegment,
+    LectureSegmentationApplicationService,
+    LectureSegmentError,
+    LectureSegmentIdentityPlan,
+    NormalizedLectureSegment,
+    NormalizedSegmentationResult,
+    PreparedLectureSegment,
+    PreparedLectureSegments,
+)
 from .subtitle_srt_materialization import (
     SUBTITLE_SRT_MATERIALIZATION_RESULT_KIND,
     PreparedSubtitleSrtMaterialization,
@@ -341,6 +352,15 @@ __all__ = [
     "PreparedAnalysisFinding",
     "PreparedAnalysisFindings",
     "require_canonical_finding_type",
+    "LECTURE_SEGMENT_RESULT_KIND",
+    "LectureSegment",
+    "LectureSegmentationApplicationService",
+    "LectureSegmentError",
+    "LectureSegmentIdentityPlan",
+    "NormalizedLectureSegment",
+    "NormalizedSegmentationResult",
+    "PreparedLectureSegment",
+    "PreparedLectureSegments",
     "SUBTITLE_SRT_MATERIALIZATION_RESULT_KIND",
     "PreparedSubtitleSrtMaterialization",
     "SubtitleMaterializationState",

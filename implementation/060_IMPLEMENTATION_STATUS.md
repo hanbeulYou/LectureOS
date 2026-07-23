@@ -1508,3 +1508,47 @@ Finding taxonomy, confidence calculation, uncertainty calibration, prioritizatio
 multi-range Findings, Lecture Segmentation, Segment relationships, Edit Candidates, Review handoff, and
 optional Subtitle/Speaker/Project Context admission, remain later, separately-gated milestones and are out of
 scope.
+
+## Lecture Segmentation Application Foundation (042 Lecture Intelligence Pipeline — Milestone 3)
+
+- Blueprint: approved `docs/042_LECTURE_INTELLIGENCE_PIPELINE.md §7.1` / `patches/PATCH-0011`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema v25 (one insert-only table)
+- Commit: `feat: establish lecture segmentation application foundation`
+- Immediate next milestone: concrete segmentation provider / Segment Labels (042) — product-gated, deferred
+
+This milestone establishes the **provider-independent Application foundation** for durable canonical
+**Lecture Segments**, implementing approved `042 §7.1` (PATCH-0011). From an already-normalized,
+provider-independent segmentation result — admitted **read-only** against exactly one `ELIGIBLE`
+`EligibleAnalysisInput` (`042 §5.1`, Milestone 1) — the `LectureSegmentationApplicationService`
+deterministically records one or more immutable, provenance-bearing `LectureSegment` records. Each Segment is
+anchored to exactly one `EligibleAnalysisInput` (never a Finding; no Finding required), carries **exactly one
+required, single** Source Timeline Time Range (`range_start`, `range_end`; finite, non-negative,
+`start <= end`; whole-recording allowed), and inherits Source Media / Source Timeline provenance through the
+anchoring input. It performs **no segmentation** and does **not** invoke AI, implement a provider, define
+prompts or models, or create a Segment Label, Analysis Finding, Edit Candidate, or Review Item; it establishes
+**no** Segment Label, confidence, uncertainty, or rationale semantics. The admitted `NormalizedSegmentationResult`
+is an internal Application contract, never a provider API: it carries no provider identifier, model, prompt,
+transport metadata, raw provider JSON, classification, or internal reasoning. Admission requires exactly one
+`ELIGIBLE` `EligibleAnalysisInput`, a running unit execution, matching Source Timeline lineage, and an identity
+plan per segment; all upstream objects are consumed read-only. It reuses the established durable-stage pattern:
+caller-owned identities, a `prepare/record` service split, immutable frozen aggregates with `__post_init__`
+invariants, per-segment `DomainResultReference` chaining (kind `lecture_segment`, upstream = the
+`EligibleAnalysisInput` DomainResult), and one atomic v25 transaction persisting all Segments of an admission
+and their Domain Results together (identity-absence checks, complete rollback on any collision, no partial
+writes). No wall-clock is read, so reconstruction and replay are deterministic. The AGENTS.md Architect
+Checklist is entirely `No`: no existing Domain contract change, no released-schema meaning change, no lifecycle
+authority change (Milestone 1 eligibility is only consumed), no responsibility shift, a new additive identity
+(`LectureSegmentId`), one additive migration, and no Blueprint contradiction; 040/041/044 and the v1..v24
+records are unchanged. The §7.1 reprocessing contract is satisfied at the minimum by immutability plus
+provenance (Segments are never mutated or deleted; supersession/revision/reconciliation remain deferred).
+Migration compatibility from every released version (v1..v24) to v25 is verified, and unsupported
+downgrade/direct-skip migrations remain rejected. An in-process acceptance reuses the durable Transcript
+Pipeline chain, records the `ELIGIBLE` analysis input, then admits a normalized segmentation result and records
+canonical Segments — confirming anchoring, provenance and DomainResult chaining, required single ranges, ordered
+sequences, that no upstream record is mutated, restart reconstruction, deterministic replay, and that no Segment
+Label, Analysis Finding row, Edit Candidate, or Review table is produced. The complete 1437-test suite passes.
+Segment Labels and label taxonomy, multiple segmentation views / perspective groups / grouping aggregates,
+confidence / uncertainty / rationale semantics (and their ownership), overlap / nesting / hierarchy / multi-range
+and boundary-uncertainty representation, revision / supersession / reconciliation, and the concrete segmentation
+provider remain later, separately-gated milestones and are out of scope.

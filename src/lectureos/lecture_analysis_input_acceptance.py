@@ -113,14 +113,16 @@ def run_lecture_analysis_input_acceptance() -> dict:
                 "SELECT name FROM sqlite_master WHERE type = 'table'"
             ).fetchall()
         }
-        # No downstream stage runs: Segment/Candidate tables do not exist, and while the canonical
-        # Analysis Finding table exists from schema v24 it must stay empty — intake records no Finding.
-        analysis_findings_rows = connection.execute(
-            "SELECT COUNT(*) FROM analysis_findings"
-        ).fetchone()[0]
+        # No downstream stage runs: the Candidate table does not exist, and while the canonical Analysis
+        # Finding (schema v24) and Lecture Segment (schema v25) tables exist they must stay empty — intake
+        # records neither a Finding nor a Segment.
+        downstream_rows = tuple(
+            connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            for table in ("analysis_findings", "lecture_segments")
+        )
         no_downstream_tables = (
-            not {"lecture_segments", "edit_candidates"} & existing_tables
-            and analysis_findings_rows == 0
+            not {"edit_candidates"} & existing_tables
+            and all(count == 0 for count in downstream_rows)
         )
         connection.close()
 

@@ -23,6 +23,9 @@ from lectureos.application.lecture_analysis_input import (
 from lectureos.application.analysis_finding import (
     AnalysisFindingApplicationService,
 )
+from lectureos.application.lecture_segment import (
+    LectureSegmentationApplicationService,
+)
 from lectureos.application.subtitle_candidate_generation import (
     SubtitleCandidateGenerationService,
 )
@@ -83,6 +86,7 @@ from lectureos.persistence import (
     SQLiteEligibleAnalysisInputCommandPersistence,
     SQLiteEligibleAnalysisInputRepository,
     SQLiteAnalysisFindingCommandPersistence,
+    SQLiteLectureSegmentCommandPersistence,
     SQLiteSubtitleReadingCommandPersistence,
     SQLiteSubtitleDecisionRevisionCommandPersistence,
     SQLiteSubtitleDecisionRevisionRepository,
@@ -323,6 +327,17 @@ def compose_sqlite_analysis_finding_service(
     inputs = SQLiteEligibleAnalysisInputRepository(connection)
     persistence = SQLiteAnalysisFindingCommandPersistence(connection)
     return AnalysisFindingApplicationService(inputs, execution_query, persistence)
+
+
+def compose_sqlite_lecture_segmentation_service(
+    connection: sqlite3.Connection,
+    execution_query: ExecutionQueryBoundary,
+) -> LectureSegmentationApplicationService:
+    """Build the durable v25 Lecture Segmentation Application Foundation on one caller connection."""
+
+    inputs = SQLiteEligibleAnalysisInputRepository(connection)
+    persistence = SQLiteLectureSegmentCommandPersistence(connection)
+    return LectureSegmentationApplicationService(inputs, execution_query, persistence)
 
 
 def compose_sqlite_subtitle_candidate_generation_service(

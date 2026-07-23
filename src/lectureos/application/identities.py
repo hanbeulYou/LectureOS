@@ -133,3 +133,8 @@ class EligibleAnalysisInputId(OpaqueIdentity):
 @dataclass(frozen=True, slots=True)
 class AnalysisFindingId(OpaqueIdentity):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class LectureSegmentId(OpaqueIdentity):
+    pass

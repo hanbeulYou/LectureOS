@@ -141,12 +141,17 @@ def run_analysis_finding_acceptance() -> dict:
                 "SELECT name FROM sqlite_master WHERE type = 'table'"
             ).fetchall()
         }
-        no_downstream_tables = not {
-            "lecture_segments",
-            "segment_labels",
-            "edit_candidates",
-            "review_items_analysis",
-        } & existing_tables
+        # No downstream stage runs: Label/Candidate/Review tables do not exist, and while the canonical
+        # Lecture Segment table exists from schema v25 it must stay empty — the Finding milestone records
+        # no Segment.
+        lecture_segments_rows = connection.execute(
+            "SELECT COUNT(*) FROM lecture_segments"
+        ).fetchone()[0]
+        no_downstream_tables = (
+            not {"segment_labels", "edit_candidates", "review_items_analysis"}
+            & existing_tables
+            and lecture_segments_rows == 0
+        )
         connection.close()
 
         reopened = open_sqlite_database(path)
