@@ -6,14 +6,14 @@ from pathlib import Path
 from lectureos.persistence import (
     PersistenceError,
     SQLITE_SCHEMA_VERSION,
-    SQLiteSubtitleDecisionRevisionRepository,
+    SQLiteApprovedEditExportRepresentationRepository,
     initialize_sqlite_database,
     migrate_sqlite_database,
     open_sqlite_database,
 )
 from lectureos.persistence import sqlite as sqlite_lifecycle
 
-V18_TABLES = {"subtitle_decision_revisions"}
+V28_TABLES = {"approved_edit_export_representations"}
 
 _ADDITION_BLOCKS = tuple(
     (level, getattr(sqlite_lifecycle, f"_V{level}_ADDITION_STATEMENTS"))
@@ -48,7 +48,7 @@ def table_names(connection: sqlite3.Connection) -> set[str]:
     }
 
 
-class SQLiteSchemaVersionEighteenTests(unittest.TestCase):
+class SQLiteSchemaVersionTwentyEightTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.database_path = Path(self.temporary_directory.name) / "lectureos.sqlite3"
@@ -56,27 +56,26 @@ class SQLiteSchemaVersionEighteenTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
 
-    def test_v18_remains_a_supported_version(self) -> None:
-        self.assertIn(18, sqlite_lifecycle._SUPPORTED_SCHEMA_VERSIONS)
-        self.assertLessEqual(18, SQLITE_SCHEMA_VERSION)
+    def test_schema_version_is_twenty_eight(self) -> None:
+        self.assertEqual(SQLITE_SCHEMA_VERSION, 28)
 
-    def test_fresh_database_initializes_with_v18_tables(self) -> None:
+    def test_fresh_database_initializes_with_v28_tables(self) -> None:
         connection = initialize_sqlite_database(self.database_path)
         try:
-            self.assertTrue(V18_TABLES.issubset(table_names(connection)))
+            self.assertTrue(V28_TABLES.issubset(table_names(connection)))
             self.assertEqual(
                 connection.execute("SELECT version FROM schema_metadata").fetchone()[0],
-                SQLITE_SCHEMA_VERSION,
+                28,
             )
         finally:
             connection.close()
 
-    def test_migrates_v17_to_v18_preserving_existing_rows(self) -> None:
-        create_legacy_database(self.database_path, 17)
-        migrate_sqlite_database(self.database_path, 18)
+    def test_migrates_v27_to_v28_preserving_existing_rows(self) -> None:
+        create_legacy_database(self.database_path, 27)
+        migrate_sqlite_database(self.database_path, 28)
         connection = open_sqlite_database(self.database_path)
         try:
-            self.assertTrue(V18_TABLES.issubset(table_names(connection)))
+            self.assertTrue(V28_TABLES.issubset(table_names(connection)))
             preserved = connection.execute(
                 "SELECT purpose FROM processing_units WHERE identity = 'unit'"
             ).fetchone()
@@ -84,41 +83,38 @@ class SQLiteSchemaVersionEighteenTests(unittest.TestCase):
         finally:
             connection.close()
 
-    def test_v18_no_op_migration_is_allowed(self) -> None:
-        create_legacy_database(self.database_path, 17)
-        migrate_sqlite_database(self.database_path, 18)
-        migrate_sqlite_database(self.database_path, 18)
+    def test_v28_no_op_migration_is_allowed(self) -> None:
+        initialize_sqlite_database(self.database_path).close()
+        migrate_sqlite_database(self.database_path, 28)
         connection = open_sqlite_database(self.database_path)
         try:
             self.assertEqual(
                 connection.execute("SELECT version FROM schema_metadata").fetchone()[0],
-                18,
+                28,
             )
         finally:
             connection.close()
 
-    def test_direct_v16_to_v18_is_rejected(self) -> None:
-        create_legacy_database(self.database_path, 16)
+    def test_direct_v26_to_v28_is_rejected(self) -> None:
+        create_legacy_database(self.database_path, 26)
         with self.assertRaises(PersistenceError):
-            migrate_sqlite_database(self.database_path, 18)
+            migrate_sqlite_database(self.database_path, 28)
 
     def test_unsupported_target_is_rejected(self) -> None:
         initialize_sqlite_database(self.database_path).close()
         with self.assertRaises(PersistenceError):
             migrate_sqlite_database(self.database_path, 29)
 
-    def test_repository_rejects_pre_v18_schema(self) -> None:
-        create_legacy_database(self.database_path, 17)
+    def test_repository_rejects_pre_v28_schema(self) -> None:
+        create_legacy_database(self.database_path, 27)
         connection = open_sqlite_database(self.database_path)
         try:
             with self.assertRaises(Exception):
-                SQLiteSubtitleDecisionRevisionRepository(connection)
+                SQLiteApprovedEditExportRepresentationRepository(connection)
         finally:
             connection.close()
 
-    def test_every_released_version_chains_to_v18_preserving_data(self) -> None:
-        # Migration compatibility: every released schema version reaches v18 through the
-        # supported single-step chain, preserving existing rows and meaning.
+    def test_every_released_version_chains_to_v28_preserving_data(self) -> None:
         for start in range(1, SQLITE_SCHEMA_VERSION):
             with self.subTest(start=start):
                 path = Path(self.temporary_directory.name) / f"chain-v{start}.sqlite3"
@@ -133,7 +129,7 @@ class SQLiteSchemaVersionEighteenTests(unittest.TestCase):
                         ).fetchone()[0],
                         SQLITE_SCHEMA_VERSION,
                     )
-                    self.assertTrue(V18_TABLES.issubset(table_names(connection)))
+                    self.assertTrue(V28_TABLES.issubset(table_names(connection)))
                     self.assertEqual(
                         connection.execute(
                             "SELECT purpose FROM processing_units WHERE identity = 'unit'"

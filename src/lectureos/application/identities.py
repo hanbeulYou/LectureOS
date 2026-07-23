@@ -153,3 +153,8 @@ class EditReviewDecisionId(OpaqueIdentity):
 @dataclass(frozen=True, slots=True)
 class ApprovedEditDecisionId(OpaqueIdentity):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class ApprovedEditExportRepresentationId(OpaqueIdentity):
+    pass

@@ -7,8 +7,8 @@ from pathlib import Path
 
 from .errors import PersistenceError, UnsupportedSchemaVersionError
 
-SQLITE_SCHEMA_VERSION = 27
-_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27)
+SQLITE_SCHEMA_VERSION = 28
+_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28)
 
 _V1_TABLE_STATEMENTS = (
     """CREATE TABLE schema_metadata (
@@ -1126,6 +1126,30 @@ _V27_ADDITION_STATEMENTS = (
 )""",
 )
 
+_V28_ADDITION_STATEMENTS = (
+    """CREATE TABLE approved_edit_export_representations (
+    identity TEXT PRIMARY KEY,
+    domain_result_id TEXT NOT NULL,
+    source_approved_decision_id TEXT NOT NULL,
+    source_review_decision_id TEXT NOT NULL,
+    source_candidate_id TEXT NOT NULL,
+    decision_kind TEXT NOT NULL CHECK (decision_kind IN ('accept', 'modify')),
+    approved_range_start REAL NOT NULL,
+    approved_range_end REAL NOT NULL,
+    approved_candidate_type TEXT NOT NULL CHECK (length(trim(approved_candidate_type)) > 0),
+    approved_rationale TEXT NOT NULL CHECK (length(trim(approved_rationale)) > 0),
+    actor TEXT NOT NULL CHECK (length(trim(actor)) > 0),
+    source_media_id TEXT NOT NULL,
+    source_timeline_id TEXT NOT NULL,
+    processing_run_id TEXT NOT NULL,
+    unit_execution_id TEXT NOT NULL,
+    sequence INTEGER NOT NULL CHECK (sequence >= 0),
+    CHECK (approved_range_start >= 0 AND approved_range_end >= approved_range_start),
+    FOREIGN KEY (source_approved_decision_id)
+        REFERENCES approved_edit_decisions(identity) ON DELETE CASCADE
+)""",
+)
+
 _V9_ADDITION_STATEMENTS = (
     """CREATE TABLE transcript_current_selections (
     identity TEXT PRIMARY KEY,
@@ -2080,6 +2104,28 @@ _V27_EXPECTED_COLUMNS = {
     ),
 }
 
+_V28_EXPECTED_COLUMNS = {
+    **_V27_EXPECTED_COLUMNS,
+    "approved_edit_export_representations": (
+        ("identity", "TEXT", 0, 1),
+        ("domain_result_id", "TEXT", 1, 0),
+        ("source_approved_decision_id", "TEXT", 1, 0),
+        ("source_review_decision_id", "TEXT", 1, 0),
+        ("source_candidate_id", "TEXT", 1, 0),
+        ("decision_kind", "TEXT", 1, 0),
+        ("approved_range_start", "REAL", 1, 0),
+        ("approved_range_end", "REAL", 1, 0),
+        ("approved_candidate_type", "TEXT", 1, 0),
+        ("approved_rationale", "TEXT", 1, 0),
+        ("actor", "TEXT", 1, 0),
+        ("source_media_id", "TEXT", 1, 0),
+        ("source_timeline_id", "TEXT", 1, 0),
+        ("processing_run_id", "TEXT", 1, 0),
+        ("unit_execution_id", "TEXT", 1, 0),
+        ("sequence", "INTEGER", 1, 0),
+    ),
+}
+
 
 def initialize_sqlite_database(database_path: str | Path) -> sqlite3.Connection:
     """Create the latest schema for a new path; validate existing databases."""
@@ -2119,7 +2165,7 @@ def migrate_sqlite_database(
 ) -> None:
     """Explicitly perform one approved migration step or validate a no-op target."""
 
-    if target_version not in (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27):
+    if target_version not in (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28):
         raise PersistenceError(f"unsupported SQLite migration target: {target_version}")
     path = _validate_database_path(database_path)
     if not path.is_file():
@@ -2207,6 +2253,9 @@ def migrate_sqlite_database(
         if current_version == 26 and target_version == 27:
             _migrate_v26_to_v27(connection)
             return
+        if current_version == 27 and target_version == 28:
+            _migrate_v27_to_v28(connection)
+            return
         raise PersistenceError(
             f"unsupported SQLite migration: {current_version} to {target_version}"
         )
@@ -2281,6 +2330,7 @@ def _initialize_latest_schema(connection: sqlite3.Connection) -> None:
             *_V25_ADDITION_STATEMENTS,
             *_V26_ADDITION_STATEMENTS,
             *_V27_ADDITION_STATEMENTS,
+            *_V28_ADDITION_STATEMENTS,
         ):
             connection.execute(statement)
         connection.execute(
@@ -2765,6 +2815,24 @@ def _migrate_v26_to_v27(connection: sqlite3.Connection) -> None:
         raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
 
 
+def _migrate_v27_to_v28(connection: sqlite3.Connection) -> None:
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        for statement in _V28_ADDITION_STATEMENTS:
+            connection.execute(statement)
+        connection.execute(
+            "UPDATE schema_metadata SET version = 28 WHERE singleton = 1"
+        )
+        _validate_initialized_connection(connection)
+        _commit(connection)
+    except PersistenceError:
+        _rollback(connection)
+        raise
+    except sqlite3.Error as error:
+        _rollback(connection)
+        raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
+
+
 def _validate_initialized_connection(connection: sqlite3.Connection) -> int:
     try:
         if connection.execute("PRAGMA foreign_keys").fetchone() != (1,):
@@ -2824,6 +2892,7 @@ def _validate_schema_shape(connection: sqlite3.Connection, version: int) -> None
         25: _V25_EXPECTED_COLUMNS,
         26: _V26_EXPECTED_COLUMNS,
         27: _V27_EXPECTED_COLUMNS,
+        28: _V28_EXPECTED_COLUMNS,
     }[version]
     for table, expected in expected_columns.items():
         actual = tuple(

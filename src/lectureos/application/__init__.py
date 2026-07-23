@@ -146,6 +146,15 @@ from .edit_review import (
     PreparedEditReview,
     require_decision_kind,
 )
+from .edit_export import (
+    APPROVED_EDIT_EXPORT_REPRESENTATION_RESULT_KIND,
+    ApprovedEditExportIdentityPlan,
+    ApprovedEditExportRepresentation,
+    ApprovedEditExportService,
+    AtomicApprovedEditExportPersistence,
+    EditExportError,
+    PreparedApprovedEditExport,
+)
 from .edit_candidate_generation import (
     EDIT_CANDIDATE_TYPE_REGISTRY,
     EditCandidateGenerationError,
@@ -437,6 +446,13 @@ __all__ = [
     "NormalizedModification",
     "PreparedEditReview",
     "require_decision_kind",
+    "APPROVED_EDIT_EXPORT_REPRESENTATION_RESULT_KIND",
+    "ApprovedEditExportIdentityPlan",
+    "ApprovedEditExportRepresentation",
+    "ApprovedEditExportService",
+    "AtomicApprovedEditExportPersistence",
+    "EditExportError",
+    "PreparedApprovedEditExport",
     "SUBTITLE_SRT_MATERIALIZATION_RESULT_KIND",
     "PreparedSubtitleSrtMaterialization",
     "SubtitleMaterializationState",

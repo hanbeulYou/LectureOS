@@ -1695,3 +1695,48 @@ Items, multi-user conflict/authority policy, Candidate reconciliation, revision/
 current-selection, export formats, NLE integration, automatic edit application/rendering, provider-assisted
 Review, and confidence/priority/severity/quality scores remain later, separately-gated milestones and are out
 of scope.
+
+## Edit-Pipeline Export Application Foundation — First Slice (044 §19 Export Pipeline)
+
+- Blueprint: approved `docs/044_EXPORT_PIPELINE.md §19` / `patches/PATCH-0015`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema v28 (one insert-only table)
+- Commit: `feat: establish edit-pipeline export application foundation`
+- Immediate next milestone: 044 serializers / external formats / Artifacts / Export Profiles — product-gated, deferred
+
+This milestone establishes the first **Edit-Pipeline Export Application Foundation**, implementing approved
+`044 §19` (PATCH-0015). From exactly one existing durable `ApprovedEditDecision` (`043 §7.4`), admitted
+**read-only** under a running unit execution, the `ApprovedEditExportService` deterministically records one
+immutable `ApprovedEditExportRepresentation`. The representation **owns a complete exported-meaning snapshot**
+— approved Source Timeline range, approved Candidate Type/label, approved rationale, approving decision kind
+(`accept`|`modify`), and the human actor reference — copied faithfully **from the `ApprovedEditDecision`**
+(range/type/rationale/kind) and, for the actor, from the source `EditReviewDecision`; nothing is re-derived
+from the original Candidate. It **references** the source `ApprovedEditDecision`, `EditReviewDecision`, and
+`EditCandidate`, and **denormalizes** Source Media/Timeline plus execution provenance. Approved Candidate Type
+uses the **open** `§9.1` contract (validated as a canonical token, not the three-key generation registry).
+There is **no status field and no state machine**: the record is a pure durable snapshot. `Reject` produces no
+representation (only accept/modify approvals are exportable, enforced at construction). **Multiple distinct
+representations MAY reference the same `ApprovedEditDecision`** (no uniqueness on `source_approved_decision_id`).
+Before construction the service validates lineage consistency across the approved decision, its review
+decision, and the candidate (matching candidate identity, matching decision kind, and consistent
+media/timeline). Provenance chains `ApprovedEditExportRepresentation → ApprovedEditDecision → …` with
+**single-direct-upstream** DomainResult chaining (the representation's DomainResult upstream = exactly the
+`ApprovedEditDecision`'s DomainResult). Admission is **Application-owned**, running-execution-gated, read-only
+toward upstream, caller-owned-identity, and **atomic**: the representation and its DomainResult are inserted in
+one `BEGIN IMMEDIATE` transaction with identity-absence checks and a linkage validator; any collision or error
+rolls back the whole admission (no orphan representation or DomainResult). No wall-clock or randomness is read,
+so reconstruction and replay are deterministic. The AGENTS.md Architect Checklist is entirely `No`: no existing
+Domain contract change, no released-schema meaning change, no lifecycle authority change (Approved Edit
+Decisions/lineage consumed read-only), no responsibility shift, one new additive identity
+(`ApprovedEditExportRepresentationId`), one additive migration, and no Blueprint contradiction; §9.1, 043's
+Review foundation, and the v1..v27 records are unchanged. Additive schema **v28** adds one insert-only table
+(`approved_edit_export_representations`) enforcing identity uniqueness, the approving decision-kind CHECK
+(accept/modify), non-empty type/rationale/actor, range validity, and a FK to `approved_edit_decisions`;
+migration compatibility from every released version (v1..v27) to v28 is verified, and unsupported downgrade/
+direct-skip migrations remain rejected. An in-process acceptance drives the full chain (Candidate →
+accept/modify review → export) and confirms Accept/Modify snapshot fidelity from the approved decision,
+provenance chaining, multiple representations per approved decision, an unmutated upstream, absence of any
+deferred Artifact/profile/scope table or status/format/path column, restart reconstruction, and deterministic
+replay. The complete 1592-test suite passes. Serializers, external/interchange formats, physical files,
+Artifacts, Export Profiles, current-selection, multi-decision export scope, and executable edit semantics
+remain later, separately-gated milestones and are out of scope.

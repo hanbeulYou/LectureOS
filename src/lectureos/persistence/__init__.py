@@ -78,6 +78,10 @@ from .edit_review import (
     SQLiteEditReviewCommandPersistence,
     SQLiteEditReviewDecisionRepository,
 )
+from .edit_export import (
+    SQLiteApprovedEditExportCommandPersistence,
+    SQLiteApprovedEditExportRepresentationRepository,
+)
 from .subtitle_final_subtitle import (
     SQLiteSubtitleFinalSubtitleCommandPersistence,
     SQLiteSubtitleFinalSubtitleRepository,
@@ -155,6 +159,8 @@ __all__ = [
     "SQLiteApprovedEditDecisionRepository",
     "SQLiteEditReviewCommandPersistence",
     "SQLiteEditReviewDecisionRepository",
+    "SQLiteApprovedEditExportCommandPersistence",
+    "SQLiteApprovedEditExportRepresentationRepository",
     "SQLiteSubtitleFinalSubtitleCommandPersistence",
     "SQLiteSubtitleFinalSubtitleRepository",
     "SQLiteSubtitleReviewDecisionCommandPersistence",

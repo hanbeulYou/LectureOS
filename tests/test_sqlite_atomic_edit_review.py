@@ -310,7 +310,7 @@ class SQLiteAtomicEditReviewTests(unittest.TestCase):
         connection = sqlite3.connect(legacy_path, isolation_level=None)
         connection.execute("PRAGMA foreign_keys = ON")
         statements = [*sqlite_lifecycle._V1_TABLE_STATEMENTS]
-        for level in range(2, 27):
+        for level in range(2, 28):
             statements += getattr(sqlite_lifecycle, f"_V{level}_ADDITION_STATEMENTS")
         connection.execute("BEGIN")
         for statement in statements:
