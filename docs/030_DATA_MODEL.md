@@ -287,6 +287,8 @@ Approved Edit Decision은 외부 편집 과정에서 사용할 수 있지만 실
 
 Edit-Pipeline의 durable `ReviewDecision`과 `ApprovedEditDecision`의 canonical 기록 계약은 `043_REVIEW_PIPELINE.md §7.4`(`patches/PATCH-0014`)에서 확정되었다: 둘 다 durable·immutable·insert-only·identity-owning·provenance-bearing 기록으로, `ReviewDecision`은 정확히 하나의 `EditCandidate`에 anchor되고 닫힌 `{accept, reject, modify}` decision kind를 가지며, accept/modify는 각각 하나의 `ApprovedEditDecision`을(reject는 0개) 만든다. `ApprovedEditDecision`은 승인된 range·Candidate Type/label·rationale의 self-contained 스냅샷을 소유하고 `ReviewDecision`·`EditCandidate`를 참조한다. status 전이·Review Session/History·reconciliation·revision·supersession·export format은 여전히 deferred다.
 
+Approved Edit Decision을 소비하는 첫 Edit-Pipeline Export 계약은 `044_EXPORT_PIPELINE.md §19`(`patches/PATCH-0015`)에서 확정되었다: durable·immutable·insert-only `ApprovedEditExportRepresentation` 기록이 정확히 하나의 `ApprovedEditDecision`에 anchor되고, 승인된 range·Candidate Type/label·rationale·decision kind·actor의 format-neutral snapshot을 소유하며 `ApprovedEditDecision`·`ReviewDecision`·`EditCandidate`를 참조한다. serializer·외부 파일 형식·Artifact·physical materialization·delivery·status는 여전히 deferred이며 `ApprovedEditDecision`이 승인 의도의 authority로 남는다.
+
 ## 12. Artifacts and Exports
 
 Artifact는 LectureOS의 내부 개념과 승인 결정에서 만들어지는 전달 가능한 파생 결과다. 중심 도메인 사실이나 사용자 결정 자체가 아니다.

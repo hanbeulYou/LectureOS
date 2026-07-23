@@ -1,11 +1,11 @@
 # 044_EXPORT_PIPELINE
 
 - Status: Draft
-- Version: Blueprint 0.3
-- Last Updated: 2026-07-23
+- Version: Blueprint 0.4
+- Last Updated: 2026-07-24
 - Depends On: `000_MANIFESTO.md`, `001_PRODUCT.md`, `002_FAQ.md`, `003_VISION.md`, `004_PRINCIPLES.md`, `020_PRODUCT_REQUIREMENTS.md`, `021_SYSTEM_CONTEXT.md`, `030_DATA_MODEL.md`, `031_ARCHITECTURE.md`, `040_TRANSCRIPT_PIPELINE.md`, `041_SUBTITLE_PIPELINE.md`, `042_LECTURE_INTELLIGENCE_PIPELINE.md`, `043_REVIEW_PIPELINE.md`
 - Referenced By:
-- Amended By: `patches/PATCH-0007-physical-materialization.md`, `patches/PATCH-0008-delivery-deferral.md`
+- Amended By: `patches/PATCH-0007-physical-materialization.md`, `patches/PATCH-0008-delivery-deferral.md`, `patches/PATCH-0015-edit-pipeline-export-application-foundation.md`
 
 ## Purpose
 
@@ -594,6 +594,36 @@ v1에서 LectureOS는 다음을 소유하지 않는다: transport, download, upl
 - Delivery는 구현 세부로 몰래 도입되지 않는다.
 
 향후 LectureOS 소유의 Delivery 능력은 새로운 architecture-first 조사, 명시적 Product Owner 승인, 별도 Blueprint PATCH, 새로 경계 지어진 구현 milestone을 통해서만 도입된다.
+
+## 19. Edit-Pipeline Export Application Foundation — Approved Edit Decision Export Representation (First Slice)
+
+이 절은 `PATCH-0015`로 승인된 Product Owner 결정(D-1…D-15)을 기록한다. **첫 Edit-Pipeline Export milestone**은 `043_REVIEW_PIPELINE.md §7.4`에서 확정된 durable `ApprovedEditDecision`을 소비하여 **하나의 durable canonical Edit-Pipeline Export Representation 기록**을 만드는 것이다. §17(Physical Materialization)은 **Final Subtitle SRT Artifact 전용**으로 유지되며 이 절에 의해 넓혀지거나 재해석되지 않는다. 완료된 042 §9.1/§9.2와 043 §7.4 계약은 변경되지 않는다. 이 절은 제품·Application 계약만 정의하며 schema, API, record 컬럼, serialization 문법, 파일 형식, Artifact 저장, materialization 또는 구현을 정의하지 않는다.
+
+**Anchor and Cardinality (Confirmed, D-1):** 모든 `ApprovedEditExportRepresentation`은 **정확히 하나의 durable `ApprovedEditDecision`**에 anchor된다. caller는 admission마다 하나의 명시적 Approved Edit Decision identity를 제출한다. 이 first slice는 Export Scope aggregate, 다중 결정 request, 결정 간 ordering, all-current selection, current-selection query, grouped export plan을 도입하지 않는다. 향후 grouping은 이 single-decision 계약을 바꾸지 않고 additively 추가될 수 있다.
+
+**Canonical Record (Confirmed, D-2):** `ApprovedEditExportRepresentation`은 **durable canonical domain record**이며 **immutable**, **insert-only**, **identity-owning**(Application 소유 identity), **provenance-bearing**, **replay-safe**한 독립 식별 기록이다. 최소 개념 범주: 자신의 identity, 자신의 Domain Result identity, 정확히 하나의 원본 `ApprovedEditDecision` 참조, 직접 `EditReviewDecision` 참조, 직접 `EditCandidate` 참조, Source Media identity, Source Timeline identity, execution provenance, 결정적 per-admission sequence(ordinal), 그리고 소유한 exported-meaning snapshot. 구현 필드·컬럼 이름은 규정하지 않는다.
+
+**Owned Exported-Meaning Snapshot (Confirmed, D-3):** 이 표현은 승인된 의미의 완전한 snapshot을 **소유**한다: 승인된 Source Timeline Time Range, 승인된 Candidate Type 또는 label, 승인된 rationale, 승인 decision kind(`accept` 또는 `modify`), human actor reference. lineage를 위해 `ApprovedEditDecision`·`EditReviewDecision`·`EditCandidate`를 **참조**한다. Analysis Finding·Eligible Analysis Input·transcript·Source Media·Source Timeline의 전체 내용을 복제하지 않으며, 이전 lineage는 참조로 도달 가능하다.
+
+**Authority Boundary (Confirmed, D-4):** `ApprovedEditDecision`은 human-approved 편집 의도의 **유일한 canonical authority**로 남는다. `ApprovedEditExportRepresentation`은 이미 승인된 그 의미의 **export 표현에 대해서만** authoritative하다. 이 표현은 승인 값을 충실히 복사하고, 새 사람의 결정을 만들지 않으며, Approved Edit Decision을 변경·대체하지 않고, Candidate 의도를 재해석하지 않는다. 승인 편집 의도에 대한 경쟁 authority는 존재하지 않는다.
+
+**Representation Semantics (Confirmed, D-5):** first-slice 표현은 **structured·canonical·format-neutral·provider-independent·NLE-independent·non-executable**이다. delete/cut/keep 명령, edit operation, timeline transformation 명령, output-timeline 좌표, NLE instruction, rendering instruction, serialized 파일 payload를 포함하지 않는다. Candidate Type 또는 label은 descriptive로 유지되며 용어를 이유로 실행 가능한 operation으로 취급되지 않는다.
+
+**Accept and Modify Preservation (Confirmed, D-6):** 이 표현은 원본 Candidate 제안이 아니라 최종 승인 snapshot을 export한다. Accept일 때 export snapshot은 수용된 승인 값과 같다. Modify일 때 export snapshot은 오직 `ApprovedEditDecision`에서 오며, 원본 Candidate 값은 lineage로만 남고, patch·delta 재구성이나 원본 Candidate와의 비교가 필요하지 않다. 승인 decision kind는 `accept` 또는 `modify`로 계속 추적 가능해야 한다.
+
+**Reject Exclusion (Confirmed, D-7):** 오직 `ApprovedEditDecision` 기록만 유효한 입력이다. Reject는 `ApprovedEditDecision`을 만들지 않으므로 `ApprovedEditExportRepresentation`을 만들지 않는다. rejection export 기록, rejected-Candidate export 표현, negative edit instruction을 도입하지 않는다.
+
+**Admission Boundary (Confirmed, D-8/D-9/D-10):** admission은 **Application이 소유**하고 **running unit execution**을 요구하며 deterministic·replay-safe·caller-identity-owned·interface-independent·provider-independent·atomic이다. 경계는 (1) 하나의 durable Approved Edit Decision을 read-only로 로드하고, (2) canonical lineage를 검증하고, (3) running execution을 확인하고, (4) Approved Edit Decision에서 export snapshot을 도출하고, (5) 표현을 구성하고, (6) Domain Result lineage를 구성하고, (7) 전체 admission을 atomic하게 persist한다. interface나 provider 계층은 canonical 기록을 직접 persist하지 않으며, 이 first slice에는 외부 provider가 참여하지 않는다. identity는 caller-owned이고, 동일 입력+동일 identity는 결정적이며, 이미 저장된 identity의 재사용은 canonical collision 동작으로 실패하고 중복·부분 기록을 만들지 않으며, 같은 Approved Edit Decision의 새 표현은 새 identity로 또 하나의 immutable 기록이 된다. 표현과 그 Domain Result는 하나의 transaction으로 admit되고, 어떤 collision·persistence 실패도 전체 admission을 rollback하며, orphan 표현이나 Domain Result가 남지 않는다. content 기반 dedup·update·overwrite·compensating write·mutation을 도입하지 않는다.
+
+**DomainResult Lineage (Confirmed, D-11):** 표현의 Domain Result는 **정확히 하나의 직접 upstream**을 가진다: 원본 `ApprovedEditDecision`의 Domain Result. canonical lineage는 `ApprovedEditExportRepresentation → ApprovedEditDecision → EditReviewDecision → EditCandidate → AnalysisFinding → EligibleAnalysisInput → corrected transcript/source lineage → SourceTimeline → SourceMedia`다. 표현은 추적성을 위해 Approved Edit Decision·Edit Review Decision·Edit Candidate identity를 직접 저장하고, 기존 durable-stage 관례에 따라 Source Media identity·Source Timeline identity·execution provenance를 denormalize하며, 이전 단계 기록 전체를 복제하지 않는다.
+
+**Status and Lifecycle (Confirmed, D-12):** 이 기록은 status 필드를 가지지 않는다. pending·generated·exported·materialized·delivered·failed·stale·current·superseded·revoked·withdrawn 등을 도입하지 않는다. 표현은 하나의 immutable 사실이며, materialization·delivery·failure·retry와 downstream lifecycle은 이후 단계에 속한다. 이 first slice에 lifecycle state machine은 없다.
+
+**Artifact and Format Boundary (Confirmed, D-13/D-14):** `ApprovedEditExportRepresentation`은 canonical domain export-representation 기록이며 Artifact, Artifact Record, 물리 파일, materialization outcome, path, URL이 아니다. first slice는 durable structured 표현에서 끝나고 JSON·CSV·XML·EDL·FCPXML·NLE 형식·textual serialization·byte payload·MIME type·파일 확장자·checksum·filename·물리 경로·외부 URL을 만들지 않는다. Artifact 생성과 physical materialization은 별도의 이후 milestone이다. 이 first slice는 Export Profile 또는 Configuration 기록을 가지지 않으며 profile identity·persistence·representation variant·destination/serializer/NLE 설정·user-selectable configuration·implicit format marker·deferred format variant를 위한 version marker를 도입하지 않는다. canonical 표현은 하나의 고정된 format-neutral 제품 의미를 가지며, 향후 serializer는 자신의 format/version 계약을 additively 도입할 수 있다.
+
+**Deferred (이후 milestone, D-15):** 다중 결정 Export Scope, export request aggregate, current approved-decision selection, all-current export, supersession, stale 탐지, reconciliation, overlap 처리, 결정 간 ordering, partial-scope completeness UX, cross-representation equivalence, Export Profile persistence, user-selectable/destination configuration, 구체적 export schema, 외부 파일 형식, serializer, provider adapter, NLE 연동, 실행 가능한 cut/delete/keep/edit 명령, output-timeline transformation, 외부 편집 round trip, rendering, Artifact 생성, physical file materialization, materialization path·filename·checksum 정책, delivery·download·upload·외부 URL, retry·failure lifecycle, 표현의 replacement·revision. 이들 deferred 개념을 위한 placeholder field·record·table·enum·protocol·interface·abstraction은 도입하지 않는다.
+
+**Canonical Invariants (Confirmed):** (1) 하나의 표현은 정확히 하나의 Approved Edit Decision에 anchor된다. (2) Approved Edit Decision만 유효한 입력이다. (3) Reject는 표현을 만들지 않는다. (4) upstream 기록은 read-only다. (5) 표현은 durable·immutable·insert-only·identity-owning·provenance-bearing·replay-safe다. (6) 표현은 완전한 exported-meaning snapshot을 소유한다. (7) Approved Edit Decision이 승인 의도에 대해 authoritative로 남는다. (8) 표현은 export 의미에 대해서만 authoritative다. (9) 실행 가능한 편집 semantics가 없다. (10) serialized format이 없다. (11) Artifact나 물리 파일이 없다. (12) Export Profile이 없다. (13) status나 lifecycle이 없다. (14) admission은 running-execution-gated이며 Application이 소유한다. (15) identity는 caller-owned다. (16) 구성은 결정적이다. (17) persistence는 atomic·all-or-nothing이다. (18) 직접 Domain Result upstream은 Approved Edit Decision Domain Result다. (19) Source Media·Source Timeline·execution provenance는 추적 가능하게 유지된다. (20) deferred 개념은 placeholder를 도입하지 않는다.
 
 ## Related Documents
 
