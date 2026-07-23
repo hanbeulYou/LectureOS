@@ -221,11 +221,16 @@ def run_edit_candidate_generation_acceptance() -> dict:
                 "SELECT name FROM sqlite_master WHERE type = 'table'"
             ).fetchall()
         }
-        no_review_tables = not {
-            "review_items_analysis",
-            "candidate_references_analysis",
-            "approved_edit_decisions",
-        } & existing_tables
+        # No analysis Review-item table exists; the Edit-Pipeline Review (v27) tables exist but must stay
+        # empty — generation creates no Review record.
+        review_rows = tuple(
+            connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            for table in ("edit_review_decisions", "approved_edit_decisions")
+        )
+        no_review_tables = (
+            not {"review_items_analysis", "candidate_references_analysis"} & existing_tables
+            and all(count == 0 for count in review_rows)
+        )
         # The persisted canonical row carries no provider metadata columns (only the §9.1 minimum).
         candidate_columns = {
             row[1]

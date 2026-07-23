@@ -1650,3 +1650,48 @@ reconstruction, deterministic replay). The complete 1522-test suite passes. Revi
 status/decisions, a second provider, provider fallback/selection, provider-result/raw-response persistence,
 automatic repair, rich confidence/priority/enrichment, product-quality thresholds, and full privacy/retention/
 compliance policy remain later, separately-gated milestones and are out of scope.
+
+## Edit-Pipeline Review Application Foundation — First Slice (043 Review Pipeline)
+
+- Blueprint: approved `docs/043_REVIEW_PIPELINE.md §7.4` / `patches/PATCH-0014`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema v27 (two insert-only tables)
+- Commit: `feat: establish edit-pipeline review application foundation`
+- Immediate next milestone: 044 Export of Approved Edit Decisions / later Review capabilities — product-gated, deferred
+
+This milestone establishes the first **Edit-Pipeline Review Application Foundation**, implementing approved
+`043 §7.4` (PATCH-0014). From one human judgment about exactly one existing durable `EditCandidate`
+(`042 §9.1`), admitted **read-only**, the `EditReviewApplicationService` deterministically records one
+immutable `EditReviewDecision` and — when the decision is `accept` or `modify` — exactly one immutable
+`ApprovedEditDecision`; `reject` records only the durable decision. Decision kind is a **closed** vocabulary
+`{accept, reject, modify}` (unknown values rejected, never coerced/aliased/lowercased/mapped), distinct from
+and not altering the open Candidate Type contract of §9.1. **Accept** snapshots the Candidate's review-relevant
+values; **Modify** carries a complete human-approved replacement (approved range, approved Candidate Type/label,
+approved rationale) supplied as a normalized modification, while the Candidate stays immutable. The
+`ApprovedEditDecision` is a self-contained approved snapshot suitable as future 044 input; it **owns** the
+approved range/type/rationale + approving kind + denormalized media/timeline + execution provenance, and
+**references** the source `EditReviewDecision` and `EditCandidate`. There is **no status field and no state
+machine** (Alternative A): meaning is carried by decision kind + Approved-record existence. Provenance chains
+`ApprovedEditDecision → EditReviewDecision → EditCandidate → AnalysisFinding → …` with single-direct-upstream
+DomainResult chaining (`EditReviewDecision` upstream = the Candidate's DomainResult; `ApprovedEditDecision`
+upstream = the ReviewDecision's DomainResult). Admission is **Application-owned**, running-execution-gated,
+read-only toward upstream, caller-owned-identity, and **atomic**: Accept/Modify insert the decision + its
+DomainResult + the approved record + its DomainResult in one transaction; Reject inserts the decision + its
+DomainResult; any collision or error rolls back the whole admission (no orphan decision, approval, or
+DomainResult). No wall-clock is read, so reconstruction and replay are deterministic. The AGENTS.md Architect
+Checklist is entirely `No`: no existing Domain contract change, no released-schema meaning change, no lifecycle
+authority change (Edit Candidates/lineage consumed read-only), no responsibility shift, two new additive
+identities (`EditReviewDecisionId`, `ApprovedEditDecisionId`), one additive migration, and no Blueprint
+contradiction; §9.1/§9.2, the Text-Pipeline Review, and the v1..v26 records are unchanged. Additive schema **v27**
+adds two insert-only tables (`edit_review_decisions`, `approved_edit_decisions`) enforcing identity uniqueness,
+the closed decision-kind CHECK, an approved-kind CHECK restricted to accept/modify, at-most-one Approved per
+ReviewDecision (UNIQUE + FK), and range validity; migration compatibility from every released version (v1..v26)
+to v27 is verified, and unsupported downgrade/direct-skip migrations remain rejected. An in-process acceptance
+drives the full chain (Candidate → accept/modify/reject) and confirms Accept snapshot equality, Modify
+replacement with an unchanged Candidate, Reject without an Approved record, provenance chaining, no status
+column / no deferred Review-Session/History table, restart reconstruction, and deterministic replay. The
+complete 1562-test suite passes. Review UI/API, Review Session/History persistence, multi-candidate Review
+Items, multi-user conflict/authority policy, Candidate reconciliation, revision/supersession/withdrawal/stale/
+current-selection, export formats, NLE integration, automatic edit application/rendering, provider-assisted
+Review, and confidence/priority/severity/quality scores remain later, separately-gated milestones and are out
+of scope.

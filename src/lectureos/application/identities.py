@@ -143,3 +143,13 @@ class LectureSegmentId(OpaqueIdentity):
 @dataclass(frozen=True, slots=True)
 class EditCandidateId(OpaqueIdentity):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class EditReviewDecisionId(OpaqueIdentity):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class ApprovedEditDecisionId(OpaqueIdentity):
+    pass

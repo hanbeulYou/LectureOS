@@ -73,6 +73,11 @@ from .edit_candidate import (
     SQLiteEditCandidateCommandPersistence,
     SQLiteEditCandidateRepository,
 )
+from .edit_review import (
+    SQLiteApprovedEditDecisionRepository,
+    SQLiteEditReviewCommandPersistence,
+    SQLiteEditReviewDecisionRepository,
+)
 from .subtitle_final_subtitle import (
     SQLiteSubtitleFinalSubtitleCommandPersistence,
     SQLiteSubtitleFinalSubtitleRepository,
@@ -147,6 +152,9 @@ __all__ = [
     "SQLiteLectureSegmentRepository",
     "SQLiteEditCandidateCommandPersistence",
     "SQLiteEditCandidateRepository",
+    "SQLiteApprovedEditDecisionRepository",
+    "SQLiteEditReviewCommandPersistence",
+    "SQLiteEditReviewDecisionRepository",
     "SQLiteSubtitleFinalSubtitleCommandPersistence",
     "SQLiteSubtitleFinalSubtitleRepository",
     "SQLiteSubtitleReviewDecisionCommandPersistence",

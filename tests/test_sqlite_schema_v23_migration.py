@@ -17,7 +17,7 @@ V23_TABLES = {"eligible_analysis_inputs"}
 
 _ADDITION_BLOCKS = tuple(
     (level, getattr(sqlite_lifecycle, f"_V{level}_ADDITION_STATEMENTS"))
-    for level in range(2, 26)
+    for level in range(2, 27)
 )
 
 
@@ -105,7 +105,7 @@ class SQLiteSchemaVersionTwentyThreeTests(unittest.TestCase):
     def test_unsupported_target_is_rejected(self) -> None:
         initialize_sqlite_database(self.database_path).close()
         with self.assertRaises(PersistenceError):
-            migrate_sqlite_database(self.database_path, 27)
+            migrate_sqlite_database(self.database_path, 28)
 
     def test_repository_rejects_pre_v23_schema(self) -> None:
         create_legacy_database(self.database_path, 22)

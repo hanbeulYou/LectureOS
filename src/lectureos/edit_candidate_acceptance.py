@@ -178,15 +178,15 @@ def run_edit_candidate_acceptance() -> dict:
                 "SELECT name FROM sqlite_master WHERE type = 'table'"
             ).fetchall()
         }
-        # No Review or Segment-Label table exists, and no Lecture Segment row is produced by candidate
-        # generation.
-        lecture_segments_rows = connection.execute(
-            "SELECT COUNT(*) FROM lecture_segments"
-        ).fetchone()[0]
+        # No Segment-Label table exists, and while the Lecture Segment (v25) and Edit-Pipeline Review (v27)
+        # tables exist they must stay empty — the Analysis Finding milestone records none of them.
+        downstream_rows = tuple(
+            connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            for table in ("lecture_segments", "edit_review_decisions", "approved_edit_decisions")
+        )
         no_downstream_tables = (
-            not {"segment_labels", "review_items_analysis", "approved_edit_decisions"}
-            & existing_tables
-            and lecture_segments_rows == 0
+            not {"segment_labels", "review_items_analysis"} & existing_tables
+            and all(count == 0 for count in downstream_rows)
         )
         connection.close()
 
