@@ -210,6 +210,8 @@ Lecture Segment는 다음 원칙을 따른다.
 
 구간 label taxonomy와 Lecture Segment의 중첩 가능성은 이 문서에서 확정하지 않는다.
 
+Lecture Segment의 canonical 기록 계약은 `042_LECTURE_INTELLIGENCE_PIPELINE.md §7.1`(`patches/PATCH-0011`)에서 확정되었다: durable·immutable·identity-owning·insert-only·provenance-bearing 기록으로, eligibility가 ELIGIBLE인 하나의 Eligible Analysis Input에 anchor되고 정확히 하나의 필수 Source Timeline Time Range를 가진다. Segment Label과 taxonomy, 중첩·계층·multi-range, revision·supersession은 여전히 deferred다.
+
 ## 9. Edit Candidate Model
 
 Edit Candidate는 AI 또는 규칙 기반 강의 분석이 생성한 편집 제안이다. Text Pipeline의 교정 후보와 마찬가지로 검증 전 후보이며 실제 편집 결정이나 적용된 컷이 아니다.
