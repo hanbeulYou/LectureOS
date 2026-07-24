@@ -165,6 +165,13 @@ from .edit_export_assembly import (
     EditExportAssemblyService,
     PreparedEditExportAssembly,
 )
+from .edit_export_artifact import (
+    EditExportArtifact,
+    EditExportArtifactEntry,
+    EditExportArtifactError,
+    EditExportArtifactService,
+    EditExportAssemblyQuery,
+)
 from .edit_candidate_generation import (
     EDIT_CANDIDATE_TYPE_REGISTRY,
     EditCandidateGenerationError,
@@ -471,6 +478,11 @@ __all__ = [
     "EditExportAssemblyIdentityPlan",
     "EditExportAssemblyService",
     "PreparedEditExportAssembly",
+    "EditExportArtifact",
+    "EditExportArtifactEntry",
+    "EditExportArtifactError",
+    "EditExportArtifactService",
+    "EditExportAssemblyQuery",
     "SUBTITLE_SRT_MATERIALIZATION_RESULT_KIND",
     "PreparedSubtitleSrtMaterialization",
     "SubtitleMaterializationState",

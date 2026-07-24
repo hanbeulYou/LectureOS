@@ -163,3 +163,8 @@ class ApprovedEditExportRepresentationId(OpaqueIdentity):
 @dataclass(frozen=True, slots=True)
 class EditExportAssemblyId(OpaqueIdentity):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class EditExportArtifactId(OpaqueIdentity):
+    pass

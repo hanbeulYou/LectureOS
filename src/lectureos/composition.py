@@ -38,6 +38,9 @@ from lectureos.application.edit_export import (
 from lectureos.application.edit_export_assembly import (
     EditExportAssemblyService,
 )
+from lectureos.application.edit_export_artifact import (
+    EditExportArtifactService,
+)
 from lectureos.application.edit_candidate_generation import (
     EditCandidateGenerationPort,
     EditCandidateGenerationService,
@@ -112,6 +115,7 @@ from lectureos.persistence import (
     SQLiteApprovedEditExportCommandPersistence,
     SQLiteApprovedEditExportRepresentationRepository,
     SQLiteEditExportAssemblyCommandPersistence,
+    SQLiteEditExportAssemblyRepository,
     SQLiteSubtitleReadingCommandPersistence,
     SQLiteSubtitleDecisionRevisionCommandPersistence,
     SQLiteSubtitleDecisionRevisionRepository,
@@ -411,6 +415,20 @@ def compose_sqlite_edit_export_assembly_service(
     representations = SQLiteApprovedEditExportRepresentationRepository(connection)
     persistence = SQLiteEditExportAssemblyCommandPersistence(connection)
     return EditExportAssemblyService(representations, execution_query, persistence)
+
+
+def compose_sqlite_edit_export_artifact_service(
+    connection: sqlite3.Connection,
+) -> EditExportArtifactService:
+    """Build the format-neutral v29 Edit-Pipeline Export Artifact Foundation on one caller connection.
+
+    The Artifact is a derived, non-authoritative external representation; it reads one Edit Export Assembly and
+    its member representations read-only and is not persisted, so no persistence port is composed.
+    """
+
+    assemblies = SQLiteEditExportAssemblyRepository(connection)
+    representations = SQLiteApprovedEditExportRepresentationRepository(connection)
+    return EditExportArtifactService(assemblies, representations)
 
 
 DEFAULT_EDIT_CANDIDATE_CONTEXT_WINDOW_SECONDS = 15.0

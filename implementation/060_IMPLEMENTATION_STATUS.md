@@ -1793,3 +1793,50 @@ suite passes. Serializer, external/interchange format, Artifact creation, physic
 Export Package, Export Profile/Configuration, membership/scope-selection policy, subset selection,
 current-selection, supersession, reconciliation, and executable edit semantics remain later, separately-gated
 milestones and are out of scope.
+
+## Edit-Pipeline Export Artifact Foundation — First Slice (044 §21 Canonical Representation)
+
+- Blueprint: approved `docs/044_EXPORT_PIPELINE.md §21` / `patches/PATCH-0017`
+- Status: **COMPLETE**
+- Selected persistence: **none** — the Artifact is a derived, regenerable, non-authoritative representation;
+  `SQLITE_SCHEMA_VERSION` stays 29 (no schema, table, or migration added)
+- Commit: `feat: establish edit export artifact foundation`
+- Immediate next milestone: 044 concrete serializer / external format projection — product-gated, deferred
+
+This milestone establishes the first **Edit-Pipeline Export Artifact Foundation**, implementing approved
+`044 §21` (PATCH-0017). From exactly one durable `EditExportAssembly` (044 §20), consumed **read-only**, the
+`EditExportArtifactService` deterministically **derives** one `EditExportArtifact`: the canonical,
+**format-neutral external representation** of the Assembly's complete approved edit meaning. Where the Assembly
+only **references** its member representations, the Artifact **presents** their approved meaning — one
+`EditExportArtifactEntry` per member, in the Assembly's canonical member order, each carrying the member's
+approved Source Timeline range, approved Candidate Type/label, approved rationale, approving decision kind, and
+human actor, copied faithfully (never re-derived or reinterpreted) from the `ApprovedEditExportRepresentation`.
+The Artifact denormalizes the Assembly's Source Timeline and Source Media and references the source Assembly and
+each member representation for provenance/traceability.
+
+The Artifact is **derived, regenerable, and non-authoritative** (§3.3/§13, §21 B-5/B-6): it is **not persisted**
+(no new table, schema, or migration — the Goal excludes persistence unless the contract unambiguously requires
+it, and §21 does not) and is reconstructed on demand from the preserved approved sources; its loss damages no
+`ApprovedEditDecision`, `ApprovedEditExportRepresentation`, or `EditExportAssembly`. It owns **no execution
+provenance, no DomainResult, no status/lifecycle, no Export Profile/Configuration, no serializer/format, and no
+file**. It is **descriptive, never executable** — no cut/keep/delete/transform command, output-timeline
+coordinate, or NLE/rendering instruction. Derivation is deterministic (no wall-clock/randomness), so
+regeneration from the same upstream preserves the same Product meaning, while a new caller-owned identity yields
+another derived Artifact of the same Assembly (§21 B-13). **Representation Failure is explicit** (§21 B-11): if
+a member representation is missing or its lineage is inconsistent with the Assembly, an
+`EditExportArtifactError` is raised naming the failure — approved meaning is never silently omitted. The
+`external representation` (what is communicated) is fixed; the `concrete serialization syntax` (how it is
+written) is deferred entirely to future serializer projections. Derivation reads upstream only via `.get` and
+never mutates the Assembly or its members. The AGENTS.md Architect Checklist is entirely `No`: no existing
+Domain contract change, no released-schema meaning change, no lifecycle authority change (Assembly and members
+consumed read-only), no responsibility shift, one new additive identity (`EditExportArtifactId`), **no
+migration**, and no Blueprint contradiction; §19, §20, and the v1..v29 records are unchanged. Focused domain,
+service, and in-process acceptance tests confirm faithful complete-meaning presentation in canonical order,
+deterministic regeneration, multiple derived Artifacts per Assembly, unknown-assembly and missing-member
+(explicit representation failure) and cross-lineage rejection, an unmutated upstream, the derived/non-persisted
+nature (no Artifact table), and the absence of any status/format/serializer/path field. The complete 1646-test
+suite passes. Concrete serializers, external representation syntax, export schema, external file formats,
+human-readable/machine-readable/NLE projections, cross-representation equivalence, format-specific
+representability, Export Profile/Configuration, provider/NLE adapters, physical materialization, delivery,
+Export Package, executable edit semantics, output-timeline transformation, and Artifact replacement/revision
+remain later, separately-gated milestones and are out of scope.
