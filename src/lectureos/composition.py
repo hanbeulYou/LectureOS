@@ -41,6 +41,9 @@ from lectureos.application.edit_export_assembly import (
 from lectureos.application.edit_export_artifact import (
     EditExportArtifactService,
 )
+from lectureos.application.edit_export_materialization import (
+    EditExportMaterializationService,
+)
 from lectureos.application.edit_candidate_generation import (
     EditCandidateGenerationPort,
     EditCandidateGenerationService,
@@ -429,6 +432,20 @@ def compose_sqlite_edit_export_artifact_service(
     assemblies = SQLiteEditExportAssemblyRepository(connection)
     representations = SQLiteApprovedEditExportRepresentationRepository(connection)
     return EditExportArtifactService(assemblies, representations)
+
+
+def compose_edit_export_materialization_service() -> EditExportMaterializationService:
+    """Build the first runnable Edit Export local materialization service (044 §22).
+
+    The serializer and local file writer are pure/filesystem side-effect components with no database
+    dependency; nothing here is persisted, so no connection or persistence port is composed.
+    """
+
+    from lectureos.infrastructure.local_edit_export_file_writer import (
+        LocalEditExportFileWriter,
+    )
+
+    return EditExportMaterializationService(LocalEditExportFileWriter())
 
 
 DEFAULT_EDIT_CANDIDATE_CONTEXT_WINDOW_SECONDS = 15.0

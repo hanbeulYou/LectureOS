@@ -1840,3 +1840,63 @@ human-readable/machine-readable/NLE projections, cross-representation equivalenc
 representability, Export Profile/Configuration, provider/NLE adapters, physical materialization, delivery,
 Export Package, executable edit semantics, output-timeline transformation, and Artifact replacement/revision
 remain later, separately-gated milestones and are out of scope.
+
+## Edit-Pipeline Export — First Runnable Slice: JSON Serialization + Local Materialization (044 §22)
+
+- Blueprint: approved `docs/044_EXPORT_PIPELINE.md §22` / `patches/PATCH-0018`
+- Status: **COMPLETE**
+- Selected persistence: **none** — serializer and materializer are non-authoritative projections;
+  `SQLITE_SCHEMA_VERSION` stays 29 (no schema, table, or migration; filesystem side effect only)
+- Commit: `feat: first runnable edit export — json serialization + local materialization + CLI`
+- Immediate next milestone: additional concrete formats / delivery — product-gated, deferred
+
+This milestone delivers the **first runnable Edit Export**: a user can now invoke LectureOS and obtain a real
+local edit-export file. Implementing approved `044 §22` (PATCH-0018), it adds the first concrete serializer and
+safe local physical materialization over the §21 canonical `EditExportArtifact`, plus a runnable entry point.
+
+**Selected first format (delegated Product decision):** **LectureOS-native JSON** —
+`lectureos-edit-export-json`, version `v1`, identifier `application/vnd.lectureos.edit-export+json`. JSON was
+chosen as the smallest fully-faithful, deterministic, inspectable, non-executable projection of the descriptive
+approved edit meaning the Artifact carries. NLE interchange formats (EDL/FCPXML/AAF/OTIO) were rejected for the
+first slice because they require executable / output-timeline semantics and cannot carry the approved
+rationale, decision kind, actor, or Candidate Type/label without inventing missing timeline semantics or
+silently dropping meaning — i.e. they cannot represent the current Artifact meaning completely and faithfully.
+
+`serialize_edit_export_json(artifact)` (pure) projects the Artifact into a `SerializedEditExport` value: it
+reads the Artifact without mutation, preserves every entry in canonical member order, and carries the complete
+approved meaning — top-level format/version, artifact/assembly/media/timeline identities, and per edit the
+source representation identity, decision kind, approved range start/end, approved Candidate Type/label,
+approved rationale, and human actor — with a fixed field order, UTF-8, LF newlines, a single trailing newline,
+and non-ASCII (e.g. Korean) preserved unescaped (`ensure_ascii=False`). It is **deterministic** (byte-identical
+for the same Product meaning) and enforces **format-specific Representation Failure** explicitly: a non-finite
+number (`allow_nan=False`) raises `EditExportSerializationError` rather than emitting invalid or lossy JSON.
+
+`EditExportMaterializationService.materialize_artifact` serializes then writes via an injected
+`EditExportFileWriter` port; `LocalEditExportFileWriter` (infrastructure) writes to a caller-selected absolute
+destination using a temporary file + flush + fsync + atomic placement (`os.link` to create, or `os.replace`
+only on explicit overwrite). **Collision is explicit**: identical existing bytes are an idempotent success,
+different existing bytes fail by default (no overwrite), overwrite happens only on explicit request, and a
+symlink or non-regular existing object is never overwritten; necessary parent directories are created. On any
+serialization or write failure no partial final file is left and approved upstream data is preserved. Success
+returns a structured `EditExportMaterializationResult` (final path, format, version, encoding, byte length),
+reported only after durable placement.
+
+The runnable entry point `lectureos.edit_export_cli` (invoked
+`PYTHONPATH=src python3 -m lectureos.edit_export_cli <assembly-id> --database <db> --output <path> [--overwrite]`)
+opens the database read-only, derives the Artifact with a deterministic caller-owned identity
+(`edit-export:<assembly-id>`), serializes, materializes, prints the final path + format/version + byte length,
+returns `0` on success, and on error prints `error: <message>` to stderr and returns `1` without leaving a
+final file. Nothing is persisted to the database; the derived Artifact and serialized output remain regenerable
+(re-running from the same upstream is byte-identical). The AGENTS.md Architect Checklist is entirely `No`: no
+existing Domain contract change, no released-schema meaning change, no lifecycle authority change (Assembly and
+representations consumed read-only), no responsibility shift, no new identity, **no migration**, and no
+Blueprint contradiction; §19/§20/§21 and the v1..v29 records are unchanged. Focused serializer, file-writer,
+materialization-service, and CLI tests plus an in-process end-to-end acceptance confirm faithful complete-
+meaning serialization in canonical order, deterministic bytes, format/version identity, UTF-8/non-ASCII
+preservation, explicit unrepresentable-value rejection, exact on-disk file contents, atomic write with no
+partial file, explicit collision and no-default-overwrite with the existing file preserved, explicit-overwrite,
+failure-leaves-no-file, an unmutated upstream, and a real runnable success/failure path. The complete 1676-test
+suite passes. Additional concrete formats (EDL/FCPXML/AAF/OTIO/CSV/…), multiple formats, serializer registry,
+cross-format equivalence, Export Profile/Configuration, provider/NLE adapters, remote delivery/upload/URLs,
+executable edit semantics, output-timeline transformation, DB persistence of the derived Artifact or serialized
+output, and package/bundle export remain later, separately-gated milestones and are out of scope.
