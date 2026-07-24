@@ -1,0 +1,87 @@
+# Repository Validation
+
+- Status: Implementation Reference
+- Scope: read-only repository integrity validation subsystem
+- Blueprint impact: none (asserts existing invariants; introduces no product concept or contract)
+
+## Philosophy
+
+Repository validation verifies that persisted repository state is internally consistent **before** higher-level
+workflows run. It is:
+
+- **Read-only.** The validator opens the database with `PRAGMA query_only = ON` and issues only SELECT/PRAGMA
+  statements. It never mutates repository state.
+- **Independent of business logic.** It consumes the persisted store; it does not re-run the domain/application
+  services that produced it, and it is not coupled into export or any other workflow. Future workflows simply
+  invoke validation before execution.
+- **Deterministic.** The same repository always yields the same diagnostics in the same order (diagnostics are
+  sorted by `(code, location, message)`).
+- **Additive.** The current checks are edit-export focused (the implemented MVP) plus a global foreign-key
+  sweep; new checks for other pipelines can be added without changing the framework.
+
+## Architecture
+
+- `src/lectureos/validation/diagnostics.py` — `Severity`, `RepositoryHealth`, `Diagnostic`, `ValidationReport`.
+- `src/lectureos/validation/repository_validator.py` — `validate_repository(connection)` and
+  `validate_database(path)` (opens read-only, maps open failures to diagnostics), plus the individual checks.
+- `src/lectureos/validate_cli.py` — the `lectureos.validate_cli` entry point.
+
+The validator lives outside `application/` deliberately (validation is independent of business logic). It reads
+the persisted store via SQL and never constructs or persists domain aggregates.
+
+## Diagnostic format
+
+Each diagnostic carries:
+
+- `code` — a stable machine-readable identifier.
+- `severity` — `info` | `warning` | `error`.
+- `location` — typically `table:identity` or `table.column`.
+- `message` — a human-readable explanation.
+
+A `ValidationReport` carries the schema version, the number of objects checked, and the ordered diagnostics,
+and derives `health` (`healthy` / `warnings` / `errors`) and `ok` (no errors).
+
+## Exit codes (`lectureos.validate_cli`)
+
+| Code | Health | Meaning |
+| --- | --- | --- |
+| `0` | healthy | no errors and no warnings |
+| `1` | errors | one or more error diagnostics (repository is inconsistent) |
+| `2` | warnings | warnings only, no errors |
+
+## Diagnostic codes
+
+| Code | Severity | Meaning |
+| --- | --- | --- |
+| `DATABASE_NOT_FOUND` | error | the database file does not exist |
+| `DATABASE_UNREADABLE` | error | the file could not be read as a database |
+| `SCHEMA_METADATA_MISSING` | error | no `schema_metadata`; not a LectureOS repository |
+| `SCHEMA_VERSION_UNSUPPORTED` | error | schema version is outside the supported range |
+| `FOREIGN_KEY_VIOLATION` | error | a foreign-key-constrained reference points at a missing row |
+| `DANGLING_REFERENCE` | error | a non-foreign-key TEXT reference points at a missing target |
+| `DOMAIN_RESULT_UPSTREAM_NONCONTIGUOUS` | error | DomainResult upstream ordinals are not a contiguous `0..n-1` sequence |
+| `ASSEMBLY_EMPTY` | error | an Edit Export Assembly has no member representations |
+| `ASSEMBLY_MEMBER_ORDINAL_NONCONTIGUOUS` | error | assembly member ordinals are not a contiguous `0..n-1` sequence |
+| `ASSEMBLY_MEMBER_DUPLICATE` | error | a representation appears more than once in an assembly |
+| `ASSEMBLY_MEMBER_TIMELINE_MISMATCH` | error | a member representation belongs to a different Source Timeline than the assembly |
+| `ASSEMBLY_MEMBER_MEDIA_MISMATCH` | error | a member representation belongs to a different Source Media than the assembly |
+| `ASSEMBLY_MEMBER_ORDER_NONCANONICAL` | warning | assembly member order is not the canonical ascending-identity order |
+| `REPRESENTATION_KIND_MISMATCH` | error | a representation's decision kind disagrees with its approved decision |
+| `REPRESENTATION_PROVENANCE_MISMATCH` | error | a representation's review/candidate/media/timeline lineage disagrees with its approved decision |
+| `APPROVED_DECISION_KIND_INVALID` | error | an approved decision's kind is not a valid approving accept/modify aligned with its review |
+| `APPROVED_DECISION_PROVENANCE_MISMATCH` | error | an approved decision's candidate disagrees with its review decision |
+| `MALFORMED_IDENTITY` | error | one or more rows have an empty or blank identity |
+
+## Scope
+
+Validation focuses on the edit-export pipeline (the implemented MVP) plus a global foreign-key sweep that
+covers foreign-key-constrained references across all tables. It intentionally does not re-implement the
+transcript/subtitle domain state machines; deeper per-pipeline semantic checks can be added additively as those
+capabilities mature. The framework, diagnostic model, CLI, and exit-code contract are stable.
+
+## Golden fixtures & tests
+
+- `examples/repository-validation/expected/*.json` — deterministic golden reports, reproduced byte-for-byte by
+  `tests/test_repository_validation_golden.py`.
+- `tests/test_repository_validator.py`, `tests/test_validate_cli.py`,
+  `tests/test_repository_validation_acceptance.py` — unit, CLI, and end-to-end coverage.

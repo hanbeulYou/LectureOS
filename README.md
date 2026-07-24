@@ -40,7 +40,9 @@ LectureOS는 긴 한국어 강의의 후반작업에서 생기는 반복 작업�
 - **검수(Review)** — edit review decision(accept/reject/modify)와 approved edit decision.
 - **편집 export(Edit Export)** — approved edit export representation → edit export assembly → edit export
   artifact → **LectureOS Edit Export JSON v1** 직렬화 → **로컬 파일 materialization**, 그리고 실행 가능한 CLI.
-- **실행 진입점** — edit-export CLI와 mock end-to-end 데모(미디어·네트워크 불필요).
+- **저장소 검증** — **읽기 전용** 무결성 검증(identity·참조·DomainResult lineage·edit-export 불변식)과
+  `lectureos.validate_cli`. 상위 워크플로 실행 전에 저장소 일관성을 확인합니다.
+- **실행 진입점** — edit-export CLI, 저장소 검증 CLI, mock end-to-end 데모(미디어·네트워크 불필요).
 
 ### 🚧 In Progress (진행 중)
 
@@ -132,6 +134,20 @@ PYTHONPATH=src python3 -m lectureos.edit_export_cli <ASSEMBLY_ID> \
 - 기본적으로 내용이 다른 기존 파일은 그대로 두며, `--overwrite`를 주면 원자적으로 교체합니다.
 
 전체 도움말과 예시는 `PYTHONPATH=src python3 -m lectureos.edit_export_cli --help`에서 볼 수 있습니다.
+
+## Repository Validation (저장소 검증)
+
+저장소가 내부적으로 일관적인지 **읽기 전용**으로 검증합니다(저장소를 수정하지 않습니다). identity, 참조,
+DomainResult lineage, edit-export 파이프라인 불변식을 확인합니다:
+
+```bash
+PYTHONPATH=src python3 -m lectureos.validate_cli --database lecture.db
+PYTHONPATH=src python3 -m lectureos.validate_cli --database lecture.db --format json
+```
+
+종료 코드는 machine-readable입니다 — `0` healthy, `1` errors, `2` warnings only. 검증 철학, 진단 형식, 진단 코드
+목록은 [`examples/repository-validation/`](examples/repository-validation/README.md)와
+`implementation/070_REPOSITORY_VALIDATION.md`를 참고하세요.
 
 ## Example Export (예제 export)
 

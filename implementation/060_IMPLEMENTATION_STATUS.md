@@ -1916,3 +1916,30 @@ CLI help/usage/error guidance (usability only; arguments unchanged). Refreshes `
 current MVP with an Implemented / In Progress / Planned breakdown, an implemented-pipeline architecture
 overview, quick start, CLI usage, example export, limitations, and roadmap; adds an MIT `LICENSE`; and ignores
 generated demo output. The complete 1682-test suite passes.
+
+## Repository Integrity Validation — Read-only Validator + CLI (tooling only)
+
+- Status: **COMPLETE**
+- Product/Blueprint impact: **none** — a read-only diagnostic subsystem asserting existing invariants; no new
+  product concept or contract, no schema change (`SQLITE_SCHEMA_VERSION` stays 29), no product semantics
+  changed.
+
+Adds a repository-wide, **read-only** integrity validation subsystem (`src/lectureos/validation/`) that verifies
+persisted repository state is internally consistent before higher-level workflows run. It opens the database
+with `PRAGMA query_only = ON`, issues only SELECT/PRAGMA, and never mutates state; it is independent of the
+application/business services (it consumes the persisted store) and is not coupled into export. It checks:
+schema version compatibility; foreign-key integrity (`PRAGMA foreign_key_check`); **dangling non-foreign-key
+references** (the many plain-TEXT references the schema does not enforce — review/candidate/DomainResult ids);
+DomainResult upstream lineage contiguity; the Edit Export Assembly invariants (non-empty, contiguous/unique
+membership, single-Source-Timeline/Media coherence, canonical member order); the edit-export provenance
+invariants (representation ↔ approved decision ↔ review decision kind and lineage consistency); and malformed
+identities. Diagnostics are structured (`code`, `severity`, `location`, `message`) and deterministic (sorted by
+`(code, location, message)`); a `ValidationReport` derives overall health (healthy/warnings/errors). A runnable
+CLI (`lectureos.validate_cli --database <path> [--format text|json]`) prints a summary and each diagnostic and
+returns machine-readable exit codes (`0` healthy, `1` errors, `2` warnings-only). Comprehensive tests cover a
+healthy repository, each corruption class (dangling reference, foreign-key orphan, empty assembly,
+non-contiguous ordinals, cross-timeline/cross-media member, kind mismatch, malformed identity, duplicate member
+on a tampered schema), multiple simultaneous failures, determinism, read-only behavior, non-repository and
+missing-database handling, CLI success/error/warning exit codes, and byte-for-byte golden reports
+(`examples/repository-validation/`). Documented in `implementation/070_REPOSITORY_VALIDATION.md` and the README.
+The complete 1713-test suite passes. No Blueprint PATCH is required (no product meaning changes).
