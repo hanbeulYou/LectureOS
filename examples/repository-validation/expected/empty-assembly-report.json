@@ -1,0 +1,16 @@
+{
+  "schema_version": 29,
+  "objects_checked": 61,
+  "health": "errors",
+  "error_count": 1,
+  "warning_count": 0,
+  "info_count": 0,
+  "diagnostics": [
+    {
+      "code": "ASSEMBLY_EMPTY",
+      "severity": "error",
+      "location": "edit_export_assemblies:acc-assembly",
+      "message": "assembly has no member representations"
+    }
+  ]
+}
