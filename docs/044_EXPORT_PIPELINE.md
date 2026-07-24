@@ -1,11 +1,11 @@
 # 044_EXPORT_PIPELINE
 
 - Status: Draft
-- Version: Blueprint 0.5
+- Version: Blueprint 0.6
 - Last Updated: 2026-07-24
 - Depends On: `000_MANIFESTO.md`, `001_PRODUCT.md`, `002_FAQ.md`, `003_VISION.md`, `004_PRINCIPLES.md`, `020_PRODUCT_REQUIREMENTS.md`, `021_SYSTEM_CONTEXT.md`, `030_DATA_MODEL.md`, `031_ARCHITECTURE.md`, `040_TRANSCRIPT_PIPELINE.md`, `041_SUBTITLE_PIPELINE.md`, `042_LECTURE_INTELLIGENCE_PIPELINE.md`, `043_REVIEW_PIPELINE.md`
 - Referenced By:
-- Amended By: `patches/PATCH-0007-physical-materialization.md`, `patches/PATCH-0008-delivery-deferral.md`, `patches/PATCH-0015-edit-pipeline-export-application-foundation.md`, `patches/PATCH-0016-edit-export-assembly-scope.md`
+- Amended By: `patches/PATCH-0007-physical-materialization.md`, `patches/PATCH-0008-delivery-deferral.md`, `patches/PATCH-0015-edit-pipeline-export-application-foundation.md`, `patches/PATCH-0016-edit-export-assembly-scope.md`, `patches/PATCH-0017-edit-export-artifact-representation.md`
 
 ## Purpose
 
@@ -656,6 +656,42 @@ v1에서 LectureOS는 다음을 소유하지 않는다: transport, download, upl
 **Deferred (이후 milestone, A-13):** membership 정책(all/selected/filtered), subset selection, partial-scope completeness UX, current approved-decision selection, supersession, stale 탐지, reconciliation, overlap 처리, 결정 간 ordering, cross-representation equivalence, Export Profile·Export Configuration, serializer, 구체적 export schema, 외부 파일 형식, provider adapter, NLE 연동, Artifact 생성, physical materialization, materialization path·filename·checksum 정책, delivery·download·upload·외부 URL, Export Package, retry·failure lifecycle, 실행 가능한 cut/delete/keep/edit 명령, output-timeline transformation, 표현이나 Assembly의 replacement·revision. 이들 deferred 개념을 위한 placeholder field·record·table·enum·protocol·interface·abstraction은 도입하지 않는다. 첫 구현 slice는 canonical 정책이 아니라 Goal 수준의 scope 경계로서 "그 timeline의 모든 현재 승인 편집" 경우만 실현할 수 있으며 user-selectable subsetting은 이후 additive 결정에 남긴다.
 
 **Canonical Invariants (Confirmed):** (1) Assembly는 정확히 하나의 Source Timeline에 anchor된다. (2) Assembly는 `ApprovedEditExportRepresentation`을 모으며 그 기록은 read-only다. (3) Assembly는 coherent Export Scope의 존재만 소유하고 scope-selection(membership) 정책은 소유하지 않는다. (4) aggregation은 serialization보다 앞서고 Assembly는 어떤 Artifact보다 upstream이다. (5) Assembly는 format-neutral이다: serializer·파일 형식·byte·외부 표현이 없다. (6) Assembly는 non-executable이다: 편집 명령·output-timeline transformation·NLE/rendering 명령이 없다. (7) Assembly는 새 승인 편집 의도를 만들지 않고 upstream을 변경·대체·재해석하지 않는다. (8) `ApprovedEditDecision`과 `ApprovedEditExportRepresentation`은 자기 의미에 대해 authoritative로 남고 Assembly는 coherent grouping에 대해서만 authoritative하다. (9) Assembly는 durable·immutable·insert-only·identity-owning·provenance-bearing·replay-safe다. (10) 구성은 deterministic하며 동일 입력은 동일 Assembly를 만든다. (11) Assembly Domain Result의 upstream은 구성한 표현들의 Domain Result이며(multi-upstream) SourceTimeline·SourceMedia까지 lineage를 보존한다. (12) cross-timeline·cross-media 집계는 없다. (13) status·lifecycle·state machine이 없다. (14) Export Profile·Configuration이 없다. (15) membership 정책(all/selected/filtered/current-selection/supersession)은 독립적으로 유보된다. (16) Artifact·serializer·materialization·delivery·Export Package는 downstream이며 여기서 정의하지 않는다. (17) deferred 개념은 placeholder를 도입하지 않는다.
+
+## 21. Edit-Pipeline Export Artifact — Canonical Approved Edit Decision Representation (First Slice)
+
+이 절은 `PATCH-0017`으로 승인된 Architect Decision(B-1…B-15)을 기록한다. **첫 Edit Export Artifact milestone**은 §20에서 확정된 durable `EditExportAssembly`(하나의 Source Timeline에 대한 승인 편집 표현들의 coherent Export Scope)를 소비하여, 그 Assembly의 **완전한 승인 편집 의미를 나타내는 하나의 canonical external Representation**을 만드는 것이다. 이 절은 §3.3·§7.2의 Artifact 개념을 canonical 수준에서 실현하며, aggregation은 serialization보다 앞선다(§8). 이 Artifact는 **external representation(외부 표현) 그 자체**이고, **concrete serialization syntax(구체적 직렬화 문법)는 전적으로 유보**된다 — 이 둘의 구분이 이 절의 핵심이다. 이 절은 제품·개념적 의미만 정의하며 serializer, 구체적 format/syntax, schema, storage, persistence, API, materialization을 정의하지 않는다. 완료된 §19, §20, 042 §9.1/§9.2, 043 §7.4 계약과 subtitle §17은 변경되지 않는다.
+
+**Existence and Anchor (Confirmed, B-1):** 하나의 Edit Export Artifact는 정확히 하나의 `EditExportAssembly`에서 파생되며 그 Assembly의 **완전한 승인 편집 의미**를 나타낸다. cross-Assembly Artifact는 존재하지 않는다.
+
+**Purpose — the External Representation Transition (Confirmed, B-2):** Artifact는 **internal canonical 기록에서 external derived representation으로의 제품 전환**을 도입하는 첫 단계다. `EditExportAssembly`는 member 표현들을 **참조**하는 internal canonical grouping 기록이다. Artifact는 그 grouping의 승인 의미를 하나의 self-contained external product로 **제시(present)**한다. 즉 Assembly는 "어떤 승인 편집들이 함께 속하는가"를 소유하고, Artifact는 "그 승인 편집 의미를 외부 consumer가 사용할 수 있는 하나의 표현으로 제시"한다. 이 제시(external representation) 자체가 Artifact 단계에서 처음 나타나는 새 제품 의미다.
+
+**Canonical External Representation (Confirmed, B-3):** Artifact는 승인 편집 의미의 **canonical external representation**이다. Assembly의 canonical 순서로 각 member에 대해 승인 Source Timeline range, 승인 label/type, 승인 rationale, 승인 decision kind, human actor를 **제시**하며 provenance·traceability를 유지한다. 이것은 **external representation(무엇을 전달하는가)**이며, 이를 구체 문자열/바이트로 만드는 **serialization syntax(어떻게 표기하는가)**와 구별된다. LectureOS는 정확히 하나의 canonical Product representation을 소유한다.
+
+**External Representation vs Concrete Syntax (Confirmed, B-4):** Artifact는 **무엇을 전달하는지(승인 편집 결정 의미)**를 확정하고 **어떤 구체 문법으로 표기하는지**는 확정하지 않는다. 구체적 human-readable/machine-readable 형식은 이후 serializer가 이 canonical representation을 **project**하여 additively 도입하며(§7.3, §19 D-14), canonical Artifact의 의미를 바꾸지 않는다. Artifact는 특정 format의 이름(EDL·FCPXML 등)이 아니라 승인 편집 결정의 canonical 표현이다.
+
+**Derived and Regenerable (Confirmed, B-5):** Artifact는 승인 원본에서 파생된 **derived·regenerable** 결과다(§3.3, §13). 보존된 승인 입력으로부터 재생성될 수 있고, 그 손실은 `ApprovedEditDecision`·`ApprovedEditExportRepresentation`·`EditExportAssembly` 또는 어떤 승인 기록도 손상시키지 않는다.
+
+**Non-authoritative (Confirmed, B-6):** Artifact는 어떤 canonical 사실에 대해서도 authoritative하지 않다. `ApprovedEditDecision`은 승인 편집 의도에, `ApprovedEditExportRepresentation`은 그 export 의미에, `EditExportAssembly`는 coherent grouping에 대해 authoritative로 남는다. Artifact는 새 승인 결정을 만들지 않고 승인 의미를 변경·재해석하지 않으며 upstream을 대체하지 않는다.
+
+**Descriptive, Non-executable (Confirmed, B-7):** Artifact는 승인된 편집 **결정**을 서술적으로 제시하며 실행 가능한 cut/keep/delete/transform 명령, output-timeline 좌표, NLE/rendering instruction을 포함하지 않는다. 외부 NLE가 편집을 실제로 어떻게 적용할지는 Export Pipeline이 결정하지 않는다(§7.2).
+
+**Upstream Relationship (Confirmed, B-8):** Artifact는 하나의 `EditExportAssembly`를 **read-only**로 소비하며 그것이나 그 member 표현들을 변경·재해석·재도출하지 않는다. aggregation은 serialization보다 앞서고 Artifact는 Assembly의 downstream이다.
+
+**Downstream Relationship (Confirmed, B-9):** serializer, 구체적 external format/syntax, Export Profile, Export Configuration, physical materialization, delivery, Export Package는 엄격히 downstream이며 이 절에서 정의하지 않는다. 향후 serializer는 이 canonical Artifact를 입력으로 삼아 구체 format으로 project하되 그 canonical 의미를 바꾸지 않는다.
+
+**Provenance and Traceability (Confirmed, B-10):** Artifact는 provenance-bearing이다. 자신을 파생시킨 `EditExportAssembly`, 그 member 표현들, 그리고 이를 통해 Source Timeline·Source Media까지 추적 가능해야 한다(§8). Artifact는 이전 단계 기록 전체를 복제하지 않으며 그 provenance를 유지한다.
+
+**Representation Failure (Confirmed, B-11):** Representation Failure는 승인 편집 의미를 canonical Artifact representation으로 **완전하고 충실하게** 나타낼 수 없는 상태다(§11.4). 표현 과정에서 승인 의미를 조용히 버리거나 다른 의미로 바꾸지 않으며, 완전·충실한 표현이 불가능하면 무엇을 표현할 수 없었는지 밝히는 **명시적 Export Failure**로 처리하고 승인 원본은 그대로 보존한다(§9, §3.10). 구체 syntax가 특정 의미를 표기할 수 있는지의 format-specific representability는 이후 serializer 단계의 문제로 유보되며, 거기서 §11.4가 "the selected representation"에 대해 적용된다.
+
+**Relationship to Assembly and Representation (Confirmed, B-12):** `ApprovedEditExportRepresentation`은 하나의 승인 편집의 export 의미 atom이고, `EditExportAssembly`는 하나의 timeline에 대한 그 atom들의 coherent grouping(참조)이며, `EditExportArtifact`는 그 grouping된 승인 의미의 derived external presentation이다. Artifact는 external representation 자체를 도입하며 Assembly의 재기술이 아니다. Assembly는 참조하고, Artifact는 제시한다.
+
+**Cardinality (Confirmed, B-13):** 하나의 Artifact는 정확히 하나의 Assembly의 완전한 승인 의미를 나타낸다. 같은 Assembly에 대해 여러 derived Artifact가 존재할 수 있으나(regenerable·non-authoritative, §7.3) 각 Artifact는 그 Assembly의 완전한 의미를 담는다.
+
+**Status and Lifecycle (Confirmed, B-14):** Artifact는 status 필드·lifecycle·state machine을 가지지 않는다. Export Profile 또는 Configuration을 가지지 않는다.
+
+**Deferred (이후 milestone, B-15):** serializer, 구체적 external representation syntax, export schema, 외부 파일 형식, human-readable/machine-readable/NLE 구체 projection, cross-representation equivalence(둘 이상의 구체 format이 생길 때만 필요), format-specific representability, Export Profile·Export Configuration, provider·NLE adapter, physical materialization, materialization path·filename·checksum 정책, delivery·download·upload·외부 URL, Export Package, 실행 가능한 cut/delete/keep/edit 명령, output-timeline transformation, rendering, retry·failure lifecycle, Artifact의 replacement·revision. 이들 deferred 개념을 위한 placeholder는 도입하지 않는다.
+
+**Canonical Invariants (Confirmed):** (1) 하나의 Artifact는 정확히 하나의 `EditExportAssembly`에서 파생된다. (2) upstream Assembly와 그 member 표현은 read-only다. (3) Artifact는 승인 편집 의미의 canonical external representation을 도입한다(제시). (4) external representation(무엇을)과 concrete serialization syntax(어떻게)는 구별되며 syntax는 유보된다. (5) LectureOS는 정확히 하나의 canonical Product representation을 소유하고 구체 format은 이후 serializer의 additive projection이다. (6) Artifact는 derived·regenerable이며 그 손실은 승인 원본을 손상시키지 않는다. (7) Artifact는 non-authoritative이며 승인 의미를 만들거나 변경·재해석하지 않는다. (8) Artifact는 descriptive이며 실행 가능한 편집·timeline transformation·NLE/rendering 의미가 없다. (9) Artifact는 provenance·traceability를 Assembly·member·SourceTimeline·SourceMedia까지 유지한다. (10) aggregation은 serialization보다 앞서고 Artifact는 Assembly의 downstream, 모든 serializer/format의 upstream이다. (11) Representation Failure는 완전·충실한 표현 불가를 뜻하며 조용한 손실 없이 명시적 실패로 드러난다. (12) status·lifecycle·Export Profile·Configuration이 없다. (13) 구체 format·serializer·materialization·delivery·Export Package는 downstream이며 여기서 정의하지 않는다. (14) deferred 개념은 placeholder를 도입하지 않는다.
 
 ## Related Documents
 
