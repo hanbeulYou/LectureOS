@@ -155,6 +155,16 @@ from .edit_export import (
     EditExportError,
     PreparedApprovedEditExport,
 )
+from .edit_export_assembly import (
+    EDIT_EXPORT_ASSEMBLY_RESULT_KIND,
+    ApprovedEditExportRepresentationQuery,
+    AtomicEditExportAssemblyPersistence,
+    EditExportAssembly,
+    EditExportAssemblyError,
+    EditExportAssemblyIdentityPlan,
+    EditExportAssemblyService,
+    PreparedEditExportAssembly,
+)
 from .edit_candidate_generation import (
     EDIT_CANDIDATE_TYPE_REGISTRY,
     EditCandidateGenerationError,
@@ -453,6 +463,14 @@ __all__ = [
     "AtomicApprovedEditExportPersistence",
     "EditExportError",
     "PreparedApprovedEditExport",
+    "EDIT_EXPORT_ASSEMBLY_RESULT_KIND",
+    "ApprovedEditExportRepresentationQuery",
+    "AtomicEditExportAssemblyPersistence",
+    "EditExportAssembly",
+    "EditExportAssemblyError",
+    "EditExportAssemblyIdentityPlan",
+    "EditExportAssemblyService",
+    "PreparedEditExportAssembly",
     "SUBTITLE_SRT_MATERIALIZATION_RESULT_KIND",
     "PreparedSubtitleSrtMaterialization",
     "SubtitleMaterializationState",

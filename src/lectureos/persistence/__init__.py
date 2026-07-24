@@ -82,6 +82,10 @@ from .edit_export import (
     SQLiteApprovedEditExportCommandPersistence,
     SQLiteApprovedEditExportRepresentationRepository,
 )
+from .edit_export_assembly import (
+    SQLiteEditExportAssemblyCommandPersistence,
+    SQLiteEditExportAssemblyRepository,
+)
 from .subtitle_final_subtitle import (
     SQLiteSubtitleFinalSubtitleCommandPersistence,
     SQLiteSubtitleFinalSubtitleRepository,
@@ -161,6 +165,8 @@ __all__ = [
     "SQLiteEditReviewDecisionRepository",
     "SQLiteApprovedEditExportCommandPersistence",
     "SQLiteApprovedEditExportRepresentationRepository",
+    "SQLiteEditExportAssemblyCommandPersistence",
+    "SQLiteEditExportAssemblyRepository",
     "SQLiteSubtitleFinalSubtitleCommandPersistence",
     "SQLiteSubtitleFinalSubtitleRepository",
     "SQLiteSubtitleReviewDecisionCommandPersistence",

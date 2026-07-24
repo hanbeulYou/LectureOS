@@ -1740,3 +1740,56 @@ deferred Artifact/profile/scope table or status/format/path column, restart reco
 replay. The complete 1592-test suite passes. Serializers, external/interchange formats, physical files,
 Artifacts, Export Profiles, current-selection, multi-decision export scope, and executable edit semantics
 remain later, separately-gated milestones and are out of scope.
+
+## Edit-Pipeline Export Assembly Application Foundation — First Slice (044 §20 Export Scope)
+
+- Blueprint: approved `docs/044_EXPORT_PIPELINE.md §20` / `patches/PATCH-0016`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema v29 (one aggregate table + one ordered-membership table)
+- Commit: `feat: establish edit export assembly foundation`
+- Immediate next milestone: 044 serializer / external format / Artifact for the edit pipeline — product-gated, deferred
+
+This milestone establishes the first **Edit-Pipeline Export Assembly Application Foundation**, implementing
+approved `044 §20` (PATCH-0016). From an **explicitly supplied, non-empty set** of existing durable
+`ApprovedEditExportRepresentation` records (044 §19), admitted **read-only** under a running unit execution,
+the `EditExportAssemblyService` deterministically records one immutable `EditExportAssembly`: a durable,
+canonical, **format-neutral** aggregate that establishes the existence of a **coherent Export Scope anchored to
+exactly one Source Timeline**. Aggregation precedes serialization; the Assembly is upstream of every future
+serializer/Artifact stage. The Assembly **owns** its identity, its Source Timeline anchor, a denormalized
+Source Media identity, an **immutable ordered membership snapshot** of one or more member representation
+identities, execution provenance, and multi-upstream DomainResult lineage; it **references** its members and
+**copies no approved edit meaning** (each `ApprovedEditExportRepresentation` remains authoritative for its own
+exported edit meaning). There is **no status field, no lifecycle, no Export Profile/Configuration, no
+serializer, no Artifact, no file**.
+
+The **membership-selection policy is intentionally not implemented** (§20 A-3): the caller explicitly supplies
+the intended member representation identities; the service validates and admits that explicit set (non-empty,
+unique, every member exists and is a canonical representation, every member belongs to the anchor Source
+Timeline, all members share one Source Media, no cross-timeline/cross-media admission) but never discovers,
+selects, filters, or decides which representations ought to belong. Membership is normalized to the repository's
+**stable canonical identity ordering** and persisted with that order — strictly a deterministic
+storage/replay normalization, **not** an edit-execution, overlap-resolution, or timeline-transformation order.
+
+Admission is **Application-owned**, running-execution-gated, read-only toward upstream, caller-owned-identity,
+deterministic (no wall-clock/randomness) → replay-safe, and **atomic**: the Assembly, its ordered membership
+rows, and its DomainResult (with one direct upstream per member, in canonical order — the repository's first
+**multi-upstream** aggregate lineage) are inserted in one `BEGIN IMMEDIATE` transaction with identity-absence
+checks and a linkage validator; any collision or error rolls back the whole admission (no orphan Assembly,
+membership, or DomainResult). Reordered equivalent caller input normalizes to the same canonical Assembly, and
+replaying the same identities + payload into a fresh database reconstructs an equal Assembly. The AGENTS.md
+Architect Checklist is entirely `No`: no existing Domain contract change, no released-schema meaning change, no
+lifecycle authority change (representations consumed read-only), no responsibility shift, one new additive
+identity (`EditExportAssemblyId`), one additive migration, and no Blueprint contradiction; §19 and the v1..v28
+records are unchanged. Additive schema **v29** adds one insert-only aggregate table (`edit_export_assemblies`)
+and one ordered-membership table (`edit_export_assembly_members`) enforcing per-parent ordinal uniqueness,
+per-parent member uniqueness, and FK integrity to both the parent Assembly and the source representation;
+migration compatibility from every released version (v1..v28) to v29 is verified, and unsupported downgrade/
+direct-skip migrations remain rejected. Focused domain, service, atomic/replay, migration, and in-process
+acceptance tests confirm canonical ordering, the running-execution gate, missing/duplicate/cross-timeline/
+cross-media/mismatched-anchor rejection, deterministic construction and replay, multi-upstream lineage,
+atomic rollback, membership FK enforcement, restart reconstruction, an unmutated member set, and the absence of
+any serializer/Artifact/materialization table or status/format/scope-selection column. The complete 1629-test
+suite passes. Serializer, external/interchange format, Artifact creation, physical materialization, delivery,
+Export Package, Export Profile/Configuration, membership/scope-selection policy, subset selection,
+current-selection, supersession, reconciliation, and executable edit semantics remain later, separately-gated
+milestones and are out of scope.

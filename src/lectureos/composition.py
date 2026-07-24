@@ -35,6 +35,9 @@ from lectureos.application.edit_review import (
 from lectureos.application.edit_export import (
     ApprovedEditExportService,
 )
+from lectureos.application.edit_export_assembly import (
+    EditExportAssemblyService,
+)
 from lectureos.application.edit_candidate_generation import (
     EditCandidateGenerationPort,
     EditCandidateGenerationService,
@@ -107,6 +110,8 @@ from lectureos.persistence import (
     SQLiteApprovedEditDecisionRepository,
     SQLiteEditReviewDecisionRepository,
     SQLiteApprovedEditExportCommandPersistence,
+    SQLiteApprovedEditExportRepresentationRepository,
+    SQLiteEditExportAssemblyCommandPersistence,
     SQLiteSubtitleReadingCommandPersistence,
     SQLiteSubtitleDecisionRevisionCommandPersistence,
     SQLiteSubtitleDecisionRevisionRepository,
@@ -395,6 +400,17 @@ def compose_sqlite_edit_export_service(
     return ApprovedEditExportService(
         approved, reviews, candidates, execution_query, persistence
     )
+
+
+def compose_sqlite_edit_export_assembly_service(
+    connection: sqlite3.Connection,
+    execution_query: ExecutionQueryBoundary,
+) -> EditExportAssemblyService:
+    """Build the durable v29 Edit-Pipeline Export Assembly Application Foundation on one caller connection."""
+
+    representations = SQLiteApprovedEditExportRepresentationRepository(connection)
+    persistence = SQLiteEditExportAssemblyCommandPersistence(connection)
+    return EditExportAssemblyService(representations, execution_query, persistence)
 
 
 DEFAULT_EDIT_CANDIDATE_CONTEXT_WINDOW_SECONDS = 15.0
