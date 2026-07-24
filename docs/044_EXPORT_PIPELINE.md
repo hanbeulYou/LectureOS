@@ -1,11 +1,11 @@
 # 044_EXPORT_PIPELINE
 
 - Status: Draft
-- Version: Blueprint 0.6
+- Version: Blueprint 0.7
 - Last Updated: 2026-07-24
 - Depends On: `000_MANIFESTO.md`, `001_PRODUCT.md`, `002_FAQ.md`, `003_VISION.md`, `004_PRINCIPLES.md`, `020_PRODUCT_REQUIREMENTS.md`, `021_SYSTEM_CONTEXT.md`, `030_DATA_MODEL.md`, `031_ARCHITECTURE.md`, `040_TRANSCRIPT_PIPELINE.md`, `041_SUBTITLE_PIPELINE.md`, `042_LECTURE_INTELLIGENCE_PIPELINE.md`, `043_REVIEW_PIPELINE.md`
 - Referenced By:
-- Amended By: `patches/PATCH-0007-physical-materialization.md`, `patches/PATCH-0008-delivery-deferral.md`, `patches/PATCH-0015-edit-pipeline-export-application-foundation.md`, `patches/PATCH-0016-edit-export-assembly-scope.md`, `patches/PATCH-0017-edit-export-artifact-representation.md`
+- Amended By: `patches/PATCH-0007-physical-materialization.md`, `patches/PATCH-0008-delivery-deferral.md`, `patches/PATCH-0015-edit-pipeline-export-application-foundation.md`, `patches/PATCH-0016-edit-export-assembly-scope.md`, `patches/PATCH-0017-edit-export-artifact-representation.md`, `patches/PATCH-0018-edit-export-json-serialization-and-local-materialization.md`
 
 ## Purpose
 
@@ -692,6 +692,40 @@ v1에서 LectureOS는 다음을 소유하지 않는다: transport, download, upl
 **Deferred (이후 milestone, B-15):** serializer, 구체적 external representation syntax, export schema, 외부 파일 형식, human-readable/machine-readable/NLE 구체 projection, cross-representation equivalence(둘 이상의 구체 format이 생길 때만 필요), format-specific representability, Export Profile·Export Configuration, provider·NLE adapter, physical materialization, materialization path·filename·checksum 정책, delivery·download·upload·외부 URL, Export Package, 실행 가능한 cut/delete/keep/edit 명령, output-timeline transformation, rendering, retry·failure lifecycle, Artifact의 replacement·revision. 이들 deferred 개념을 위한 placeholder는 도입하지 않는다.
 
 **Canonical Invariants (Confirmed):** (1) 하나의 Artifact는 정확히 하나의 `EditExportAssembly`에서 파생된다. (2) upstream Assembly와 그 member 표현은 read-only다. (3) Artifact는 승인 편집 의미의 canonical external representation을 도입한다(제시). (4) external representation(무엇을)과 concrete serialization syntax(어떻게)는 구별되며 syntax는 유보된다. (5) LectureOS는 정확히 하나의 canonical Product representation을 소유하고 구체 format은 이후 serializer의 additive projection이다. (6) Artifact는 derived·regenerable이며 그 손실은 승인 원본을 손상시키지 않는다. (7) Artifact는 non-authoritative이며 승인 의미를 만들거나 변경·재해석하지 않는다. (8) Artifact는 descriptive이며 실행 가능한 편집·timeline transformation·NLE/rendering 의미가 없다. (9) Artifact는 provenance·traceability를 Assembly·member·SourceTimeline·SourceMedia까지 유지한다. (10) aggregation은 serialization보다 앞서고 Artifact는 Assembly의 downstream, 모든 serializer/format의 upstream이다. (11) Representation Failure는 완전·충실한 표현 불가를 뜻하며 조용한 손실 없이 명시적 실패로 드러난다. (12) status·lifecycle·Export Profile·Configuration이 없다. (13) 구체 format·serializer·materialization·delivery·Export Package는 downstream이며 여기서 정의하지 않는다. (14) deferred 개념은 placeholder를 도입하지 않는다.
+
+## 22. Edit-Pipeline Export — First Concrete Serialization and Local Materialization (LectureOS Edit Export JSON v1)
+
+이 절은 `PATCH-0018`으로 승인된 Architect/Product 결정(C-1…C-14)을 기록한다. **첫 runnable Edit Export slice**는 §21의 canonical `EditExportArtifact`를 하나의 **구체 format**으로 serialize하고, 그 결과를 하나의 **로컬 물리 파일**로 materialize하여, 사용자가 실제로 실행해 외부에서 열어볼 수 있는 첫 export 파일을 만드는 것이다. 이 절은 §19 D-14가 예고한 "future serializer가 자신의 format/version 계약을 additively 도입한다"의 첫 실현이며, §21의 Artifact 의미를 바꾸지 않고 그 위에 **projection**으로만 추가된다. serializer·materializer는 §21 Artifact의 non-authoritative projection이고 승인 원본을 변경하지 않는다. 이 절은 하나의 구체 format만 정의하며 다중 format, serializer registry, cross-format equivalence, Export Profile/Configuration, provider/NLE adapter, delivery/upload/URL, executable 편집 의미를 정의하지 않는다.
+
+**Selected First Format (Confirmed, C-1):** 첫 구체 format은 **LectureOS-native JSON**이다. format identifier는 `lectureos-edit-export-json`, format version은 `v1`, format 식별자(media type 상당)는 `application/vnd.lectureos.edit-export+json`이다. 이는 NLE interchange format(EDL·FCPXML·AAF·OTIO 등)이 **아니다**. 근거: 현재 `EditExportArtifact`가 담는 의미는 서술적 승인 편집 결정(승인 range·label/type·rationale·decision kind·actor)이며 실행 가능한 timeline operation이 아니다. NLE format으로 project하려면 없는 timeline/executable semantics(record timecode, reel, track, frame rate 등)를 발명하거나 rationale·decision kind·actor·label 같은 비-timeline 의미를 조용히 버려야 하므로 완전·충실 표현이 불가능하다. LectureOS-native JSON은 Artifact의 모든 필드를 손실 없이·결정적으로·검사 가능하게 표현하는 최소 충실 format이다.
+
+**Complete Faithful Field Mapping (Confirmed, C-2):** serialize된 문서는 §21 Artifact의 완전한 의미를 담는다. 최상위: format identifier, format version, artifact identity, source assembly identity, source media identity, source timeline identity, 그리고 canonical member 순서의 edit 목록. 각 edit entry: source representation identity, decision kind(`accept`|`modify`), 승인 range start, 승인 range end, 승인 Candidate Type/label, 승인 rationale, human actor. 어떤 승인 필드도 생략·절단·정규화 제거·재해석·발명하지 않는다.
+
+**Ordering (Confirmed, C-3):** edit entry의 순서는 §20/§21에서 확정된 canonical member 순서(stable identity 순서)를 그대로 보존한다. serializer는 순서를 재정렬하지 않으며 이는 저장/재현 순서이지 편집 실행·timeline·overlap 순서가 아니다.
+
+**Deterministic Serialization (Confirmed, C-4):** 동일한 Product 의미의 Artifact는 항상 byte-동일한 직렬화를 만든다. 필드 순서는 고정되고, wall-clock·locale·randomness를 읽지 않으며, 숫자·문자열은 결정적으로 표기된다. encoding은 UTF-8, 개행은 LF(`\n`), 문서 끝에 정확히 하나의 개행을 둔다. 비-ASCII(예: 한국어) 문자는 escape 없이 그대로 보존한다.
+
+**Format-specific Representation Failure (Confirmed, C-5):** 승인 의미를 선택된 format으로 완전·충실하게 표현할 수 없으면(예: JSON이 표현할 수 없는 non-finite 수치) serializer는 조용히 버리거나 유효하지 않은 문서를 만들지 않고 **명시적 실패**를 낸다(§11.4를 "the selected representation"에 대해 적용). 승인 원본은 그대로 보존된다.
+
+**Local Physical Materialization (Confirmed, C-6):** materializer는 직렬화된 bytes를 caller가 지정한 로컬 destination 경로에 하나의 완전한 물리 파일로 쓴다. destination 선택 책임은 caller에게 있다. 쓰기는 temporary 파일에 완전히 기록·flush·fsync한 뒤 원자적으로 최종 경로에 배치하는 방식으로 수행하여, 실패 시 최종 경로에 부분 파일이 남지 않게 한다.
+
+**Collision and Overwrite (Confirmed, C-7):** 최종 경로에 이미 동일 bytes의 정규 파일이 있으면 idempotent 성공으로 처리한다. 다른 bytes의 정규 파일이 있으면 기본적으로 **명시적 collision 실패**로 처리하고 덮어쓰지 않는다. 덮어쓰기는 입력 계약이 명시적으로 허용할 때만(overwrite 요청) 원자적으로 수행한다. symlink나 정규 파일이 아닌 기존 객체는 덮어쓰지 않고 실패로 처리한다. 필요한 상위 디렉터리는 계약이 허용하는 범위에서 생성할 수 있다.
+
+**Successful Result Contract (Confirmed, C-8):** 성공 시 구조화된 결과로 최종 파일 경로, format identifier, format version, 실현된 byte 길이, encoding을 반환한다. 성공은 완전한 파일이 최종 경로에 durably 배치된 뒤에만 보고된다.
+
+**Non-executable and Descriptive (Confirmed, C-9):** 직렬화 문서는 서술적이며 실행 가능한 cut/keep/delete/transform 명령, output-timeline 좌표, NLE/rendering instruction을 포함하지 않는다. range는 승인된 Source Timeline range이며 output-timeline 좌표가 아니다.
+
+**Authority and Provenance (Confirmed, C-10):** serializer와 materializer는 §21 Artifact의 non-authoritative projection이다. 어떤 승인 결정도 만들거나 변경·재해석하지 않고, `ApprovedEditDecision`·`ApprovedEditExportRepresentation`·`EditExportAssembly`를 authoritative로 남긴다. 직렬화 문서는 자신이 표현한 Artifact·Assembly와 그 provenance(Source Timeline·Source Media)를 담아 추적 가능하게 한다. 어떤 실패에서도 승인 upstream 데이터는 보존된다.
+
+**Regenerability (Confirmed, C-11):** 직렬화 결과는 파생·재생성 가능하다. 동일한 valid upstream 상태에서 다시 만들면 동일한 Product 의미와 byte-동일한 문서를 만든다. 직렬화 결과나 materialize된 파일은 authoritative canonical 기록이 아니며 그 손실은 승인 원본을 손상시키지 않는다.
+
+**Persistence Boundary (Confirmed, C-12):** 이 slice는 파생 Artifact나 직렬화 결과를 데이터베이스에 durably 저장하지 않는다. 새 table·schema·migration을 도입하지 않으며 `SQLITE_SCHEMA_VERSION`을 바꾸지 않는다. 직렬화·materialization은 필요 시 로컬 파일시스템에만 side-effect를 가진다.
+
+**Runnable Entry Point (Confirmed, C-13):** 이 slice는 기존 저장소 관례(application entry point)를 통해 실제 실행 가능해야 한다: 하나의 유효한 `EditExportAssembly`를 식별하고, 그 Artifact를 파생하고, 선택된 format으로 serialize하고, 로컬 파일로 materialize하고, 최종 경로와 format/version을 보고하며, 실패 시 오탐 성공이나 최종 파일을 남기지 않고 명시적 실패를 반환한다.
+
+**Deferred (이후 milestone, C-14):** 다른 구체 format(EDL·FCPXML·AAF·OTIO·CSV 등), 다중 format, serializer registry·plugin discovery, cross-format equivalence, Export Profile·Export Configuration, provider·NLE adapter, executable cut/delete/keep/edit 명령, source media에의 편집 적용, output-timeline transformation, rendering, 원격 upload·download·URL·object storage·delivery lifecycle, retry lifecycle, 직렬화 결과나 파일의 replacement·revision·history, 파생 Artifact/직렬화 결과의 DB 저장, 일반화된 package/bundle export, checksum 정책(안전 materialization에 불필요). 이들 deferred 개념을 위한 placeholder는 도입하지 않는다.
+
+**Canonical Invariants (Confirmed):** (1) 첫 구체 format은 `lectureos-edit-export-json` `v1`이며 NLE interchange format이 아니다. (2) 직렬화는 §21 Artifact의 완전한 승인 의미를 손실 없이 담는다. (3) edit 순서는 canonical member 순서를 보존하며 실행/timeline 순서가 아니다. (4) 직렬화는 결정적이다(UTF-8·LF·고정 필드 순서·비-ASCII 보존). (5) 표현 불가 값은 조용한 손실 없이 명시적 실패로 처리한다. (6) materialization은 원자적이며 실패 시 최종 부분 파일을 남기지 않는다. (7) 기본은 덮어쓰기 금지이고 collision은 명시적 실패이며 덮어쓰기는 명시 요청 시에만 수행한다. (8) 성공은 완전 파일이 durably 배치된 뒤에만 보고되고 최종 경로·format·version·byte 길이·encoding을 담는다. (9) 직렬화 문서는 서술적이며 실행 가능한 편집·timeline·NLE 의미가 없다. (10) serializer·materializer는 non-authoritative projection이며 승인 원본을 보존한다. (11) 결과는 파생·재생성 가능하며 동일 upstream에서 byte-동일하다. (12) 이 slice는 DB 저장·schema·migration을 도입하지 않고 `SQLITE_SCHEMA_VERSION`을 바꾸지 않는다. (13) 실제 실행 가능한 entry point가 존재하고 실패 시 명시적으로 실패한다. (14) deferred 개념은 placeholder를 도입하지 않는다.
 
 ## Related Documents
 
