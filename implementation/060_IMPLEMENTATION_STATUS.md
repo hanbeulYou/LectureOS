@@ -1900,3 +1900,19 @@ suite passes. Additional concrete formats (EDL/FCPXML/AAF/OTIO/CSV/…), multipl
 cross-format equivalence, Export Profile/Configuration, provider/NLE adapters, remote delivery/upload/URLs,
 executable edit semantics, output-timeline transformation, DB persistence of the derived Artifact or serialized
 output, and package/bundle export remain later, separately-gated milestones and are out of scope.
+
+## Developer Preview — Mock Workflow, Golden Example, and Docs (tooling only)
+
+- Status: **COMPLETE**
+- Product/Blueprint impact: **none** — developer experience only; no new capability, no schema change
+  (`SQLITE_SCHEMA_VERSION` stays 29), no product semantics changed.
+
+Adds a runnable mock end-to-end demo (`lectureos.edit_export_demo`) that drives the full pipeline — fake
+transcript → analysis + human review → approved decisions → representations → Assembly → Artifact → LectureOS
+Edit Export JSON → local file — with no real media, model, or network, producing a byte-deterministic export.
+Adds a worked example under `examples/edit-export/` with a golden output (`expected/edit-export.json`) and a
+regression test (`tests/test_edit_export_demo.py`) that reproduces it byte-for-byte. Improves the edit-export
+CLI help/usage/error guidance (usability only; arguments unchanged). Refreshes `README.md` (Korean) to the
+current MVP with an Implemented / In Progress / Planned breakdown, an implemented-pipeline architecture
+overview, quick start, CLI usage, example export, limitations, and roadmap; adds an MIT `LICENSE`; and ignores
+generated demo output. The complete 1682-test suite passes.

@@ -2,3 +2,7 @@
 # Local Python virtualenvs
 .venv/
 venv/
+
+# Generated demo / example export output (regenerable; not committed)
+/out/
+examples/*/out/
