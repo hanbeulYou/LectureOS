@@ -1,0 +1,37 @@
+{
+  "format": "lectureos-edit-export-json",
+  "version": "v1",
+  "artifact_id": "edit-export-demo",
+  "source_assembly_id": "edit-export-demo-assembly",
+  "source_media_id": "int-media",
+  "source_timeline_id": "int-timeline",
+  "edits": [
+    {
+      "source_representation_id": "export-accept",
+      "decision_kind": "accept",
+      "approved_range_start": 0.5,
+      "approved_range_end": 1.5,
+      "approved_candidate_type": "non_lecture_region",
+      "approved_rationale": "propose review of a non-lecture region",
+      "actor": "reviewer:alice"
+    },
+    {
+      "source_representation_id": "export-accept-2",
+      "decision_kind": "accept",
+      "approved_range_start": 0.5,
+      "approved_range_end": 1.5,
+      "approved_candidate_type": "non_lecture_region",
+      "approved_rationale": "propose review of a non-lecture region",
+      "actor": "reviewer:alice"
+    },
+    {
+      "source_representation_id": "export-modify",
+      "decision_kind": "modify",
+      "approved_range_start": 0.75,
+      "approved_range_end": 1.25,
+      "approved_candidate_type": "condense_repetition",
+      "approved_rationale": "approved: condense the repeated explanation",
+      "actor": "reviewer:alice"
+    }
+  ]
+}
