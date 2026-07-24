@@ -1,11 +1,11 @@
 # 044_EXPORT_PIPELINE
 
 - Status: Draft
-- Version: Blueprint 0.4
+- Version: Blueprint 0.5
 - Last Updated: 2026-07-24
 - Depends On: `000_MANIFESTO.md`, `001_PRODUCT.md`, `002_FAQ.md`, `003_VISION.md`, `004_PRINCIPLES.md`, `020_PRODUCT_REQUIREMENTS.md`, `021_SYSTEM_CONTEXT.md`, `030_DATA_MODEL.md`, `031_ARCHITECTURE.md`, `040_TRANSCRIPT_PIPELINE.md`, `041_SUBTITLE_PIPELINE.md`, `042_LECTURE_INTELLIGENCE_PIPELINE.md`, `043_REVIEW_PIPELINE.md`
 - Referenced By:
-- Amended By: `patches/PATCH-0007-physical-materialization.md`, `patches/PATCH-0008-delivery-deferral.md`, `patches/PATCH-0015-edit-pipeline-export-application-foundation.md`
+- Amended By: `patches/PATCH-0007-physical-materialization.md`, `patches/PATCH-0008-delivery-deferral.md`, `patches/PATCH-0015-edit-pipeline-export-application-foundation.md`, `patches/PATCH-0016-edit-export-assembly-scope.md`
 
 ## Purpose
 
@@ -624,6 +624,38 @@ v1에서 LectureOS는 다음을 소유하지 않는다: transport, download, upl
 **Deferred (이후 milestone, D-15):** 다중 결정 Export Scope, export request aggregate, current approved-decision selection, all-current export, supersession, stale 탐지, reconciliation, overlap 처리, 결정 간 ordering, partial-scope completeness UX, cross-representation equivalence, Export Profile persistence, user-selectable/destination configuration, 구체적 export schema, 외부 파일 형식, serializer, provider adapter, NLE 연동, 실행 가능한 cut/delete/keep/edit 명령, output-timeline transformation, 외부 편집 round trip, rendering, Artifact 생성, physical file materialization, materialization path·filename·checksum 정책, delivery·download·upload·외부 URL, retry·failure lifecycle, 표현의 replacement·revision. 이들 deferred 개념을 위한 placeholder field·record·table·enum·protocol·interface·abstraction은 도입하지 않는다.
 
 **Canonical Invariants (Confirmed):** (1) 하나의 표현은 정확히 하나의 Approved Edit Decision에 anchor된다. (2) Approved Edit Decision만 유효한 입력이다. (3) Reject는 표현을 만들지 않는다. (4) upstream 기록은 read-only다. (5) 표현은 durable·immutable·insert-only·identity-owning·provenance-bearing·replay-safe다. (6) 표현은 완전한 exported-meaning snapshot을 소유한다. (7) Approved Edit Decision이 승인 의도에 대해 authoritative로 남는다. (8) 표현은 export 의미에 대해서만 authoritative다. (9) 실행 가능한 편집 semantics가 없다. (10) serialized format이 없다. (11) Artifact나 물리 파일이 없다. (12) Export Profile이 없다. (13) status나 lifecycle이 없다. (14) admission은 running-execution-gated이며 Application이 소유한다. (15) identity는 caller-owned다. (16) 구성은 결정적이다. (17) persistence는 atomic·all-or-nothing이다. (18) 직접 Domain Result upstream은 Approved Edit Decision Domain Result다. (19) Source Media·Source Timeline·execution provenance는 추적 가능하게 유지된다. (20) deferred 개념은 placeholder를 도입하지 않는다.
+
+## 20. Edit-Pipeline Export Assembly — Approved Edit Export Scope (First Slice)
+
+이 절은 `PATCH-0016`으로 승인된 Architect Decision(A-1…A-13)을 기록한다. **첫 Edit Export Assembly milestone**은 §19에서 확정된 durable `ApprovedEditExportRepresentation`(하나의 `ApprovedEditDecision`에 대한 export 의미의 atom)을 소비하여, 하나의 Source Timeline에 속한 승인 편집 표현들을 **하나의 coherent한 canonical Export Scope**로 모으는 것이다. 이 절은 §3.7 Export Scope를 Edit Pipeline에서 canonical 단계로 승격하며, aggregation은 serialization보다 앞선다(§8: 승인 결과 → Scope → Artifact). 구조적 선례는 subtitle의 `ApprovedDocument`(승인 subtitle 단위를 하나의 format-neutral 문서로 모으는 단계)이다. 이 절은 제품·Application 계약(개념적 의미)만 정의하며 schema, storage, repository, serializer, 파일 형식, Artifact, materialization, API를 정의하지 않는다. 완료된 §19, 042 §9.1/§9.2, 043 §7.4 계약과 subtitle §17은 변경되지 않는다.
+
+**Existence and Anchor (Confirmed, A-1):** Edit Export Assembly는 정확히 하나의 Source Timeline에 anchor된 coherent Export Scope의 **존재**를 canonical하게 확립한다. Assembly는 그 Source Timeline에 속한 `ApprovedEditExportRepresentation` 기록들을 하나의 coherent한 export 단위로 모은다. cross-timeline·cross-media 집계는 존재하지 않는다.
+
+**Purpose (Confirmed, A-2):** 외부 편집 결과물은 본질적으로 timeline 범위의 여러 승인 편집으로 구성된다. 하나의 `ApprovedEditExportRepresentation`은 building block이며 그 자체로 외부 deliverable이 아니다. Assembly는 어떤 형식 결정보다 먼저 "함께 속한 승인 편집 집합의 coherence와 존재"를 first-class·provenance-bearing 제품 사실로 만든다. §8의 provenance 모델은 Scope를 승인 결과와 Artifact 사이에 둔다.
+
+**Ownership Boundary (Confirmed, A-3):** Assembly는 **coherent Export Scope의 존재만** 소유한다. Assembly는 scope-selection(membership) 정책을 소유하지 않는다. 즉 하나의 Assembly가 그 timeline의 모든 현재 승인 편집을 나타내는지, 명시적으로 선택된 일부를 나타내는지는 이 절이 고정하지 않는다(§3.7의 all-or-subset 이중성; §15.3의 완전성 질문). membership 정책은 독립적이고 여전히 열린 제품 결정으로 유보된다.
+
+**Upstream Relationship (Confirmed, A-4):** Assembly는 `ApprovedEditExportRepresentation` 기록을 **read-only**로 소비한다. 이를 변경·대체·재해석·재도출하지 않으며 새 승인 편집 의도를 만들지 않는다. `ApprovedEditDecision`은 승인 편집 의도에 대해, `ApprovedEditExportRepresentation`은 그 export 의미에 대해 authoritative로 남는다. Assembly는 오직 coherent grouping에 대해서만 authoritative하다.
+
+**Downstream Relationship (Confirmed, A-5):** serializer·Artifact·physical materialization·delivery·Export Package는 엄격히 downstream이며 이 절에서 정의하지 않는다. Assembly는 format-neutral하며 serialized·외부 표현을 만들지 않는다. 향후 serializer는 Assembly를 입력으로 소비하고 자신의 format/version 계약을 additively 도입하되 Assembly의 의미를 바꾸지 않는다.
+
+**Semantics (Confirmed, A-6):** Assembly는 structured·canonical·format-neutral·provider/NLE-independent·non-executable이다. serialization·파일 형식·byte payload·delete/cut/keep/edit/transformation 명령·output-timeline 좌표·NLE/rendering 명령을 포함하지 않는다.
+
+**Coherence (Confirmed, A-7):** coherence의 기준은 하나의 Source Timeline이다. Assembly는 그 timeline의 승인 편집 표현들로 구성되며 서로 다른 timeline이나 media를 섞지 않는다.
+
+**Determinism and Replay (Confirmed, A-8):** Assembly의 구성은 deterministic·replay-safe이다. 동일한 입력은 동일한 Assembly를 만든다. wall-clock·random을 읽지 않으며, 보존된 입력으로부터 동일한 의미의 Assembly를 재구성할 수 있다.
+
+**Lineage and Provenance (Confirmed, A-9):** Assembly는 provenance-bearing이다. 그 Domain Result는 구성한 `ApprovedEditExportRepresentation`들의 Domain Result를 upstream으로 가진다(multi-upstream). canonical lineage는 `Edit Export Assembly → ApprovedEditExportRepresentation(집합) → ApprovedEditDecision → EditReviewDecision → EditCandidate → AnalysisFinding → EligibleAnalysisInput → corrected transcript/source lineage → SourceTimeline → SourceMedia`다. Assembly는 기존 durable-stage 관례대로 Source Timeline·execution provenance를 denormalize하고 이전 단계 기록 전체를 복제하지 않는다.
+
+**Relationship to ApprovedEditExportRepresentation (Confirmed, A-10):** 표현은 export 의미의 atom(하나의 `ApprovedEditDecision`당 하나)이고 Assembly는 하나의 timeline에 대한 그 atom들의 coherent 집합이다. Assembly는 표현을 **참조**하며 그들의 owned snapshot을 새 authority로 복사·재기술하지 않는다.
+
+**Relationship to Future Artifact (Confirmed, A-11):** Assembly는 향후 serializer/Artifact가 소비할 입력이다. aggregation은 serialization보다 앞선다. Artifact·materialization은 별도의 이후 milestone이며 이 절은 그 형식·존재를 정의하지 않는다.
+
+**Status and Lifecycle (Confirmed, A-12):** Assembly는 status 필드·lifecycle·state machine을 가지지 않는다. Export Profile 또는 Configuration 기록을 가지지 않는다.
+
+**Deferred (이후 milestone, A-13):** membership 정책(all/selected/filtered), subset selection, partial-scope completeness UX, current approved-decision selection, supersession, stale 탐지, reconciliation, overlap 처리, 결정 간 ordering, cross-representation equivalence, Export Profile·Export Configuration, serializer, 구체적 export schema, 외부 파일 형식, provider adapter, NLE 연동, Artifact 생성, physical materialization, materialization path·filename·checksum 정책, delivery·download·upload·외부 URL, Export Package, retry·failure lifecycle, 실행 가능한 cut/delete/keep/edit 명령, output-timeline transformation, 표현이나 Assembly의 replacement·revision. 이들 deferred 개념을 위한 placeholder field·record·table·enum·protocol·interface·abstraction은 도입하지 않는다. 첫 구현 slice는 canonical 정책이 아니라 Goal 수준의 scope 경계로서 "그 timeline의 모든 현재 승인 편집" 경우만 실현할 수 있으며 user-selectable subsetting은 이후 additive 결정에 남긴다.
+
+**Canonical Invariants (Confirmed):** (1) Assembly는 정확히 하나의 Source Timeline에 anchor된다. (2) Assembly는 `ApprovedEditExportRepresentation`을 모으며 그 기록은 read-only다. (3) Assembly는 coherent Export Scope의 존재만 소유하고 scope-selection(membership) 정책은 소유하지 않는다. (4) aggregation은 serialization보다 앞서고 Assembly는 어떤 Artifact보다 upstream이다. (5) Assembly는 format-neutral이다: serializer·파일 형식·byte·외부 표현이 없다. (6) Assembly는 non-executable이다: 편집 명령·output-timeline transformation·NLE/rendering 명령이 없다. (7) Assembly는 새 승인 편집 의도를 만들지 않고 upstream을 변경·대체·재해석하지 않는다. (8) `ApprovedEditDecision`과 `ApprovedEditExportRepresentation`은 자기 의미에 대해 authoritative로 남고 Assembly는 coherent grouping에 대해서만 authoritative하다. (9) Assembly는 durable·immutable·insert-only·identity-owning·provenance-bearing·replay-safe다. (10) 구성은 deterministic하며 동일 입력은 동일 Assembly를 만든다. (11) Assembly Domain Result의 upstream은 구성한 표현들의 Domain Result이며(multi-upstream) SourceTimeline·SourceMedia까지 lineage를 보존한다. (12) cross-timeline·cross-media 집계는 없다. (13) status·lifecycle·state machine이 없다. (14) Export Profile·Configuration이 없다. (15) membership 정책(all/selected/filtered/current-selection/supersession)은 독립적으로 유보된다. (16) Artifact·serializer·materialization·delivery·Export Package는 downstream이며 여기서 정의하지 않는다. (17) deferred 개념은 placeholder를 도입하지 않는다.
 
 ## Related Documents
 
