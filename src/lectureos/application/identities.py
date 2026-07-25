@@ -168,3 +168,8 @@ class EditExportAssemblyId(OpaqueIdentity):
 @dataclass(frozen=True, slots=True)
 class EditExportArtifactId(OpaqueIdentity):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class TranscriptSourceIntakeId(OpaqueIdentity):
+    pass

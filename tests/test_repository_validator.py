@@ -75,7 +75,7 @@ class RepositoryValidatorTests(unittest.TestCase):
         self.assertTrue(report.ok)
         self.assertEqual(report.error_count, 0)
         self.assertEqual(report.warning_count, 0)
-        self.assertEqual(report.schema_version, 30)
+        self.assertEqual(report.schema_version, 31)
         self.assertGreater(report.objects_checked, 0)
 
     def test_validator_does_not_mutate_the_database(self) -> None:
@@ -404,6 +404,102 @@ class SourceMediaValidationTests(unittest.TestCase):
             lambda c: c.execute("UPDATE source_media SET identity = '  '"),
         )
         self.assertIn("MALFORMED_IDENTITY", self._codes(broken))
+
+
+class TranscriptSourceIntakeValidationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        from lectureos.composition import (
+            compose_sqlite_media_import_service,
+            compose_sqlite_transcript_source_intake_service,
+        )
+
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.base = Path(self.tempdir.name)
+        self.healthy = self.base / "intake.db"
+        connection = initialize_sqlite_database(self.healthy)
+        source = self.base / "sample.bin"
+        source.write_bytes(b"intake-validation-sample \x00\x01")
+        media = compose_sqlite_media_import_service(connection).import_media(str(source))
+        self.media_id = media.record.identity.value
+        compose_sqlite_transcript_source_intake_service(connection).admit(self.media_id)
+        connection.close()
+
+    def tearDown(self) -> None:
+        self.tempdir.cleanup()
+
+    def _corrupt(self, name: str, mutate) -> Path:
+        target = self.base / name
+        shutil.copyfile(self.healthy, target)
+        connection = sqlite3.connect(target)
+        try:
+            connection.execute("PRAGMA foreign_keys = OFF")
+            connection.execute("BEGIN")
+            mutate(connection)
+            connection.execute("COMMIT")
+        finally:
+            connection.close()
+        return target
+
+    def _codes(self, database: Path) -> set[str]:
+        return {d.code for d in validate_database(str(database)).diagnostics}
+
+    def test_healthy_intake_repository_is_clean(self) -> None:
+        report = validate_database(str(self.healthy))
+        self.assertTrue(report.ok)
+        self.assertEqual(report.health, RepositoryHealth.HEALTHY)
+
+    def test_identity_disagreement_detected(self) -> None:
+        broken = self._corrupt(
+            "disagree.db",
+            lambda c: c.execute(
+                "UPDATE transcript_source_intakes SET identity = 'transcript-source-intake:wrong'"
+            ),
+        )
+        self.assertIn("TRANSCRIPT_INTAKE_IDENTITY_DISAGREEMENT", self._codes(broken))
+
+    def test_dangling_source_media_detected(self) -> None:
+        broken = self._corrupt(
+            "dangling.db",
+            lambda c: c.execute(
+                "UPDATE transcript_source_intakes SET source_media_id = 'sha256:' || ("
+                "SELECT substr(hex(randomblob(32)), 1, 64))"
+            ),
+        )
+        # The FK check and the intake dangling check both surface a broken reference.
+        codes = self._codes(broken)
+        self.assertTrue(
+            "TRANSCRIPT_INTAKE_DANGLING_SOURCE_MEDIA" in codes
+            or "FOREIGN_KEY_VIOLATION" in codes
+        )
+
+    def test_blank_intake_identity_detected(self) -> None:
+        broken = self._corrupt(
+            "blank.db",
+            lambda c: c.execute("UPDATE transcript_source_intakes SET identity = '  '"),
+        )
+        self.assertIn("MALFORMED_IDENTITY", self._codes(broken))
+
+    def test_duplicate_intake_detected_on_tampered_schema(self) -> None:
+        # The real schema forbids two intakes per media via UNIQUE(source_media_id); exercise the check on a
+        # minimal tampered schema where that constraint is absent.
+        path = self.base / "dup.db"
+        connection = sqlite3.connect(path)
+        try:
+            connection.executescript(
+                """
+                CREATE TABLE schema_metadata (singleton INTEGER PRIMARY KEY, version INTEGER NOT NULL);
+                INSERT INTO schema_metadata VALUES (1, 31);
+                CREATE TABLE transcript_source_intakes (identity TEXT PRIMARY KEY, source_media_id TEXT);
+                INSERT INTO transcript_source_intakes
+                    VALUES ('transcript-source-intake:sha256:m', 'sha256:m');
+                INSERT INTO transcript_source_intakes
+                    VALUES ('transcript-source-intake:sha256:m2', 'sha256:m');
+                """
+            )
+            connection.commit()
+        finally:
+            connection.close()
+        self.assertIn("TRANSCRIPT_INTAKE_DUPLICATE", self._codes(path))
 
 
 if __name__ == "__main__":

@@ -17,7 +17,7 @@ V30_TABLES = {"source_media"}
 
 _ADDITION_BLOCKS = tuple(
     (level, getattr(sqlite_lifecycle, f"_V{level}_ADDITION_STATEMENTS"))
-    for level in range(2, 30)
+    for level in range(2, 31)
 )
 
 
@@ -56,8 +56,9 @@ class SQLiteSchemaVersionThirtyTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
 
-    def test_schema_version_is_thirty(self) -> None:
-        self.assertEqual(SQLITE_SCHEMA_VERSION, 30)
+    def test_v30_remains_a_supported_version(self) -> None:
+        self.assertIn(30, sqlite_lifecycle._SUPPORTED_SCHEMA_VERSIONS)
+        self.assertLessEqual(30, SQLITE_SCHEMA_VERSION)
 
     def test_fresh_database_initializes_with_v30_tables(self) -> None:
         connection = initialize_sqlite_database(self.database_path)
@@ -65,7 +66,7 @@ class SQLiteSchemaVersionThirtyTests(unittest.TestCase):
             self.assertTrue(V30_TABLES.issubset(table_names(connection)))
             self.assertEqual(
                 connection.execute("SELECT version FROM schema_metadata").fetchone()[0],
-                30,
+                SQLITE_SCHEMA_VERSION,
             )
         finally:
             connection.close()
@@ -84,7 +85,8 @@ class SQLiteSchemaVersionThirtyTests(unittest.TestCase):
             connection.close()
 
     def test_v30_no_op_migration_is_allowed(self) -> None:
-        initialize_sqlite_database(self.database_path).close()
+        create_legacy_database(self.database_path, 29)
+        migrate_sqlite_database(self.database_path, 30)
         migrate_sqlite_database(self.database_path, 30)
         connection = open_sqlite_database(self.database_path)
         try:
@@ -103,7 +105,7 @@ class SQLiteSchemaVersionThirtyTests(unittest.TestCase):
     def test_unsupported_target_is_rejected(self) -> None:
         initialize_sqlite_database(self.database_path).close()
         with self.assertRaises(PersistenceError):
-            migrate_sqlite_database(self.database_path, 31)
+            migrate_sqlite_database(self.database_path, 32)
 
     def test_repository_rejects_pre_v30_schema(self) -> None:
         create_legacy_database(self.database_path, 29)

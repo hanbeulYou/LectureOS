@@ -202,6 +202,17 @@ from .media_import import (
     SourceMediaRecord,
     derive_media_identity,
 )
+from .transcript_source_intake import (
+    TRANSCRIPT_SOURCE_INTAKE_IDENTITY_PREFIX,
+    AtomicTranscriptSourceIntakePersistence,
+    TranscriptSourceIntake,
+    TranscriptSourceIntakeError,
+    TranscriptSourceIntakeQuery,
+    TranscriptSourceIntakeResult,
+    TranscriptSourceIntakeService,
+    derive_intake_identity,
+    require_canonical_source_media_id,
+)
 from .edit_candidate_generation import (
     EDIT_CANDIDATE_TYPE_REGISTRY,
     EditCandidateGenerationError,
@@ -537,6 +548,15 @@ __all__ = [
     "SourceMediaQuery",
     "SourceMediaRecord",
     "derive_media_identity",
+    "TRANSCRIPT_SOURCE_INTAKE_IDENTITY_PREFIX",
+    "AtomicTranscriptSourceIntakePersistence",
+    "TranscriptSourceIntake",
+    "TranscriptSourceIntakeError",
+    "TranscriptSourceIntakeQuery",
+    "TranscriptSourceIntakeResult",
+    "TranscriptSourceIntakeService",
+    "derive_intake_identity",
+    "require_canonical_source_media_id",
     "SUBTITLE_SRT_MATERIALIZATION_RESULT_KIND",
     "PreparedSubtitleSrtMaterialization",
     "SubtitleMaterializationState",

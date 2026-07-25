@@ -1,0 +1,7 @@
+{
+  "distinct_intakes": 2,
+  "sample_a_intake_id": "transcript-source-intake:sha256:7be6a9582ff6c7bd4e66c052dc634a38b88909402f2fb330d663000d7f2079a5",
+  "sample_a_media_id": "sha256:7be6a9582ff6c7bd4e66c052dc634a38b88909402f2fb330d663000d7f2079a5",
+  "sample_b_intake_id": "transcript-source-intake:sha256:65740056cdc3306d005f972ff6e1a404ac2eeb23248e4732c6c5e60f5144b051",
+  "sample_b_media_id": "sha256:65740056cdc3306d005f972ff6e1a404ac2eeb23248e4732c6c5e60f5144b051"
+}

@@ -57,6 +57,7 @@ _INSPECTED_TABLES = (
     "edit_export_assemblies",
     "edit_export_assembly_members",
     "source_media",
+    "transcript_source_intakes",
 )
 _IDENTITY_TABLES = (
     "domain_result_references",
@@ -66,6 +67,7 @@ _IDENTITY_TABLES = (
     "approved_edit_export_representations",
     "edit_export_assemblies",
     "source_media",
+    "transcript_source_intakes",
 )
 _APPROVING_KINDS = ("accept", "modify")
 
@@ -437,6 +439,70 @@ def _check_source_media(connection: sqlite3.Connection) -> list[Diagnostic]:
     return diagnostics
 
 
+def _check_transcript_source_intake(connection: sqlite3.Connection) -> list[Diagnostic]:
+    if not _table_exists(connection, "transcript_source_intakes"):
+        return []
+    diagnostics: list[Diagnostic] = []
+
+    # A dangling source_media reference (also enforced by the foreign key, checked here for defense in depth).
+    if _table_exists(connection, "source_media"):
+        for (identity,) in connection.execute(
+            """
+            SELECT t.identity
+            FROM transcript_source_intakes t
+            LEFT JOIN source_media m ON t.source_media_id = m.identity
+            WHERE m.identity IS NULL
+            ORDER BY t.identity
+            """
+        ).fetchall():
+            diagnostics.append(
+                Diagnostic(
+                    code="TRANSCRIPT_INTAKE_DANGLING_SOURCE_MEDIA",
+                    severity=Severity.ERROR,
+                    location=f"transcript_source_intakes:{identity}",
+                    message="intake references a missing source_media record",
+                )
+            )
+
+    # Identity must be derived from the confirmed Source Media (identity = 'transcript-source-intake:<id>').
+    for (identity,) in connection.execute(
+        """
+        SELECT identity
+        FROM transcript_source_intakes
+        WHERE identity <> 'transcript-source-intake:' || source_media_id
+        ORDER BY identity
+        """
+    ).fetchall():
+        diagnostics.append(
+            Diagnostic(
+                code="TRANSCRIPT_INTAKE_IDENTITY_DISAGREEMENT",
+                severity=Severity.ERROR,
+                location=f"transcript_source_intakes:{identity}",
+                message="intake identity is not derived from its Source Media reference",
+            )
+        )
+
+    # Canonical uniqueness: at most one transcript intake per Source Media.
+    for source_media_id, count in connection.execute(
+        """
+        SELECT source_media_id, COUNT(*) AS c
+        FROM transcript_source_intakes
+        GROUP BY source_media_id
+        HAVING c > 1
+        ORDER BY source_media_id
+        """
+    ).fetchall():
+        diagnostics.append(
+            Diagnostic(
+                code="TRANSCRIPT_INTAKE_DUPLICATE",
+                severity=Severity.ERROR,
+                location=f"transcript_source_intakes:{source_media_id}",
+                message=f"source media is admitted by {count} transcript intakes",
+            )
+        )
+    return diagnostics
+
+
 def _check_malformed_identities(connection: sqlite3.Connection) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
     for table in _IDENTITY_TABLES:
@@ -504,6 +570,7 @@ def validate_repository(connection: sqlite3.Connection) -> ValidationReport:
     diagnostics += _check_representation_provenance(connection)
     diagnostics += _check_approved_decision_provenance(connection)
     diagnostics += _check_source_media(connection)
+    diagnostics += _check_transcript_source_intake(connection)
     diagnostics += _check_malformed_identities(connection)
 
     return build_report(

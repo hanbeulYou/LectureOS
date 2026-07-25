@@ -90,6 +90,10 @@ from .source_media import (
     SQLiteSourceMediaCommandPersistence,
     SQLiteSourceMediaRepository,
 )
+from .transcript_source_intake import (
+    SQLiteTranscriptSourceIntakeCommandPersistence,
+    SQLiteTranscriptSourceIntakeRepository,
+)
 from .subtitle_final_subtitle import (
     SQLiteSubtitleFinalSubtitleCommandPersistence,
     SQLiteSubtitleFinalSubtitleRepository,
@@ -173,6 +177,8 @@ __all__ = [
     "SQLiteEditExportAssemblyRepository",
     "SQLiteSourceMediaCommandPersistence",
     "SQLiteSourceMediaRepository",
+    "SQLiteTranscriptSourceIntakeCommandPersistence",
+    "SQLiteTranscriptSourceIntakeRepository",
     "SQLiteSubtitleFinalSubtitleCommandPersistence",
     "SQLiteSubtitleFinalSubtitleRepository",
     "SQLiteSubtitleReviewDecisionCommandPersistence",

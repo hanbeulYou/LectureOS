@@ -45,6 +45,9 @@ from lectureos.application.edit_export_materialization import (
     EditExportMaterializationService,
 )
 from lectureos.application.media_import import MediaImportService
+from lectureos.application.transcript_source_intake import (
+    TranscriptSourceIntakeService,
+)
 from lectureos.application.edit_candidate_generation import (
     EditCandidateGenerationPort,
     EditCandidateGenerationService,
@@ -122,6 +125,8 @@ from lectureos.persistence import (
     SQLiteEditExportAssemblyRepository,
     SQLiteSourceMediaCommandPersistence,
     SQLiteSourceMediaRepository,
+    SQLiteTranscriptSourceIntakeCommandPersistence,
+    SQLiteTranscriptSourceIntakeRepository,
     SQLiteSubtitleReadingCommandPersistence,
     SQLiteSubtitleDecisionRevisionCommandPersistence,
     SQLiteSubtitleDecisionRevisionRepository,
@@ -467,6 +472,21 @@ def compose_sqlite_media_import_service(
     repository = SQLiteSourceMediaRepository(connection)
     persistence = SQLiteSourceMediaCommandPersistence(connection)
     return MediaImportService(LocalSourceMediaInspector(), repository, persistence)
+
+
+def compose_sqlite_transcript_source_intake_service(
+    connection: sqlite3.Connection,
+) -> TranscriptSourceIntakeService:
+    """Build the v31 Source Intake Application Foundation on one caller connection (040 §13).
+
+    Resolves an existing persisted Source Media record read-only and records a deterministic, content-derived
+    transcript intake confirming eligibility. It reads no filesystem and performs no decoding or transcription.
+    """
+
+    source_media = SQLiteSourceMediaRepository(connection)
+    intakes = SQLiteTranscriptSourceIntakeRepository(connection)
+    persistence = SQLiteTranscriptSourceIntakeCommandPersistence(connection)
+    return TranscriptSourceIntakeService(source_media, intakes, persistence)
 
 
 DEFAULT_EDIT_CANDIDATE_CONTEXT_WINDOW_SECONDS = 15.0

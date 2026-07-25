@@ -83,7 +83,7 @@ def run_repository_validation_acceptance() -> dict:
             and healthy_report.ok
             and healthy_report.error_count == 0
             and healthy_report.warning_count == 0
-            and healthy_report.schema_version == 30
+            and healthy_report.schema_version == 31
             and healthy_report.objects_checked > 0
         )
 
