@@ -29,7 +29,10 @@ LectureOS는 긴 한국어 강의의 후반작업에서 생기는 반복 작업�
 ### ✅ Implemented (구현 완료 · 테스트됨)
 
 - **실행 · lineage** — 처리 실행(run), 유닛 실행, `DomainResult` provenance를 SQLite에 durable하게 저장(스키마
-  **v29**, 이전 모든 버전에서 additive 단일 단계 마이그레이션).
+  **v30**, 이전 모든 버전에서 additive 단일 단계 마이그레이션).
+- **미디어 임포트(Media Import)** — 로컬 파일을 **content-addressed** canonical Source Media 기록으로 등록
+  (스트리밍 SHA-256 → `sha256:<digest>`, 경로는 identity가 아님, 동일 내용 idempotent). 파일 identity와
+  provenance만 기록하며 디코딩·transcode·probe·재생·transcription은 하지 않습니다. `lectureos.media_import_cli`.
 - **인식문 파이프라인** — 원본 인식문 + provider 결과, 교정 생성·적용, 검수 준비, 사람의 검수 결정, applicability,
   current selection, ready state.
 - **자막 파이프라인** — 인테이크, 후보 생성, reading/time 표현, 구조 검증, 검수 준비, 사람의 검수 결정, 결정 적용,
@@ -40,9 +43,9 @@ LectureOS는 긴 한국어 강의의 후반작업에서 생기는 반복 작업�
 - **검수(Review)** — edit review decision(accept/reject/modify)와 approved edit decision.
 - **편집 export(Edit Export)** — approved edit export representation → edit export assembly → edit export
   artifact → **LectureOS Edit Export JSON v1** 직렬화 → **로컬 파일 materialization**, 그리고 실행 가능한 CLI.
-- **저장소 검증** — **읽기 전용** 무결성 검증(identity·참조·DomainResult lineage·edit-export 불변식)과
+- **저장소 검증** — **읽기 전용** 무결성 검증(identity·참조·DomainResult lineage·edit-export·media 불변식)과
   `lectureos.validate_cli`. 상위 워크플로 실행 전에 저장소 일관성을 확인합니다.
-- **실행 진입점** — edit-export CLI, 저장소 검증 CLI, mock end-to-end 데모(미디어·네트워크 불필요).
+- **실행 진입점** — 미디어 임포트 CLI, edit-export CLI, 저장소 검증 CLI, mock end-to-end 데모(미디어·네트워크 불필요).
 
 ### 🚧 In Progress (진행 중)
 
@@ -135,6 +138,24 @@ PYTHONPATH=src python3 -m lectureos.edit_export_cli <ASSEMBLY_ID> \
 
 전체 도움말과 예시는 `PYTHONPATH=src python3 -m lectureos.edit_export_cli --help`에서 볼 수 있습니다.
 
+## Media Import (미디어 임포트)
+
+로컬 파일을 **content-addressed** canonical Source Media 기록으로 임포트합니다(데이터베이스가 없으면 생성):
+
+```bash
+PYTHONPATH=src python3 -m lectureos.media_import_cli <SOURCE_PATH> --database /path/to/lectureos.sqlite3
+```
+
+- Media identity는 파일 **내용**의 스트리밍 SHA-256에서 파생됩니다(`sha256:<digest>`). **경로·파일명·확장자는
+  identity가 아닙니다.**
+- 동일 내용 재import는 idempotent(`reused`), 다른 내용은 새 기록(`created`)입니다.
+- 파일 identity와 provenance만 기록하며, 디코딩·transcode·probe·재생·transcription은 하지 않고 원본을 변경하지
+  않습니다. 성공 시 종료 코드 `0`, 오류 시 `1`(DB·원본 불변).
+- import 이후 원본이 이동·삭제되어도 기록은 유지됩니다(물리 가용성에 authoritative하지 않음).
+
+동작 예제는 [`examples/media-import/`](examples/media-import/README.md), 계약은
+`docs/045_MEDIA_IMPORT_PIPELINE.md`와 `implementation/080_MEDIA_IMPORT.md`를 참고하세요.
+
 ## Repository Validation (저장소 검증)
 
 저장소가 내부적으로 일관적인지 **읽기 전용**으로 검증합니다(저장소를 수정하지 않습니다). identity, 참조,
@@ -182,18 +203,19 @@ golden 출력이 포함됩니다. export된 JSON은 서술적입니다 — 실�
 LectureOS/
 ├── src/lectureos/
 │   ├── application/        # 순수 domain + application 서비스(모델·불변식·오케스트레이션)
-│   ├── persistence/        # insert-only SQLite 저장소 + additive 스키마(v29)
+│   ├── persistence/        # insert-only SQLite 저장소 + additive 스키마(v30)
 │   ├── infrastructure/     # 로컬 파일시스템 writer(temp-file + 원자적 배치)
 │   ├── execution/          # 처리 실행, 유닛 실행, DomainResult lineage
 │   ├── providers/          # 선택적 provider 어댑터(예: OpenAI) — MVP에는 불필요
 │   ├── composition.py      # composition root: 구체 어댑터를 서비스에 결선
+│   ├── media_import_cli.py # 로컬 미디어 임포트 CLI
 │   ├── edit_export_cli.py  # 실행 가능한 Edit Export CLI
 │   ├── edit_export_demo.py # 실행 가능한 mock end-to-end 데모(미디어·네트워크 불필요)
 │   └── *_acceptance.py     # 인프로세스 end-to-end 인수 실행기
 ├── tests/                  # unittest 스위트(1600개 이상)
 ├── examples/edit-export/   # 동작 예제 + golden 출력
 ├── docs/                   # 릴리스된 Blueprint(제품 의미) + docs/README.md
-├── patches/                # Blueprint 변경 기록(PATCH-0001 … PATCH-0018)
+├── patches/                # Blueprint 변경 기록(PATCH-0001 … PATCH-0019)
 └── implementation/         # 구현 워크플로·저장 모델·현황
 ```
 
@@ -217,8 +239,8 @@ LectureOS/
 
 ## Development Status (개발 상태)
 
-- **Blueprint:** **PATCH-0018**까지 안정(`docs/`, `patches/`).
-- **구현:** edit-export MVP 완료; SQLite 스키마 **v29**; 전체 스위트 green(1600개 이상).
+- **Blueprint:** **PATCH-0019**까지 안정(`docs/`, `patches/`).
+- **구현:** edit-export MVP 완료; SQLite 스키마 **v30**; 전체 스위트 green(1700개 이상).
 - **거버넌스:** Blueprint 우선 — 제품 의미를 바꾸려면 PATCH를 먼저 쓰고 나서 구현합니다.
   `AGENTS.md`와 `implementation/050_IMPLEMENTATION_WORKFLOW.md` 참고.
 

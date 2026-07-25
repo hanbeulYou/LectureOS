@@ -1943,3 +1943,46 @@ on a tampered schema), multiple simultaneous failures, determinism, read-only be
 missing-database handling, CLI success/error/warning exit codes, and byte-for-byte golden reports
 (`examples/repository-validation/`). Documented in `implementation/070_REPOSITORY_VALIDATION.md` and the README.
 The complete 1713-test suite passes. No Blueprint PATCH is required (no product meaning changes).
+
+## Media Import Application Foundation — First Slice (045 §1 Local Source Media Registration)
+
+- Blueprint: approved `docs/045_MEDIA_IMPORT_PIPELINE.md §1` / `patches/PATCH-0019`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema **v30** (one insert-only table `source_media`)
+- Commit: `feat: establish media import application foundation`
+- Immediate next milestone: audio extraction / ffprobe for the imported Source Media — product-gated, deferred
+
+This milestone establishes the first **Media Import Application Foundation** (045 §1 / PATCH-0019) — the pipeline
+origin and the first owner of `SourceMediaId`, which every downstream stage had only referenced. From one
+caller-selected local file, inspected read-only, `MediaImportService` registers a canonical
+`SourceMediaRecord`. **Media identity is content-addressed**: it is derived from a streaming SHA-256 fingerprint
+of the file bytes (`sha256:<hexdigest>`), so it is independent of path/filename/extension and idempotent for
+identical content by construction; the domain enforces the derivation (`identity == "<algorithm>:<digest>"`).
+The `LocalSourceMediaInspector` streams the file in fixed 1 MiB chunks (never loading it whole into memory),
+rejects missing/directory/non-regular/unreadable/empty(0-byte) sources with an explicit `MediaImportError`,
+accepts a symlink only when it resolves to a readable regular file, and records the resolved absolute observed
+path. The original file is **referenced in place** (no copy/move/delete); the record stores the fingerprint,
+byte length (> 0), and observed path as immutable provenance, and carries **no execution provenance, status,
+duration, or codec**.
+
+Import is idempotent: re-importing identical content resolves and returns the existing record (`created=False`);
+the same content under a different path converges on the same identity (the recorded path stays the first
+import's); changed content at the same path is a different identity and a new record (insert-only coexistence);
+a near-concurrent duplicate converges to the existing record on a persistence collision. Persistence is durable,
+immutable, insert-only, and atomic (`BEGIN IMMEDIATE` with identity + `UNIQUE(fingerprint_algorithm,
+fingerprint_digest)` uniqueness and rollback leaving no partial row). LectureOS is **not authoritative for the
+file's continued physical availability** (settling `030 §5.1`'s Requires-Validation boundary); a moved/deleted
+original does not change the record and validation never checks physical existence. The AGENTS.md Architect
+Checklist is entirely `No`: no existing contract change, no responsibility shift, `SourceMediaId` reused (no new
+identity type), one additive migration, and no Blueprint contradiction; 040–044 and the v1..v29 records are
+unchanged. Additive schema **v30** adds the insert-only `source_media` table; every released version (v1..v29)
+chains single-step to v30 preserving rows, and downgrade/direct-skip/unsupported-target migrations are rejected.
+Read-only repository validation gains `source_media` checks (malformed fingerprint, identity/fingerprint
+disagreement, duplicate fingerprint) without checking physical existence. A runnable CLI
+(`lectureos.media_import_cli <source-path> --database <db>`, bootstrapping the DB if new) reports the canonical
+identity, fingerprint, byte length, and created/reused status, exits 0/1, and leaves the DB and source unchanged
+on failure. A deterministic no-real-video demo (`lectureos.media_import_demo`) with committed binary fixtures
+and a golden summary, plus focused domain, inspector (filesystem safety, streaming determinism, non-ASCII,
+symlink/empty/missing/directory/unreadable), atomic persistence, CLI, migration, and validation tests, cover the
+slice. The complete 1766-test suite passes. Audio extraction, ffprobe/duration/codec, transcoding, remote/
+managed storage, and transcription remain later, separately-gated milestones and are out of scope.
