@@ -21,6 +21,7 @@
   - `043` Review Pipeline
 - Amended By:
   - `../patches/PATCH-0020-source-media-transcription-intake-eligibility.md`
+  - `../patches/PATCH-0021-external-asr-boundary-provider-transcript-admission.md`
 
 ## Purpose
 
@@ -469,6 +470,96 @@ persist된다. (8) 동일 Source Media 반복 admission은 idempotent(기존 기
 canonical intake 기록을 가진다. (10) intake는 `SourceMediaId` provenance를 보존한다. (11) intake는 transcript 내용·
 실행 결과를 만들지 않는다. (12) 실패는 부분 상태를 남기지 않고 Source Media 기록을 변경하지 않는다. (13) 기존
 Transcript·execution 계약이 우선한다. (14) deferred 개념은 placeholder를 도입하지 않는다.
+
+## 14. External ASR Boundary Application Foundation — Provider Transcript Result Admission (First Slice)
+
+이 절은 `PATCH-0021`로 승인된 Architect/Product 결정(A-1…A-15)을 기록한다. **첫 External ASR Boundary
+milestone**은 §4.2 External ASR Boundary와 §4.3 Raw Transcript Preservation의 첫 application 실현이다. 이 slice는
+이미 admit된 하나의 `TranscriptSourceIntake`(§13, PATCH-0020)와 외부에서 생성된 결정적 provider ASR 결과
+문서를 받아, provider 증거를 보존하는 `ProviderTranscriptResult`와 그로부터 파생되는 정확히 하나의 canonical
+`RawTranscript`(및 `TranscriptSegment`들)를 만든다. 이 slice는 오직 한 가지 질문에 답한다: "이미 admit된 이 Source
+Media intake에 대해 외부에서 생성된 ASR 결과를 어떻게 admit하는가?" — 어떻게 media를 디코딩·audio 추출·provider
+선택·설치·모델 다운로드·job 스케줄하는지에는 답하지 않는다. **실제 ASR 엔진을 실행하지 않는다.**
+
+**Scope (Confirmed, A-1):** provider 결과는 외부 실행 boundary가 만든 **검증되지 않은 외부 증거**다(§4.2와 일관).
+이 slice는 ffmpeg·ffprobe·media 디코딩·audio 추출·codec/duration/stream 검사·Whisper 등 ASR 엔진·network·model
+다운로드·provider 설치·registry를 도입하지 않으며, 이들 deferred 개념의 placeholder도 만들지 않는다. 입력은 provider가
+공급한 결과 문서이지 media 파일이 아니다.
+
+**Input (Confirmed, A-2):** 입력은 (1) canonical `TranscriptSourceIntakeId`와 (2) provider-neutral(LectureOS-native)
+ASR 결과 문서다. 문서는 provider 참조, 선택적 model, 선택적 declared language, 외부 provider-result 참조,
+그리고 순서가 있는 segment 배열(각 segment는 `start`, `end`, `text`)을 담는다. media 경로는 받지 않는다.
+
+**External Execution Provenance (Confirmed, A-3):** External ASR Boundary는 **외부** 실행의 결과를 admit한다. 이
+slice는 내부 `ProcessingRun`/`UnitExecution`을 만들지 않고 RUNNING unit execution을 요구하지도 않는다(외부 boundary에
+내부 실행 의미를 강요하지 않는다). 대신 admission은 **외부 실행 provenance**를 담는다: 호출자가 안정적인 외부
+provider-result 참조를 공급하고, LectureOS는 그로부터 결정적으로 `ProcessingRunId`/`UnitExecutionId`/`DomainResultId`
+provenance 마커를 파생한다. 이들은 기존 record의 provenance TEXT 참조이며(내부 실행 row를 강제하는 cross-table
+foreign key가 없다), raw transcript의 canonical `DomainResultReference`는 평소와 같이 생성·persist된다.
+
+**Provider Evidence Preservation (Confirmed, A-4):** `ProviderTranscriptResult`는 제출된 provider 증거(provider 참조,
+model, declared language, 외부 result 참조, 전체 순서 segment payload)를 canonical하게 직렬화한 `original_content`로
+보존하며 **정규화 이전 상태**로 저장한다(`normalized = 0`, 기존 model/schema가 강제). 제출된 provider 증거를 조용히
+버리지 않는다.
+
+**Distinct Canonical Transcript (Confirmed, A-5):** canonical `RawTranscript`는 자신의 `TranscriptId`를 가진 **별도**
+record다. provider 결과는 `provider_transcript_result_id` provenance로 참조되며 Transcript의 identity가 되지 않는다
+(§4.2 "provider 결과에서 분리된 내부 conceptual identity"). provider payload를 canonical transcript identity와
+동일시하지 않는다.
+
+**Deterministic Identity (Confirmed, A-6):** 모든 LectureOS identity는 안정적 anchor
+`(intake_id, provider, model, provider_result_ref)`를 SHA-256으로 해시하여 결정적으로 파생된다:
+`ProviderTranscriptResult` 하나, 그로부터 정확히 하나의 canonical `RawTranscript`(1:1 projection), 제출 segment마다
+하나의 `TranscriptSegment`(ordinal = 제출 순서), 그리고 intake→provider 결과→raw transcript를 잇는 하나의
+**Provider Transcript Admission** record. 어떤 semantic identity에도 wall-clock 시간이나 randomness가 관여하지 않는다.
+
+**Multiple Provider Results per Intake (Confirmed, A-7):** 하나의 intake는 여러 provider 결과를 받을 수 있다(서로
+다른 provider/model/execution은 서로 다른 anchor를 만든다). 이는 reprocessing(§10.1 "새 ASR 결과는 새 Raw Transcript
+provenance와 연결")과 일관된다. 다만 하나의 provider 결과는 정확히 하나의 canonical Raw Transcript만 만든다.
+
+**Idempotency (Confirmed, A-8):** admission은 **내용 기준으로 idempotent**하다. Provider Transcript Admission은 전체
+canonical admission payload(모든 segment의 timing과 정확한 text 포함)에 대한 SHA-256 `content_fingerprint`를 저장한다.
+동일한 논리적 결과(같은 anchor, 동일 payload)의 재admission은 기존 record를 resolve하여 반환한다(`created = false`).
+
+**Conflict (Confirmed, A-9):** **같은 anchor에 다른 payload**를 admit하면 **conflict**이며 변경 없이 거부된다.
+LectureOS는 admit된 provider 결과나 raw transcript를 조용히 덮어쓰지 않는다(§2 Raw Before Corrected; §10.1 "기존 Raw
+Transcript를 덮어쓰지 않는다").
+
+**Timing Semantics (Confirmed, A-10):** segment는 `start`·`end`를 **초(seconds)** 단위 finite 값으로 가지며
+`start >= 0`, `end > start`(zero-length span 거부)이고 Source Media에서 파생된 결정적 source timeline
+(`source-timeline:<source_media_id>`)에 정렬된다. segment는 `start` 비내림차순으로 제출되어야 하고 겹치지 않아야 한다
+(`segment[i].end <= segment[i+1].start`; 경계가 맞닿는 것은 허용).
+
+**Text Semantics (Confirmed, A-11):** segment text는 필수이며 공백만으로 이루어질 수 없고 제출된 그대로 **정확히
+보존**된다(trim·정규화·재배치 없음). 비ASCII/한국어 text는 그대로 보존된다.
+
+**Empty Result Policy (Confirmed, A-12):** segment가 0개인 **빈** provider 결과는 거부된다 — 빈 raw transcript는 ASR
+실패를 숨긴다(§9.6 "실패를 빈 텍스트… 정상 교정으로 해석하지 않는다").
+
+**Failure Atomicity (Confirmed, A-13):** 어떤 실패(malformed intake identity·unknown intake·malformed/empty/
+unordered/overlapping/zero-length segment·blank provider metadata·conflict·persistence 실패)에서도 provider 결과·
+segment·raw transcript·admission의 **부분 상태**를 남기지 않으며 Source Media·intake record를 변경하지 않는다.
+
+**Authority (Confirmed, A-14):** admission record는 오직 "이 외부 provider 결과가 이 intake에 대해 admit되어 이 raw
+transcript를 만들었다"는 repository·application 사실에만 authoritative하다. ASR 정확성·완전성·audio 내용·media
+디코딩 가능성을 주장하지 않으며 media 파일을 읽지 않는다. 기존 Transcript identity·execution 계약이 우선한다.
+
+**Deferred (이후 milestone, A-15):** ffmpeg·ffprobe·media 디코딩·audio 추출·codec/duration/stream 검사·Whisper/
+faster-whisper/whisper.cpp/cloud ASR·model 다운로드/선택·GPU/device 선택·credentials·provider 설치·provider/plugin
+registry·background job·queue·retry·progress·cancellation·streaming·diarization·speaker 식별·word/token 단위
+timestamp·confidence 기반 교정·language **감지**(declared passthrough language만 허용)·correction 후보·corrected
+revision·raw transcript의 structural validation·review·subtitle/export 변경. 이들 deferred 개념의 placeholder는
+도입하지 않는다.
+
+**Canonical Invariants (Confirmed):** (1) provider 결과는 검증되지 않은 외부 증거이며 media 파일을 읽지 않는다.
+(2) 입력은 `TranscriptSourceIntakeId` + provider-neutral 결과 문서이며 media 경로가 아니다. (3) admission은 외부 실행
+provenance를 담으며 내부 RUNNING execution을 요구하지 않는다. (4) provider 증거는 정규화 이전 상태로 보존된다.
+(5) canonical Raw Transcript는 provider 결과와 별개의 identity를 가진다. (6) 모든 identity는 anchor에서 결정적으로
+파생된다. (7) 하나의 intake는 여러 provider 결과를, 하나의 provider 결과는 하나의 canonical Raw Transcript를 가진다.
+(8) admission은 content_fingerprint로 idempotent하다. (9) 같은 anchor·다른 payload는 conflict로 거부된다. (10) timing은
+초 단위이며 `end > start`, 비겹침, 비내림차순이다. (11) text는 정확히 보존되고 빈 결과는 거부된다. (12) 실패는 부분
+상태를 남기지 않고 Source Media·intake를 변경하지 않는다. (13) 기존 Transcript·execution 계약이 우선한다. (14) deferred
+개념의 placeholder는 도입하지 않는다.
 
 ## Related Documents
 
