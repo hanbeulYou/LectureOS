@@ -173,3 +173,8 @@ class EditExportArtifactId(OpaqueIdentity):
 @dataclass(frozen=True, slots=True)
 class TranscriptSourceIntakeId(OpaqueIdentity):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderTranscriptAdmissionId(OpaqueIdentity):
+    pass

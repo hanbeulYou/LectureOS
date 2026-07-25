@@ -17,7 +17,7 @@ V31_TABLES = {"transcript_source_intakes"}
 
 _ADDITION_BLOCKS = tuple(
     (level, getattr(sqlite_lifecycle, f"_V{level}_ADDITION_STATEMENTS"))
-    for level in range(2, 31)
+    for level in range(2, 32)
 )
 
 
@@ -56,8 +56,9 @@ class SQLiteSchemaVersionThirtyOneTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
 
-    def test_schema_version_is_thirty_one(self) -> None:
-        self.assertEqual(SQLITE_SCHEMA_VERSION, 31)
+    def test_v31_remains_a_supported_version(self) -> None:
+        self.assertIn(31, sqlite_lifecycle._SUPPORTED_SCHEMA_VERSIONS)
+        self.assertLessEqual(31, SQLITE_SCHEMA_VERSION)
 
     def test_fresh_database_initializes_with_v31_tables(self) -> None:
         connection = initialize_sqlite_database(self.database_path)
@@ -65,7 +66,7 @@ class SQLiteSchemaVersionThirtyOneTests(unittest.TestCase):
             self.assertTrue(V31_TABLES.issubset(table_names(connection)))
             self.assertEqual(
                 connection.execute("SELECT version FROM schema_metadata").fetchone()[0],
-                31,
+                SQLITE_SCHEMA_VERSION,
             )
         finally:
             connection.close()
@@ -84,7 +85,8 @@ class SQLiteSchemaVersionThirtyOneTests(unittest.TestCase):
             connection.close()
 
     def test_v31_no_op_migration_is_allowed(self) -> None:
-        initialize_sqlite_database(self.database_path).close()
+        create_legacy_database(self.database_path, 30)
+        migrate_sqlite_database(self.database_path, 31)
         migrate_sqlite_database(self.database_path, 31)
         connection = open_sqlite_database(self.database_path)
         try:
@@ -103,7 +105,7 @@ class SQLiteSchemaVersionThirtyOneTests(unittest.TestCase):
     def test_unsupported_target_is_rejected(self) -> None:
         initialize_sqlite_database(self.database_path).close()
         with self.assertRaises(PersistenceError):
-            migrate_sqlite_database(self.database_path, 32)
+            migrate_sqlite_database(self.database_path, 33)
 
     def test_repository_rejects_pre_v31_schema(self) -> None:
         create_legacy_database(self.database_path, 30)

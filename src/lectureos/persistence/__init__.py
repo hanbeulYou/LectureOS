@@ -94,6 +94,10 @@ from .transcript_source_intake import (
     SQLiteTranscriptSourceIntakeCommandPersistence,
     SQLiteTranscriptSourceIntakeRepository,
 )
+from .provider_transcript_admission import (
+    SQLiteProviderTranscriptAdmissionCommandPersistence,
+    SQLiteProviderTranscriptAdmissionRepository,
+)
 from .subtitle_final_subtitle import (
     SQLiteSubtitleFinalSubtitleCommandPersistence,
     SQLiteSubtitleFinalSubtitleRepository,
@@ -179,6 +183,8 @@ __all__ = [
     "SQLiteSourceMediaRepository",
     "SQLiteTranscriptSourceIntakeCommandPersistence",
     "SQLiteTranscriptSourceIntakeRepository",
+    "SQLiteProviderTranscriptAdmissionCommandPersistence",
+    "SQLiteProviderTranscriptAdmissionRepository",
     "SQLiteSubtitleFinalSubtitleCommandPersistence",
     "SQLiteSubtitleFinalSubtitleRepository",
     "SQLiteSubtitleReviewDecisionCommandPersistence",

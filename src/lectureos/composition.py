@@ -48,6 +48,9 @@ from lectureos.application.media_import import MediaImportService
 from lectureos.application.transcript_source_intake import (
     TranscriptSourceIntakeService,
 )
+from lectureos.application.provider_transcript_admission import (
+    ProviderTranscriptAdmissionService,
+)
 from lectureos.application.edit_candidate_generation import (
     EditCandidateGenerationPort,
     EditCandidateGenerationService,
@@ -127,6 +130,8 @@ from lectureos.persistence import (
     SQLiteSourceMediaRepository,
     SQLiteTranscriptSourceIntakeCommandPersistence,
     SQLiteTranscriptSourceIntakeRepository,
+    SQLiteProviderTranscriptAdmissionCommandPersistence,
+    SQLiteProviderTranscriptAdmissionRepository,
     SQLiteSubtitleReadingCommandPersistence,
     SQLiteSubtitleDecisionRevisionCommandPersistence,
     SQLiteSubtitleDecisionRevisionRepository,
@@ -487,6 +492,25 @@ def compose_sqlite_transcript_source_intake_service(
     intakes = SQLiteTranscriptSourceIntakeRepository(connection)
     persistence = SQLiteTranscriptSourceIntakeCommandPersistence(connection)
     return TranscriptSourceIntakeService(source_media, intakes, persistence)
+
+
+def compose_sqlite_provider_transcript_admission_service(
+    connection: sqlite3.Connection,
+) -> ProviderTranscriptAdmissionService:
+    """Build the v32 External ASR Boundary admission on one caller connection (040 §14).
+
+    Resolves an existing transcript source intake and its Source Media read-only, then admits an externally
+    produced provider ASR result — preserving the provider evidence and producing exactly one canonical Raw
+    Transcript in a single atomic transaction. It executes no ASR engine and reads no media file.
+    """
+
+    intakes = SQLiteTranscriptSourceIntakeRepository(connection)
+    source_media = SQLiteSourceMediaRepository(connection)
+    admissions = SQLiteProviderTranscriptAdmissionRepository(connection)
+    persistence = SQLiteProviderTranscriptAdmissionCommandPersistence(connection)
+    return ProviderTranscriptAdmissionService(
+        intakes, source_media, admissions, persistence
+    )
 
 
 DEFAULT_EDIT_CANDIDATE_CONTEXT_WINDOW_SECONDS = 15.0

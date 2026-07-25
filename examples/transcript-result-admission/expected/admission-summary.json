@@ -1,0 +1,10 @@
+{
+  "admission_id": "provider-transcript-admission:8d3b3b1902bb142aea57acb2074ca9f0767949eb0aac0ae81cc240b28a5a425d",
+  "content_fingerprint": "0c6eca9e0ff283c4cd6a41b73a0cbb5c006ded672ba5beacc97d324966ce35c4",
+  "intake_id": "transcript-source-intake:sha256:7be6a9582ff6c7bd4e66c052dc634a38b88909402f2fb330d663000d7f2079a5",
+  "media_id": "sha256:7be6a9582ff6c7bd4e66c052dc634a38b88909402f2fb330d663000d7f2079a5",
+  "provider_result_ref": "fake-asr-result-0001",
+  "provider_transcript_result_id": "provider-transcript-result:8d3b3b1902bb142aea57acb2074ca9f0767949eb0aac0ae81cc240b28a5a425d",
+  "raw_transcript_id": "raw-transcript:8d3b3b1902bb142aea57acb2074ca9f0767949eb0aac0ae81cc240b28a5a425d",
+  "segment_count": 3
+}

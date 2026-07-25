@@ -58,6 +58,7 @@ _INSPECTED_TABLES = (
     "edit_export_assembly_members",
     "source_media",
     "transcript_source_intakes",
+    "provider_transcript_admissions",
 )
 _IDENTITY_TABLES = (
     "domain_result_references",
@@ -68,6 +69,7 @@ _IDENTITY_TABLES = (
     "edit_export_assemblies",
     "source_media",
     "transcript_source_intakes",
+    "provider_transcript_admissions",
 )
 _APPROVING_KINDS = ("accept", "modify")
 
@@ -503,6 +505,164 @@ def _check_transcript_source_intake(connection: sqlite3.Connection) -> list[Diag
     return diagnostics
 
 
+def _check_provider_transcript_admission(
+    connection: sqlite3.Connection,
+) -> list[Diagnostic]:
+    if not _table_exists(connection, "provider_transcript_admissions"):
+        return []
+    diagnostics: list[Diagnostic] = []
+
+    # Dangling references (intake, source media, provider result, raw transcript). The first two are also
+    # foreign-key enforced; checked here for defense in depth.
+    dangling = (
+        ("transcript_source_intakes", "transcript_source_intake_id",
+         "PROVIDER_TRANSCRIPT_ADMISSION_DANGLING_INTAKE",
+         "admission references a missing transcript source intake"),
+        ("source_media", "source_media_id",
+         "PROVIDER_TRANSCRIPT_ADMISSION_DANGLING_SOURCE_MEDIA",
+         "admission references a missing source_media record"),
+        ("provider_transcript_results", "provider_transcript_result_id",
+         "PROVIDER_TRANSCRIPT_ADMISSION_DANGLING_PROVIDER_RESULT",
+         "admission references a missing provider transcript result"),
+        ("raw_transcripts", "raw_transcript_id",
+         "PROVIDER_TRANSCRIPT_ADMISSION_DANGLING_RAW_TRANSCRIPT",
+         "admission references a missing raw transcript"),
+    )
+    for target, column, code, message in dangling:
+        if not _table_exists(connection, target):
+            continue
+        for (identity,) in connection.execute(
+            f"""
+            SELECT a.identity
+            FROM provider_transcript_admissions a
+            LEFT JOIN {target} r ON a.{column} = r.identity
+            WHERE r.identity IS NULL
+            ORDER BY a.identity
+            """
+        ).fetchall():
+            diagnostics.append(
+                Diagnostic(
+                    code=code,
+                    severity=Severity.ERROR,
+                    location=f"provider_transcript_admissions:{identity}",
+                    message=message,
+                )
+            )
+
+    # Intake lineage: the admitted intake identity must be derived from the admission's Source Media reference
+    # (one canonical intake per Source Media — 040 §13); a disagreement means broken provenance.
+    for (identity,) in connection.execute(
+        """
+        SELECT identity
+        FROM provider_transcript_admissions
+        WHERE transcript_source_intake_id
+              <> 'transcript-source-intake:' || source_media_id
+        ORDER BY identity
+        """
+    ).fetchall():
+        diagnostics.append(
+            Diagnostic(
+                code="PROVIDER_TRANSCRIPT_ADMISSION_PROVENANCE_DISAGREEMENT",
+                severity=Severity.ERROR,
+                location=f"provider_transcript_admissions:{identity}",
+                message="admission intake and Source Media provenance disagree",
+            )
+        )
+
+    # Provider result ↔ raw transcript coherence: the admitted raw transcript must reference the admitted
+    # provider result and share the admission's Source Media.
+    if _table_exists(connection, "raw_transcripts"):
+        for (identity,) in connection.execute(
+            """
+            SELECT a.identity
+            FROM provider_transcript_admissions a
+            JOIN raw_transcripts r ON r.identity = a.raw_transcript_id
+            WHERE r.provider_transcript_result_id <> a.provider_transcript_result_id
+               OR r.source_media_id <> a.source_media_id
+            ORDER BY a.identity
+            """
+        ).fetchall():
+            diagnostics.append(
+                Diagnostic(
+                    code="PROVIDER_TRANSCRIPT_ADMISSION_RAW_PROVIDER_DISAGREEMENT",
+                    severity=Severity.ERROR,
+                    location=f"provider_transcript_admissions:{identity}",
+                    message="admitted raw transcript and provider result provenance disagree",
+                )
+            )
+
+        # The recorded segment count must match the raw transcript's persisted segment membership.
+        for (identity,) in connection.execute(
+            """
+            SELECT a.identity
+            FROM provider_transcript_admissions a
+            LEFT JOIN raw_transcript_segments s
+                ON s.raw_transcript_id = a.raw_transcript_id
+            GROUP BY a.identity, a.segment_count
+            HAVING a.segment_count <> COUNT(s.transcript_segment_id)
+            ORDER BY a.identity
+            """
+        ).fetchall():
+            diagnostics.append(
+                Diagnostic(
+                    code="PROVIDER_TRANSCRIPT_ADMISSION_SEGMENT_COUNT_DISAGREEMENT",
+                    severity=Severity.ERROR,
+                    location=f"provider_transcript_admissions:{identity}",
+                    message="admission segment count does not match the raw transcript membership",
+                )
+            )
+
+    # Canonical uniqueness: at most one admission per provider result and per raw transcript (also UNIQUE-
+    # enforced); checked for defense in depth.
+    for column, code in (
+        ("provider_transcript_result_id",
+         "PROVIDER_TRANSCRIPT_ADMISSION_DUPLICATE_PROVIDER_RESULT"),
+        ("raw_transcript_id", "PROVIDER_TRANSCRIPT_ADMISSION_DUPLICATE_RAW_TRANSCRIPT"),
+    ):
+        for value, count in connection.execute(
+            f"""
+            SELECT {column}, COUNT(*) AS c
+            FROM provider_transcript_admissions
+            GROUP BY {column}
+            HAVING c > 1
+            ORDER BY {column}
+            """
+        ).fetchall():
+            diagnostics.append(
+                Diagnostic(
+                    code=code,
+                    severity=Severity.ERROR,
+                    location=f"provider_transcript_admissions:{value}",
+                    message=f"{column} is admitted by {count} admissions",
+                )
+            )
+    return diagnostics
+
+
+def _check_raw_transcript_segments(connection: sqlite3.Connection) -> list[Diagnostic]:
+    if not _table_exists(connection, "raw_transcript_segments"):
+        return []
+    return [
+        Diagnostic(
+            code="RAW_TRANSCRIPT_SEGMENT_ORDINAL_NONCONTIGUOUS",
+            severity=Severity.ERROR,
+            location=f"raw_transcript_segments:{raw_transcript_id}",
+            message="raw transcript segment ordinals are not a contiguous 0..n-1 sequence",
+        )
+        for (raw_transcript_id,) in connection.execute(
+            """
+            SELECT raw_transcript_id
+            FROM raw_transcript_segments
+            GROUP BY raw_transcript_id
+            HAVING COUNT(*) <> MAX(ordinal) + 1
+                OR MIN(ordinal) <> 0
+                OR COUNT(DISTINCT ordinal) <> COUNT(*)
+            ORDER BY raw_transcript_id
+            """
+        ).fetchall()
+    ]
+
+
 def _check_malformed_identities(connection: sqlite3.Connection) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
     for table in _IDENTITY_TABLES:
@@ -571,6 +731,8 @@ def validate_repository(connection: sqlite3.Connection) -> ValidationReport:
     diagnostics += _check_approved_decision_provenance(connection)
     diagnostics += _check_source_media(connection)
     diagnostics += _check_transcript_source_intake(connection)
+    diagnostics += _check_provider_transcript_admission(connection)
+    diagnostics += _check_raw_transcript_segments(connection)
     diagnostics += _check_malformed_identities(connection)
 
     return build_report(

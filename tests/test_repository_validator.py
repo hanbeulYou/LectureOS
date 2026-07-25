@@ -75,7 +75,7 @@ class RepositoryValidatorTests(unittest.TestCase):
         self.assertTrue(report.ok)
         self.assertEqual(report.error_count, 0)
         self.assertEqual(report.warning_count, 0)
-        self.assertEqual(report.schema_version, 31)
+        self.assertEqual(report.schema_version, 32)
         self.assertGreater(report.objects_checked, 0)
 
     def test_validator_does_not_mutate_the_database(self) -> None:
@@ -500,6 +500,175 @@ class TranscriptSourceIntakeValidationTests(unittest.TestCase):
         finally:
             connection.close()
         self.assertIn("TRANSCRIPT_INTAKE_DUPLICATE", self._codes(path))
+
+
+class ProviderTranscriptAdmissionValidationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        from lectureos.application.provider_transcript_admission import (
+            build_provider_transcript_document,
+        )
+        from lectureos.composition import (
+            compose_sqlite_media_import_service,
+            compose_sqlite_provider_transcript_admission_service,
+            compose_sqlite_transcript_source_intake_service,
+        )
+
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.base = Path(self.tempdir.name)
+        self.healthy = self.base / "admission.db"
+        connection = initialize_sqlite_database(self.healthy)
+        source = self.base / "sample.bin"
+        source.write_bytes(b"admission-validation-sample \x00\x01\x02")
+        media_id = (
+            compose_sqlite_media_import_service(connection)
+            .import_media(str(source))
+            .record.identity.value
+        )
+        intake_id = (
+            compose_sqlite_transcript_source_intake_service(connection)
+            .admit(media_id)
+            .intake.identity.value
+        )
+        document = build_provider_transcript_document(
+            {
+                "provider": "fake-deterministic-asr",
+                "provider_result_ref": "ref-0001",
+                "segments": [
+                    {"start": 0.0, "end": 2.0, "text": "가"},
+                    {"start": 2.0, "end": 4.0, "text": "나"},
+                ],
+            }
+        )
+        compose_sqlite_provider_transcript_admission_service(connection).admit(
+            intake_id=intake_id, document=document
+        )
+        connection.close()
+
+    def tearDown(self) -> None:
+        self.tempdir.cleanup()
+
+    def _corrupt(self, name: str, mutate) -> Path:
+        target = self.base / name
+        shutil.copyfile(self.healthy, target)
+        connection = sqlite3.connect(target)
+        try:
+            connection.execute("PRAGMA foreign_keys = OFF")
+            connection.execute("BEGIN")
+            mutate(connection)
+            connection.execute("COMMIT")
+        finally:
+            connection.close()
+        return target
+
+    def _codes(self, database: Path) -> set[str]:
+        return {d.code for d in validate_database(str(database)).diagnostics}
+
+    def test_healthy_admission_repository_is_clean(self) -> None:
+        report = validate_database(str(self.healthy))
+        self.assertTrue(report.ok)
+        self.assertEqual(report.health, RepositoryHealth.HEALTHY)
+
+    def test_intake_provenance_disagreement_detected(self) -> None:
+        broken = self._corrupt(
+            "prov.db",
+            lambda c: c.execute(
+                "UPDATE provider_transcript_admissions "
+                "SET transcript_source_intake_id = 'transcript-source-intake:sha256:other'"
+            ),
+        )
+        self.assertIn(
+            "PROVIDER_TRANSCRIPT_ADMISSION_PROVENANCE_DISAGREEMENT", self._codes(broken)
+        )
+
+    def test_raw_provider_disagreement_detected(self) -> None:
+        broken = self._corrupt(
+            "rawprov.db",
+            lambda c: c.execute(
+                "UPDATE provider_transcript_admissions "
+                "SET provider_transcript_result_id = 'provider-transcript-result:mismatch'"
+            ),
+        )
+        codes = self._codes(broken)
+        self.assertTrue(
+            "PROVIDER_TRANSCRIPT_ADMISSION_RAW_PROVIDER_DISAGREEMENT" in codes
+            or "PROVIDER_TRANSCRIPT_ADMISSION_DANGLING_PROVIDER_RESULT" in codes
+        )
+
+    def test_segment_count_disagreement_detected(self) -> None:
+        broken = self._corrupt(
+            "segcount.db",
+            lambda c: c.execute(
+                "UPDATE provider_transcript_admissions SET segment_count = 5"
+            ),
+        )
+        self.assertIn(
+            "PROVIDER_TRANSCRIPT_ADMISSION_SEGMENT_COUNT_DISAGREEMENT", self._codes(broken)
+        )
+
+    def test_dangling_raw_transcript_detected(self) -> None:
+        broken = self._corrupt(
+            "dangraw.db",
+            lambda c: c.execute("DELETE FROM raw_transcripts"),
+        )
+        self.assertIn(
+            "PROVIDER_TRANSCRIPT_ADMISSION_DANGLING_RAW_TRANSCRIPT", self._codes(broken)
+        )
+
+    def test_noncontiguous_raw_transcript_segments_detected(self) -> None:
+        broken = self._corrupt(
+            "seggap.db",
+            lambda c: c.execute(
+                "DELETE FROM raw_transcript_segments WHERE ordinal = 0"
+            ),
+        )
+        self.assertIn(
+            "RAW_TRANSCRIPT_SEGMENT_ORDINAL_NONCONTIGUOUS", self._codes(broken)
+        )
+
+    def test_blank_admission_identity_detected(self) -> None:
+        broken = self._corrupt(
+            "blank.db",
+            lambda c: c.execute(
+                "UPDATE provider_transcript_admissions SET identity = '  '"
+            ),
+        )
+        self.assertIn("MALFORMED_IDENTITY", self._codes(broken))
+
+    def test_duplicate_provider_result_detected_on_tampered_schema(self) -> None:
+        path = self.base / "dup.db"
+        connection = sqlite3.connect(path)
+        try:
+            connection.executescript(
+                """
+                CREATE TABLE schema_metadata (singleton INTEGER PRIMARY KEY, version INTEGER NOT NULL);
+                INSERT INTO schema_metadata VALUES (1, 32);
+                CREATE TABLE provider_transcript_admissions (
+                    identity TEXT PRIMARY KEY,
+                    transcript_source_intake_id TEXT,
+                    source_media_id TEXT,
+                    provider_transcript_result_id TEXT,
+                    raw_transcript_id TEXT,
+                    provider_reference TEXT,
+                    provider_model TEXT,
+                    declared_language TEXT,
+                    provider_result_ref TEXT,
+                    segment_count INTEGER,
+                    content_fingerprint TEXT
+                );
+                INSERT INTO provider_transcript_admissions VALUES
+                    ('provider-transcript-admission:a', 'transcript-source-intake:sha256:m', 'sha256:m',
+                     'provider-transcript-result:x', 'raw-transcript:a', 'p', NULL, NULL, 'r', 1, 'f');
+                INSERT INTO provider_transcript_admissions VALUES
+                    ('provider-transcript-admission:b', 'transcript-source-intake:sha256:m', 'sha256:m',
+                     'provider-transcript-result:x', 'raw-transcript:b', 'p', NULL, NULL, 'r2', 1, 'f');
+                """
+            )
+            connection.commit()
+        finally:
+            connection.close()
+        self.assertIn(
+            "PROVIDER_TRANSCRIPT_ADMISSION_DUPLICATE_PROVIDER_RESULT", self._codes(path)
+        )
 
 
 if __name__ == "__main__":

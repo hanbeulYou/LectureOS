@@ -1,0 +1,11 @@
+{
+  "provider": "fake-deterministic-asr",
+  "model": "fake-asr-model-v1",
+  "language": "ko",
+  "provider_result_ref": "fake-asr-result-0001",
+  "segments": [
+    { "start": 0.0, "end": 2.5, "text": "안녕하세요, 오늘 강의를 시작하겠습니다." },
+    { "start": 2.5, "end": 6.0, "text": "이 결과는 실제 ASR 엔진이 아니라 결정적 fixture로 만든 것입니다." },
+    { "start": 6.0, "end": 9.25, "text": "LectureOS는 외부 provider 결과를 admit할 뿐 전사를 실행하지 않습니다." }
+  ]
+}
