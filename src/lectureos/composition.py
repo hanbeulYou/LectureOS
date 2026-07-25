@@ -44,6 +44,7 @@ from lectureos.application.edit_export_artifact import (
 from lectureos.application.edit_export_materialization import (
     EditExportMaterializationService,
 )
+from lectureos.application.media_import import MediaImportService
 from lectureos.application.edit_candidate_generation import (
     EditCandidateGenerationPort,
     EditCandidateGenerationService,
@@ -119,6 +120,8 @@ from lectureos.persistence import (
     SQLiteApprovedEditExportRepresentationRepository,
     SQLiteEditExportAssemblyCommandPersistence,
     SQLiteEditExportAssemblyRepository,
+    SQLiteSourceMediaCommandPersistence,
+    SQLiteSourceMediaRepository,
     SQLiteSubtitleReadingCommandPersistence,
     SQLiteSubtitleDecisionRevisionCommandPersistence,
     SQLiteSubtitleDecisionRevisionRepository,
@@ -446,6 +449,24 @@ def compose_edit_export_materialization_service() -> EditExportMaterializationSe
     )
 
     return EditExportMaterializationService(LocalEditExportFileWriter())
+
+
+def compose_sqlite_media_import_service(
+    connection: sqlite3.Connection,
+) -> MediaImportService:
+    """Build the v30 Media Import Application Foundation on one caller connection (045 §1).
+
+    The local filesystem inspector reads and streaming-hashes the source read-only; the repository resolves
+    existing content-addressed records; the command persistence writes atomically.
+    """
+
+    from lectureos.infrastructure.local_source_media_inspector import (
+        LocalSourceMediaInspector,
+    )
+
+    repository = SQLiteSourceMediaRepository(connection)
+    persistence = SQLiteSourceMediaCommandPersistence(connection)
+    return MediaImportService(LocalSourceMediaInspector(), repository, persistence)
 
 
 DEFAULT_EDIT_CANDIDATE_CONTEXT_WINDOW_SECONDS = 15.0

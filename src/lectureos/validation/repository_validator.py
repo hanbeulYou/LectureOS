@@ -56,6 +56,7 @@ _INSPECTED_TABLES = (
     "approved_edit_export_representations",
     "edit_export_assemblies",
     "edit_export_assembly_members",
+    "source_media",
 )
 _IDENTITY_TABLES = (
     "domain_result_references",
@@ -64,6 +65,7 @@ _IDENTITY_TABLES = (
     "approved_edit_decisions",
     "approved_edit_export_representations",
     "edit_export_assemblies",
+    "source_media",
 )
 _APPROVING_KINDS = ("accept", "modify")
 
@@ -370,6 +372,71 @@ def _check_approved_decision_provenance(connection: sqlite3.Connection) -> list[
     return diagnostics
 
 
+def _check_source_media(connection: sqlite3.Connection) -> list[Diagnostic]:
+    if not _table_exists(connection, "source_media"):
+        return []
+    diagnostics: list[Diagnostic] = []
+
+    # Malformed fingerprints: digest must be 64 lowercase hex characters; algorithm must be non-blank.
+    for identity, digest in connection.execute(
+        """
+        SELECT identity, fingerprint_digest
+        FROM source_media
+        WHERE length(trim(fingerprint_algorithm)) = 0
+            OR length(fingerprint_digest) <> 64
+            OR fingerprint_digest <> lower(fingerprint_digest)
+            OR fingerprint_digest GLOB '*[^0-9a-f]*'
+        ORDER BY identity
+        """
+    ).fetchall():
+        diagnostics.append(
+            Diagnostic(
+                code="MEDIA_FINGERPRINT_MALFORMED",
+                severity=Severity.ERROR,
+                location=f"source_media:{identity}",
+                message=f"fingerprint digest '{digest}' is not 64 lowercase hex characters",
+            )
+        )
+
+    # Identity must be derived from the content fingerprint (identity = '<algorithm>:<digest>').
+    for (identity,) in connection.execute(
+        """
+        SELECT identity
+        FROM source_media
+        WHERE identity <> fingerprint_algorithm || ':' || fingerprint_digest
+        ORDER BY identity
+        """
+    ).fetchall():
+        diagnostics.append(
+            Diagnostic(
+                code="MEDIA_IDENTITY_FINGERPRINT_DISAGREEMENT",
+                severity=Severity.ERROR,
+                location=f"source_media:{identity}",
+                message="identity is not derived from its content fingerprint",
+            )
+        )
+
+    # Canonical uniqueness: no two Media records may share a content fingerprint.
+    for algorithm, digest, count in connection.execute(
+        """
+        SELECT fingerprint_algorithm, fingerprint_digest, COUNT(*) AS c
+        FROM source_media
+        GROUP BY fingerprint_algorithm, fingerprint_digest
+        HAVING c > 1
+        ORDER BY fingerprint_algorithm, fingerprint_digest
+        """
+    ).fetchall():
+        diagnostics.append(
+            Diagnostic(
+                code="MEDIA_FINGERPRINT_DUPLICATE",
+                severity=Severity.ERROR,
+                location=f"source_media:{algorithm}:{digest}",
+                message=f"content fingerprint is shared by {count} Media records",
+            )
+        )
+    return diagnostics
+
+
 def _check_malformed_identities(connection: sqlite3.Connection) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
     for table in _IDENTITY_TABLES:
@@ -436,6 +503,7 @@ def validate_repository(connection: sqlite3.Connection) -> ValidationReport:
     diagnostics += _check_assemblies(connection)
     diagnostics += _check_representation_provenance(connection)
     diagnostics += _check_approved_decision_provenance(connection)
+    diagnostics += _check_source_media(connection)
     diagnostics += _check_malformed_identities(connection)
 
     return build_report(

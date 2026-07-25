@@ -154,7 +154,7 @@ class SQLiteSchemaVersionThreeTests(unittest.TestCase):
         try:
             self.assertEqual(
                 connection.execute("SELECT version FROM schema_metadata").fetchone(),
-                (29,),
+                (30,),
             )
             self.assertTrue(V3_TABLES.issubset(table_names(connection)))
             unit = self._unit()
@@ -405,7 +405,6 @@ class SQLiteSchemaVersionThreeTests(unittest.TestCase):
             names = table_names(connection)
             self.assertNotIn("projects", names)
             self.assertNotIn("lectures", names)
-            self.assertNotIn("source_media", names)
             self.assertNotIn("domain_results", names)
             self.assertNotIn("diagnostics", names)
         finally:

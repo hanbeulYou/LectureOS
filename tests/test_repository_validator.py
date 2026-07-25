@@ -75,7 +75,7 @@ class RepositoryValidatorTests(unittest.TestCase):
         self.assertTrue(report.ok)
         self.assertEqual(report.error_count, 0)
         self.assertEqual(report.warning_count, 0)
-        self.assertEqual(report.schema_version, 29)
+        self.assertEqual(report.schema_version, 30)
         self.assertGreater(report.objects_checked, 0)
 
     def test_validator_does_not_mutate_the_database(self) -> None:
@@ -320,6 +320,90 @@ class RepositoryValidatorTests(unittest.TestCase):
             self.assertIsInstance(diagnostic.severity, Severity)
             self.assertTrue(diagnostic.location)
             self.assertTrue(diagnostic.message)
+
+
+class SourceMediaValidationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        from lectureos.composition import compose_sqlite_media_import_service
+
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.base = Path(self.tempdir.name)
+        self.healthy = self.base / "media.db"
+        connection = initialize_sqlite_database(self.healthy)
+        source = self.base / "sample.bin"
+        source.write_bytes(b"media-validation-sample \x00\x01")
+        compose_sqlite_media_import_service(connection).import_media(str(source))
+        connection.close()
+
+    def tearDown(self) -> None:
+        self.tempdir.cleanup()
+
+    def _corrupt(self, name: str, mutate) -> Path:
+        target = self.base / name
+        shutil.copyfile(self.healthy, target)
+        connection = sqlite3.connect(target)
+        try:
+            connection.execute("PRAGMA foreign_keys = OFF")
+            connection.execute("BEGIN")
+            mutate(connection)
+            connection.execute("COMMIT")
+        finally:
+            connection.close()
+        return target
+
+    def _codes(self, database: Path) -> set[str]:
+        return {d.code for d in validate_database(str(database)).diagnostics}
+
+    def test_healthy_media_repository_is_clean(self) -> None:
+        report = validate_database(str(self.healthy))
+        self.assertTrue(report.ok)
+        self.assertEqual(report.health, RepositoryHealth.HEALTHY)
+
+    def test_malformed_fingerprint_detected(self) -> None:
+        # 64 characters (satisfies the length CHECK) but not lowercase hex.
+        broken = self._corrupt(
+            "malformed.db",
+            lambda c: c.execute(
+                "UPDATE source_media SET fingerprint_digest = ?", ("A" * 64,)
+            ),
+        )
+        self.assertIn("MEDIA_FINGERPRINT_MALFORMED", self._codes(broken))
+
+    def test_identity_fingerprint_disagreement_detected(self) -> None:
+        broken = self._corrupt(
+            "disagree.db",
+            lambda c: c.execute("UPDATE source_media SET identity = 'sha256:mismatch'"),
+        )
+        self.assertIn("MEDIA_IDENTITY_FINGERPRINT_DISAGREEMENT", self._codes(broken))
+
+    def test_duplicate_fingerprint_detected_on_tampered_schema(self) -> None:
+        # The real schema forbids duplicate fingerprints via UNIQUE; exercise the check on a minimal
+        # tampered schema where that constraint is absent.
+        path = self.base / "dup.db"
+        connection = sqlite3.connect(path)
+        try:
+            connection.executescript(
+                """
+                CREATE TABLE schema_metadata (singleton INTEGER PRIMARY KEY, version INTEGER NOT NULL);
+                INSERT INTO schema_metadata VALUES (1, 30);
+                CREATE TABLE source_media (
+                    identity TEXT PRIMARY KEY, fingerprint_algorithm TEXT, fingerprint_digest TEXT,
+                    byte_length INTEGER, observed_source_path TEXT);
+                INSERT INTO source_media VALUES ('sha256:aaa', 'sha256', 'a', 1, '/x');
+                INSERT INTO source_media VALUES ('sha256:bbb', 'sha256', 'a', 1, '/y');
+                """
+            )
+            connection.commit()
+        finally:
+            connection.close()
+        self.assertIn("MEDIA_FINGERPRINT_DUPLICATE", self._codes(path))
+
+    def test_blank_media_identity_detected(self) -> None:
+        broken = self._corrupt(
+            "blank.db",
+            lambda c: c.execute("UPDATE source_media SET identity = '  '"),
+        )
+        self.assertIn("MALFORMED_IDENTITY", self._codes(broken))
 
 
 if __name__ == "__main__":

@@ -17,7 +17,7 @@ V29_TABLES = {"edit_export_assemblies", "edit_export_assembly_members"}
 
 _ADDITION_BLOCKS = tuple(
     (level, getattr(sqlite_lifecycle, f"_V{level}_ADDITION_STATEMENTS"))
-    for level in range(2, 29)
+    for level in range(2, 30)
 )
 
 
@@ -56,8 +56,9 @@ class SQLiteSchemaVersionTwentyNineTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
 
-    def test_schema_version_is_twenty_nine(self) -> None:
-        self.assertEqual(SQLITE_SCHEMA_VERSION, 29)
+    def test_v29_remains_a_supported_version(self) -> None:
+        self.assertIn(29, sqlite_lifecycle._SUPPORTED_SCHEMA_VERSIONS)
+        self.assertLessEqual(29, SQLITE_SCHEMA_VERSION)
 
     def test_fresh_database_initializes_with_v29_tables(self) -> None:
         connection = initialize_sqlite_database(self.database_path)
@@ -65,7 +66,7 @@ class SQLiteSchemaVersionTwentyNineTests(unittest.TestCase):
             self.assertTrue(V29_TABLES.issubset(table_names(connection)))
             self.assertEqual(
                 connection.execute("SELECT version FROM schema_metadata").fetchone()[0],
-                29,
+                SQLITE_SCHEMA_VERSION,
             )
         finally:
             connection.close()
@@ -84,7 +85,8 @@ class SQLiteSchemaVersionTwentyNineTests(unittest.TestCase):
             connection.close()
 
     def test_v29_no_op_migration_is_allowed(self) -> None:
-        initialize_sqlite_database(self.database_path).close()
+        create_legacy_database(self.database_path, 28)
+        migrate_sqlite_database(self.database_path, 29)
         migrate_sqlite_database(self.database_path, 29)
         connection = open_sqlite_database(self.database_path)
         try:
@@ -103,7 +105,7 @@ class SQLiteSchemaVersionTwentyNineTests(unittest.TestCase):
     def test_unsupported_target_is_rejected(self) -> None:
         initialize_sqlite_database(self.database_path).close()
         with self.assertRaises(PersistenceError):
-            migrate_sqlite_database(self.database_path, 30)
+            migrate_sqlite_database(self.database_path, 31)
 
     def test_repository_rejects_pre_v29_schema(self) -> None:
         create_legacy_database(self.database_path, 28)
