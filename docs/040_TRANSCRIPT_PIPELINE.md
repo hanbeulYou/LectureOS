@@ -19,6 +19,8 @@
   - `041_SUBTITLE_PIPELINE.md`
   - `042` Lecture Intelligence Pipeline
   - `043` Review Pipeline
+- Amended By:
+  - `../patches/PATCH-0020-source-media-transcription-intake-eligibility.md`
 
 ## Purpose
 
@@ -387,6 +389,86 @@ ASR이 일부 Source Media 구간을 충분히 인식하지 못했거나, Correc
 - Validation Failure와 Uncertainty를 정상 승인 결과처럼 숨기지 않아야 한다.
 - 재처리 후 기존 결정과 새 후보의 충돌을 표시할 수 있어야 한다.
 - Transcript Review를 읽기 전용 Report로 축소하지 않아야 한다.
+
+## 13. Source Intake Application Foundation — Source Media Transcription Intake Eligibility (First Slice)
+
+이 절은 `PATCH-0020`으로 승인된 Architect/Product 결정(S-1…S-14)을 기록한다. **첫 Source Intake milestone**은
+§4.1 Source Intake의 첫 application 실현이다. 이 slice는 이미 임포트된 canonical `SourceMedia` 기록
+(`045_MEDIA_IMPORT_PIPELINE.md §1`)을 하나 받아, 그것이 **Transcript Pipeline의 입력으로 admit될 자격이 있는지**를
+판정하고, 그 확인을 나타내는 durable한 intake 기록을 만든다. 이 slice는 오직 한 가지 질문에 답한다: "이미 임포트된
+이 Source Media 기록을 Transcript Pipeline의 입력으로 admit할 수 있는가?" — codec·재생 가능성·길이·audio 존재·언어·
+provider·audio 추출·transcription 성공 여부에는 답하지 않는다. **실제 transcription을 수행하지 않는다.**
+
+**Scope (Confirmed, S-1):** Media Import와 Source Intake는 **분리된 단계**다. Media Import는 로컬 파일을 canonical
+`SourceMedia`로 등록하고(045 §1), Source Intake는 그 **이미 존재하는 `SourceMediaId`**를 받아 transcript 입력으로의
+적격성만 확인한다. 이 slice는 ffmpeg·ffprobe·probe·duration·codec·resolution·stream·audio 검증·audio 추출·
+transcode·transcription·provider·language 감지·background job·queue를 도입하지 않는다.
+
+**Input (Confirmed, S-2):** 입력은 **canonical `SourceMediaId`**(예: `sha256:<digest>`)이며 파일 경로가 아니다.
+경로는 Media Import의 것이다. Source Intake는 raw 경로를 받지 않는다.
+
+**Eligibility (Confirmed, S-3):** 적격성은 **persist된 사실만으로** 판정되는 repository·application-contract 결정이며
+codec·media-content 주장이 아니다. persist된 `source_media` 기록이 그 `SourceMediaId`로 resolve되면 적격이다. 존재
+하지 않는(resolve 불가) Source Media는 명시적으로 부적격(거부)이다. 형식이 잘못된(malformed) Source Media identity는
+resolve를 시도하기 전에 명시적으로 거부된다.
+
+**No Decoding Claim (Confirmed, S-4):** admit된 입력을 디코딩 의미의 "transcription-ready media"라고 부르지 않는다.
+admission은 audio stream 존재·재생 가능성·transcription 성공을 주장하지 않는다. 표현은 "admitted transcription input",
+"transcript intake eligibility", "Source Media reference confirmed", "eligible repository input"으로 한정한다.
+
+**Physical File Availability (Confirmed, S-5):** intake는 원본 파일의 **물리적 존재를 확인하지 않는다**. 적격성은
+persist된 `source_media` 기록에서만 도출된다. import 이후 reference-in-place 원본이 이동·삭제되어도 그것은 이 slice의
+적격성 실패가 아니라 이후 실행 단계의 관심사다(045 §1 M-11과 일관). 저장소 무결성 검증은 원본 파일의 물리적 존재를
+확인하지 않는다. 운영상 파일 가용성과 persist된 도메인 무결성은 분리된 채로 유지된다.
+
+**Intake Identity (Confirmed, S-6):** intake 기록은 자신의 identity를 가지며, 그 identity는 Source Media로부터
+**결정적으로 파생**된다: `transcript-source-intake:<source_media_id>`. 따라서 하나의 Source Media에는 정확히 하나의
+canonical intake 기록이 대응한다.
+
+**Persistence (Confirmed, S-7):** admission은 **persist**된다(계산만 하지 않는다). intake 기록은 durable·immutable·
+insert-only이며 하나의 atomic transaction으로 저장된다. 최소한 intake identity와 그것이 확인하는 `SourceMediaId`
+참조를 담는다. codec·duration·audio-stream·provider·model·language·path 설정을 담지 않는다.
+
+**Idempotency (Confirmed, S-8):** 동일한 Source Media의 반복 admission은 **기존 canonical intake 기록을 resolve하여
+반환**하며(재사용) 중복·충돌 기록을 만들지 않는다. 근접 동시 admission에서도 uniqueness가 유지되고 결과는 idempotent
+하게 기존 기록으로 수렴한다.
+
+**Single Canonical Intake (Confirmed, S-9):** 하나의 Source Media는 이 slice에서 **하나의** canonical transcript-intake
+기록만 가진다(파생 identity + uniqueness로 강제). 서로 다른 Source Media는 서로 다른 intake 기록을 가진다.
+
+**Provenance (Confirmed, S-10):** intake 기록은 자신이 확인하는 `SourceMediaId` 참조를 담아 Source Media와 이후
+transcript 실행 사이의 provenance를 보존한다. `SourceMediaId`는 canonical media identity로 남고 경로는 provenance일 뿐
+identity가 아니다.
+
+**Relationship to Transcript Execution (Confirmed, S-11):** intake는 §4.1 Source Intake의 적격성 확인만 수행한다.
+ASR 결과·Raw Transcript·Corrected Transcript·Subtitle·승인 상태 등 어떤 transcript 내용이나 실행 결과도 만들지 않는다
+(§4.1 "Does Not Produce"와 일관). 이미 어떤 transcript가 그 Source Media에 연관되어 있어도 intake의 적격성·idempotency에
+영향을 주지 않는다.
+
+**Failure Atomicity (Confirmed, S-12):** malformed identity·missing Source Media·persistence 실패 등 어떤 실패에서도
+부분 기록이나 오해를 주는 상태를 남기지 않으며 기존 기록과 Source Media 기록은 보존된다. Source Media 기록은 파일이
+이동·삭제되어도 변경되지 않는다.
+
+**Authority (Confirmed, S-13):** intake 기록은 오직 "이 persist된 Source Media가 transcript 입력으로 admit되었다"는
+repository·application 사실에만 authoritative하다. media의 디코딩 가능성·audio 존재·transcription 가능성·형식 유효성을
+주장하지 않으며, Source Media 기록이나 원본 바이트를 변경하지 않는다. 기존 Transcript identity·execution 계약이
+우선한다.
+
+**Deferred (이후 milestone, S-14):** ffmpeg·ffprobe·media probe·duration/codec/resolution/stream 추출·audio-stream
+검증·audio 추출·transcode·정규화·waveform/thumbnail·playback·Whisper 등 transcription provider·model 선택·language
+감지·transcript 생성·transcript segmentation·background job·queue·retry·progress·원격 media·upload·object storage·
+managed media copy·provider/plugin registry·workflow engine·이 Source Media에 대한 다중 transcript-intake·intake에
+연결된 실제 transcript 실행. 이들 deferred 개념을 위한 placeholder는 도입하지 않는다.
+
+**Canonical Invariants (Confirmed):** (1) Media Import와 Source Intake는 분리된 단계다. (2) 입력은 canonical
+`SourceMediaId`이며 경로가 아니다. (3) 적격성은 persist된 사실만으로 판정되는 repository·application 결정이며 codec·
+content 주장이 아니다. (4) admission은 audio·재생·transcription 가능성을 주장하지 않는다. (5) intake는 물리적 파일
+존재를 확인하지 않으며 이동·삭제된 원본은 적격성 실패가 아니다. (6) intake identity는 Source Media에서 결정적으로
+파생된다(`transcript-source-intake:<source_media_id>`). (7) admission은 durable·immutable·insert-only이며 atomic하게
+persist된다. (8) 동일 Source Media 반복 admission은 idempotent(기존 기록 resolve). (9) 하나의 Source Media는 하나의
+canonical intake 기록을 가진다. (10) intake는 `SourceMediaId` provenance를 보존한다. (11) intake는 transcript 내용·
+실행 결과를 만들지 않는다. (12) 실패는 부분 상태를 남기지 않고 Source Media 기록을 변경하지 않는다. (13) 기존
+Transcript·execution 계약이 우선한다. (14) deferred 개념은 placeholder를 도입하지 않는다.
 
 ## Related Documents
 
