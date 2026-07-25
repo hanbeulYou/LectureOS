@@ -70,6 +70,16 @@ and derives `health` (`healthy` / `warnings` / `errors`) and `ok` (no errors).
 | `REPRESENTATION_PROVENANCE_MISMATCH` | error | a representation's review/candidate/media/timeline lineage disagrees with its approved decision |
 | `APPROVED_DECISION_KIND_INVALID` | error | an approved decision's kind is not a valid approving accept/modify aligned with its review |
 | `APPROVED_DECISION_PROVENANCE_MISMATCH` | error | an approved decision's candidate disagrees with its review decision |
+| `PROVIDER_TRANSCRIPT_ADMISSION_DANGLING_INTAKE` | error | an admission references a missing transcript source intake |
+| `PROVIDER_TRANSCRIPT_ADMISSION_DANGLING_SOURCE_MEDIA` | error | an admission references a missing `source_media` record |
+| `PROVIDER_TRANSCRIPT_ADMISSION_DANGLING_PROVIDER_RESULT` | error | an admission references a missing provider transcript result |
+| `PROVIDER_TRANSCRIPT_ADMISSION_DANGLING_RAW_TRANSCRIPT` | error | an admission references a missing raw transcript |
+| `PROVIDER_TRANSCRIPT_ADMISSION_PROVENANCE_DISAGREEMENT` | error | an admission's intake is not derived from its Source Media reference |
+| `PROVIDER_TRANSCRIPT_ADMISSION_RAW_PROVIDER_DISAGREEMENT` | error | an admitted raw transcript and provider result provenance disagree |
+| `PROVIDER_TRANSCRIPT_ADMISSION_SEGMENT_COUNT_DISAGREEMENT` | error | an admission's segment count disagrees with the raw transcript membership |
+| `PROVIDER_TRANSCRIPT_ADMISSION_DUPLICATE_PROVIDER_RESULT` | error | a provider transcript result is admitted by more than one admission |
+| `PROVIDER_TRANSCRIPT_ADMISSION_DUPLICATE_RAW_TRANSCRIPT` | error | a raw transcript is admitted by more than one admission |
+| `RAW_TRANSCRIPT_SEGMENT_ORDINAL_NONCONTIGUOUS` | error | raw transcript segment ordinals are not a contiguous `0..n-1` sequence |
 | `MALFORMED_IDENTITY` | error | one or more rows have an empty or blank identity |
 
 ## Scope

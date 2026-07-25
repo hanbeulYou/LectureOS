@@ -29,13 +29,18 @@ LectureOS는 긴 한국어 강의의 후반작업에서 생기는 반복 작업�
 ### ✅ Implemented (구현 완료 · 테스트됨)
 
 - **실행 · lineage** — 처리 실행(run), 유닛 실행, `DomainResult` provenance를 SQLite에 durable하게 저장(스키마
-  **v31**, 이전 모든 버전에서 additive 단일 단계 마이그레이션).
+  **v32**, 이전 모든 버전에서 additive 단일 단계 마이그레이션).
 - **미디어 임포트(Media Import)** — 로컬 파일을 **content-addressed** canonical Source Media 기록으로 등록
   (스트리밍 SHA-256 → `sha256:<digest>`, 경로는 identity가 아님, 동일 내용 idempotent). 파일 identity와
   provenance만 기록하며 디코딩·transcode·probe·재생·transcription은 하지 않습니다. `lectureos.media_import_cli`.
 - **전사 소스 인테이크(Transcript Source Intake)** — 이미 임포트된 `SourceMediaId`를 Transcript Pipeline의 입력으로
   admit할 적격성을 확인(040 §13). persist된 사실만으로 판정하며 디코딩·probe·audio 검증·transcription을 하지
   않습니다. content에서 파생된 intake 기록(하나의 Source Media당 하나, idempotent). `lectureos.transcript_intake_cli`.
+- **External ASR Boundary(provider 결과 admission)** — 이미 admit된 intake에 대해 **외부에서 생성된 ASR 결과**를
+  admit하여 첫 canonical Raw Transcript를 만듭니다(040 §14). provider 증거는 정규화 이전 상태로 보존되고 Raw
+  Transcript는 별개 identity를 가집니다. identity는 결정적으로 파생되고 admission은 content로 idempotent하며 같은
+  참조에 다른 내용은 conflict로 거부됩니다. **ASR 엔진을 실행하지 않으며**(Whisper·ffmpeg·network·media 접근 없음)
+  결과는 로컬 JSON으로 공급됩니다. `lectureos.transcript_result_admit_cli`.
 - **인식문 파이프라인** — 원본 인식문 + provider 결과, 교정 생성·적용, 검수 준비, 사람의 검수 결정, applicability,
   current selection, ready state.
 - **자막 파이프라인** — 인테이크, 후보 생성, reading/time 표현, 구조 검증, 검수 준비, 사람의 검수 결정, 결정 적용,
@@ -178,6 +183,30 @@ PYTHONPATH=src python3 -m lectureos.transcript_intake_cli --media sha256:<digest
 동작 예제는 [`examples/transcript-intake/`](examples/transcript-intake/README.md), 계약은
 `docs/040_TRANSCRIPT_PIPELINE.md §13`과 `implementation/090_TRANSCRIPT_SOURCE_INTAKE.md`를 참고하세요.
 
+## External ASR Boundary — Provider Transcript Result Admission
+
+이미 admit된 intake(`TranscriptSourceIntakeId`)에 대해 **외부에서 생성된 ASR 결과**(provider-neutral / LectureOS-
+native JSON)를 admit하여 첫 canonical Raw Transcript를 만듭니다(040 §14). **입력은 intake id와 JSON 문서이며 media
+경로가 아닙니다. ASR 엔진을 실행하지 않습니다**(Whisper·ffmpeg·network·media 접근 없음 — 결과는 공급됨):
+
+```bash
+PYTHONPATH=src python3 -m lectureos.transcript_result_admit_cli \
+  --intake transcript-source-intake:sha256:<digest> \
+  --input provider-result.json --database /path/to/lectureos.sqlite3
+```
+
+- provider 증거(`ProviderTranscriptResult`)는 정규화 이전 상태로 보존되고 canonical `RawTranscript`는 별개
+  identity를 가집니다. 모든 identity는 anchor `(intake, provider, model, provider_result_ref)`에서 결정적으로
+  파생됩니다.
+- admission은 전체 payload의 `content_fingerprint`로 idempotent(`reused`)하며, 같은 참조에 **다른 내용**을 admit하면
+  conflict로 거부(덮어쓰지 않음)됩니다. 하나의 intake는 여러 provider 결과를, 하나의 provider 결과는 하나의 Raw
+  Transcript를 가집니다.
+- segment timing은 초 단위(`end > start`, 비겹침·비내림차순), text는 그대로 보존(한국어 포함), 빈 결과·잘못된
+  timing·unknown intake는 명시적으로 거부(exit 1, 저장소 불변)됩니다.
+
+동작 예제는 [`examples/transcript-result-admission/`](examples/transcript-result-admission/README.md), 계약은
+`docs/040_TRANSCRIPT_PIPELINE.md §14`와 `implementation/095_EXTERNAL_ASR_BOUNDARY.md`를 참고하세요.
+
 ## Repository Validation (저장소 검증)
 
 저장소가 내부적으로 일관적인지 **읽기 전용**으로 검증합니다(저장소를 수정하지 않습니다). identity, 참조,
@@ -225,13 +254,14 @@ golden 출력이 포함됩니다. export된 JSON은 서술적입니다 — 실�
 LectureOS/
 ├── src/lectureos/
 │   ├── application/        # 순수 domain + application 서비스(모델·불변식·오케스트레이션)
-│   ├── persistence/        # insert-only SQLite 저장소 + additive 스키마(v31)
+│   ├── persistence/        # insert-only SQLite 저장소 + additive 스키마(v32)
 │   ├── infrastructure/     # 로컬 파일시스템 writer(temp-file + 원자적 배치)
 │   ├── execution/          # 처리 실행, 유닛 실행, DomainResult lineage
 │   ├── providers/          # 선택적 provider 어댑터(예: OpenAI) — MVP에는 불필요
 │   ├── composition.py      # composition root: 구체 어댑터를 서비스에 결선
 │   ├── media_import_cli.py # 로컬 미디어 임포트 CLI
 │   ├── transcript_intake_cli.py # 전사 소스 인테이크 CLI
+│   ├── transcript_result_admit_cli.py # External ASR Boundary provider 결과 admission CLI
 │   ├── edit_export_cli.py  # 실행 가능한 Edit Export CLI
 │   ├── edit_export_demo.py # 실행 가능한 mock end-to-end 데모(미디어·네트워크 불필요)
 │   └── *_acceptance.py     # 인프로세스 end-to-end 인수 실행기
@@ -263,7 +293,7 @@ LectureOS/
 ## Development Status (개발 상태)
 
 - **Blueprint:** **PATCH-0020**까지 안정(`docs/`, `patches/`).
-- **구현:** edit-export MVP 완료; SQLite 스키마 **v31**; 전체 스위트 green(1800개 이상).
+- **구현:** edit-export MVP 완료; SQLite 스키마 **v32**; 전체 스위트 green(1800개 이상).
 - **거버넌스:** Blueprint 우선 — 제품 의미를 바꾸려면 PATCH를 먼저 쓰고 나서 구현합니다.
   `AGENTS.md`와 `implementation/050_IMPLEMENTATION_WORKFLOW.md` 참고.
 

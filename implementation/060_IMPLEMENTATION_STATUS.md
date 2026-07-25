@@ -2029,3 +2029,52 @@ domain, service, atomic persistence, CLI, migration, and validation tests, cover
 extraction, transcoding, transcription providers, model/language, transcript generation, background jobs,
 multiple transcript-intakes per Source Media, and the actual transcript execution linked to an intake remain
 later, separately-gated milestones and are out of scope.
+
+## External ASR Boundary — Provider Transcript Result Admission (First Slice, 040 §14)
+
+- Blueprint: approved `docs/040_TRANSCRIPT_PIPELINE.md §14` / `patches/PATCH-0021`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema **v32** (one insert-only table `provider_transcript_admissions`;
+  the existing v5 provider result / segment / raw transcript / domain result tables are reused unchanged)
+- Commit: `feat: establish external ASR boundary provider transcript result admission`
+- Immediate next milestone: a real single-provider ASR execution adapter (e.g. a local Whisper adapter) behind
+  this provider-neutral boundary — introduces actual audio extraction/decoding, product-gated, deferred
+
+This milestone establishes the first application realization of **040 §4.2 External ASR Boundary** and
+**§4.3 Raw Transcript Preservation** (040 §14 / PATCH-0021) — the smallest boundary through which an
+**externally produced** ASR result is admitted for an admitted `TranscriptSourceIntake` (040 §13) to produce the
+first canonical `RawTranscript`. It answers only "**how does LectureOS admit an externally produced ASR result
+for an already-admitted Source Media intake?**" — not how media is decoded, how audio is extracted, or which
+provider runs. `ProviderTranscriptAdmissionService.admit` accepts a canonical `TranscriptSourceIntakeId` and a
+provider-neutral (LectureOS-native) result document (provider, optional model/language, external result
+reference, ordered `start`/`end`/`text` segments) — **not** a media path — and **executes no ASR engine**, reads
+no media file, and makes no network request (the result is supplied). The existing canonical
+`ProviderTranscriptResult`, `TranscriptSegment`, and `RawTranscript` records are reused unchanged: the provider
+evidence is preserved un-normalized and kept distinct from the canonical Raw Transcript (its `TranscriptId` is
+never the provider payload). All identities are derived deterministically from the anchor
+`(intake_id, provider, model, provider_result_ref)` (SHA-256); admission carries **external** execution
+provenance (no internal `ProcessingRun`/RUNNING unit execution is invented). Admission is idempotent by a
+`content_fingerprint` over the full payload; re-admitting the same anchor with a different payload is a conflict
+and is rejected without mutation. Segment timing is in seconds (`end > start`, non-overlapping, non-decreasing),
+text is preserved exactly (Korean included), and an empty result is rejected.
+
+The AGENTS.md Architect Checklist is entirely `No`: no existing contract change (§4.2/§4.3 realized, not
+rewritten), no responsibility shift, the transcript records/identities reused, one additive identity
+(`ProviderTranscriptAdmissionId`), one additive migration, and no Blueprint contradiction. Additive schema
+**v32** adds the insert-only `provider_transcript_admissions` table (identity PK, `UNIQUE(provider result)`,
+`UNIQUE(raw transcript)`, FKs → `transcript_source_intakes`, `source_media`); every released version (v1..v31)
+chains single-step to v32 preserving rows, and downgrade/direct-skip/unsupported-target migrations are rejected.
+Read-only repository validation gains `provider_transcript_admissions` checks (dangling intake/source-media/
+provider-result/raw-transcript, intake↔media provenance disagreement, raw↔provider disagreement, segment-count
+disagreement, duplicate provider result / raw transcript) plus a raw-transcript segment ordinal-contiguity
+check, none checking provider availability or physical media. A runnable CLI
+(`lectureos.transcript_result_admit_cli --intake <id> --input <provider-result.json> --database <db>`, existing
+repository required) reports the admission/provider-result/raw-transcript identities, segment count, created/
+reused, and "LectureOS did not execute an ASR engine"; it exits 0/1 and leaves the repository unchanged on
+malformed/unknown/conflicting/invalid input. A deterministic no-ASR demo
+(`lectureos.transcript_result_admission_demo`, reusing the media-import fixtures and a committed Korean
+provider-result fixture) with a golden summary, plus focused domain, service, atomic persistence, CLI, migration,
+and validation tests, cover the slice. The complete 1875-test suite passes. ffmpeg/ffprobe, media decoding,
+audio extraction, Whisper and all ASR engines, model download/selection, provider/plugin registries, background
+jobs/queues/retries/progress, streaming, diarization, word/token timestamps, language detection, correction,
+review, and subtitle/export changes remain later, separately-gated milestones and are out of scope.
