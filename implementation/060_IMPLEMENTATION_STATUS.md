@@ -1986,3 +1986,46 @@ and a golden summary, plus focused domain, inspector (filesystem safety, streami
 symlink/empty/missing/directory/unreadable), atomic persistence, CLI, migration, and validation tests, cover the
 slice. The complete 1766-test suite passes. Audio extraction, ffprobe/duration/codec, transcoding, remote/
 managed storage, and transcription remain later, separately-gated milestones and are out of scope.
+
+## Source Intake Application Foundation — Source Media Transcription Intake Eligibility (First Slice, 040 §13)
+
+- Blueprint: approved `docs/040_TRANSCRIPT_PIPELINE.md §13` / `patches/PATCH-0020`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema **v31** (one insert-only table `transcript_source_intakes`)
+- Commit: `feat: establish source media transcription intake eligibility`
+- Immediate next milestone: External ASR Boundary provider result (040 §4.2) — introduces the first real media
+  inspection/execution, product-gated, deferred
+
+This milestone establishes the first application slice of **040 §4.1 Source Intake** (040 §13 / PATCH-0020) —
+the smallest connection between the persisted `source_media` record (Media Import, 045 §1) and the Transcript
+Pipeline. It answers only "**can this already-imported Source Media record be admitted as a Transcript Pipeline
+input?**" — not any codec/audio/decode/transcription question. `TranscriptSourceIntakeService.admit` accepts a
+canonical `SourceMediaId` (never a path), rejects a malformed identity before touching the repository, resolves
+the persisted `source_media` record read-only, and — when the reference resolves — records a durable,
+content-derived `TranscriptSourceIntake`. Eligibility is a repository/application decision from **persisted facts
+only** (eligible iff the id resolves to a persisted record); an unknown Source Media is rejected explicitly. The
+intake identity is derived (`transcript-source-intake:<source_media_id>`, enforced in the domain), giving exactly
+one canonical intake per Source Media and idempotency by construction; a near-concurrent duplicate converges on
+a persistence collision. The slice performs **no** decoding, probing, hashing, file access, or transcription;
+carries **no** execution provenance/DomainResult (an eligibility question, not an execution step); produces
+**no** transcript content or execution result; and never mutates the Source Media record. It **does not check
+physical file existence** — a moved/deleted reference-in-place original is not an eligibility failure (045 §1
+M-11), keeping operational availability and persisted-domain integrity distinct.
+
+The AGENTS.md Architect Checklist is entirely `No`: no existing contract change (§4.1 is implemented, not
+rewritten), no responsibility shift, `SourceMediaId` reused, one additive identity
+(`TranscriptSourceIntakeId`), one additive migration, and no Blueprint contradiction; 041–045 and the v1..v30
+records are unchanged. Additive schema **v31** adds the insert-only `transcript_source_intakes` table (identity
+PK, `UNIQUE(source_media_id)`, FK → `source_media`); every released version (v1..v30) chains single-step to v31
+preserving rows, and downgrade/direct-skip/unsupported-target migrations are rejected. Read-only repository
+validation gains `transcript_source_intakes` checks (dangling source_media reference, identity/reference
+derivation disagreement, duplicate intake per Source Media) without checking physical existence. A runnable CLI
+(`lectureos.transcript_intake_cli --media <source-media-id> --database <db>`, existing repository required)
+reports created/reused, the intake and Source Media identities, and "no transcription was executed"; it exits
+0/1 and leaves the repository unchanged on a malformed/unknown media or any failure. A deterministic no-decoding
+demo (`lectureos.transcript_intake_demo`, reusing the media-import fixtures) with a golden summary, plus focused
+domain, service, atomic persistence, CLI, migration, and validation tests, cover the slice. The complete
+1809-test suite passes. ffmpeg/ffprobe, media probing, duration/codec/audio-stream verification, audio
+extraction, transcoding, transcription providers, model/language, transcript generation, background jobs,
+multiple transcript-intakes per Source Media, and the actual transcript execution linked to an intake remain
+later, separately-gated milestones and are out of scope.
