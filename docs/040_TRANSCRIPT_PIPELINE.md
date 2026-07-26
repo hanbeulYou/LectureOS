@@ -28,6 +28,7 @@
   - `../patches/PATCH-0025-first-human-authority-decision-on-correction-candidate.md`
   - `../patches/PATCH-0026-first-corrected-transcript-revision.md`
   - `../patches/PATCH-0027-current-corrected-revision-selection.md`
+  - `../patches/PATCH-0028-effective-transcript-consumption-boundary.md`
 
 ## Purpose
 
@@ -999,6 +1000,92 @@ revision·sequence)이다. (6) 동일 대상 재요청은 reused, 다른 대상�
 만든다. (9) resolver는 inapplicable 선택을 명시적으로 보고하며 조용한 fallback이 없다. (10) 선택은 revision·후보·
 결정·Raw Transcript·Raw 선택을 변경하지 않는다. (11) 비선택 revision은 supersede되지 않는다. (12) append는 atomic이다.
 (13) 이 slice는 downstream 소비자를 전환하지 않는다. (14) deferred 개념의 placeholder는 없다.
+
+## 21. Effective Transcript Consumption Boundary (First Slice)
+
+이 절은 `PATCH-0028`(GOAL-012)로 승인된 Architect/Product 결정(S3-1…S3-14)을 기록한다. downstream transcript 파생
+작업이 **하나의 immutable transcript source**를 획득하는 첫 공유 소비 경계다. 오직 한 질문에 답한다: "이 작업은
+정확히 어떤 transcript snapshot을 소비했고, 그 source는 어떻게 고정되며, 이후 상류 authority가 바뀌면 어떻게
+되는가?" — 자막 생성·언어 검증·review 항목 생성·export 형식·revision 생성/선택에는 답하지 않는다. 다섯 가지 구분을
+보존한다: **현재 authority ≠ 소비된 source ≠ historical Result lineage ≠ Result currentness ≠ repository 무결성.**
+
+**Resolution ≠ Consumption Binding (Confirmed, S3-1):** effective resolution은 "지금 무엇이 effective인가"에,
+consumption binding은 "이 작업이 정확히 무엇을 소비했는가"에 답한다. downstream 작업은 움직이는 선택 pointer가
+아니라 하나의 immutable transcript source를 소비한다. 이후 Raw 선택 변경·corrected 선택 변경·후보 Reject·
+inapplicability·fallback이 일어나도 binding은 안정적으로 유지된다.
+
+**Sole Resolution Authority (Confirmed, S3-2):** 모든 effective-source 결정은 §20 resolver를 통한다. 어떤 소비자도
+"corrected 선택 확인 → 후보 Accepted 확인 → Raw parent 확인 → fallback" 논리를 복제하지 않는다. resolver 결과는
+관찰된 authority record identity(현재 Raw 선택 identity, history가 있으면 corrected 선택 identity)를 additive하게
+노출하며 의미·상태·no-silent-fallback 행동은 변하지 않는다.
+
+**Canonical Input (Confirmed, S3-3):** `EffectiveTranscriptInput`은 두 source를 kind를 지우지 않고 정규화한다:
+intake 문맥, 관찰된 resolver 상태(no_history / raw_fallback / corrected_revision_selected), source kind
+(`raw_transcript` | `corrected_transcript_revision`), 정확한 immutable source identity, 정확한 Raw parent identity,
+authority provenance, 순서 있는 canonical segment snapshot, §19 content fingerprint. 모호한 generic id로 두 kind를
+합치지 않으며 domain type 안전성을 보존한다.
+
+**Snapshot Reuse (Confirmed, S3-4):** snapshot 표현은 canonical `RawTranscript`/`CorrectedTranscriptRevision`/
+`TranscriptSegment`(v5)를 그대로 재사용한다 — 두 번째 transcript 계층·평탄화 사본·재정규화는 없다. segment의
+identity·순서·text·timing·speaker·provider/human provenance·`replaces_segment_id` 교체 lineage를 충실히 통과시키고
+corrected text에 대한 confidence를 조작하지 않는다.
+
+**Immutable Source Loading (Confirmed, S3-5):** segment는 해석된 immutable source identity로 로드한다 — 해석 후
+현재 authority를 다시 통과하지 않는다. 한 획득이 서로 다른 상태의 authority·선택·lineage를 섞을 수 없으며 mixed-
+source snapshot은 불가능하다. 작업 시작 후 선택이 바뀌어도 작업은 획득된 source에 고정된다(중간 재해석 금지).
+
+**Consumability (Confirmed, S3-6):** 새 소비는 지금 소비 가능한 source를 요구한다: 현재 Raw 선택 없음 → 명시적
+실패; selected-but-inapplicable corrected revision → resolver의 이유와 함께 명시적 거부 — 조용한 Raw fallback은
+없다. no-history Raw와 명시적 Raw fallback은 같은 Raw source를 낳지만 구분 가능한 provenance로 보존된다.
+
+**Binding Owner & Persistence (Confirmed, S3-7):** binding은 (consumer kind, intake 문맥)이 소유하는 persisted
+record다(v38 `effective_transcript_consumptions`). persistence 근거: replay가 source identity에 의존하고, audit이
+소비된 transcript를 보여야 하며, 이후 authority 변경이 record를 재해석해서는 안 되고, repository validation이
+lineage를 검증해야 한다. binding은 정확한 source(exact source identity + Raw parent)·관찰된 authority provenance·
+content fingerprint·segment count를 기록한다.
+
+**Deterministic Identity (Confirmed, S3-8):** binding identity는 `(consumer kind, intake, source kind, 정확한
+source identity)`의 SHA-256에서 파생된다. wall-clock·UUID·randomness·row 순서는 관여하지 않는다. authority
+provenance와 fingerprint는 기록된 사실이며 identity가 아니다.
+
+**Replay (Confirmed, S3-9):** 동일 consumer + 동일 source 재소비는 **reused**(중복 binding 없음; 기록된
+provenance는 최초 관찰을 유지). source가 바뀐 재소비는 별도 binding이다(잘못된 재사용 금지). 근접 동시 동일 요청은
+persistence collision으로 수렴하고, 동일 identity에 대한 fingerprint 불일치는 명시적 conflict다. 내용이 같아도
+source entity가 다르면 다른 binding이다(entity identity ≠ content fingerprint ≠ authority provenance).
+
+**Currentness Is Derived (Confirmed, S3-10):** "이 binding의 source가 지금도 effective인가"는 현재 resolver 결과와
+비교해 **파생**된다: current / stale_due_to_raw_selection_change / stale_due_to_corrected_selection_change /
+stale_due_to_selected_revision_inapplicability / unresolvable. mutable `is_current`/`is_stale`/`active` flag는
+존재하지 않는다.
+
+**Historical Validity (Confirmed, S3-11):** stale binding은 역사적으로 유효하다. authority 변경은 기존 binding을
+변경·삭제·재해석하지 않으며 자동 재처리·재생성·재선택·자동 fallback을 촉발하지 않는다. staleness는 손상이 아니다
+— repository validation은 binding 자체의 무결성(dangling source·kind 불일치·parent 불일치·authority provenance
+불일치·fingerprint 불일치)만 검사한다.
+
+**Bounded First Consumer (Confirmed, S3-12):** 이 slice의 유일한 소비자는 중립적 결정적 **consumption manifest**
+(`transcript_consumption_manifest`)다 — persisted 출력은 무해한 결정적 요약(segment count + §19 fingerprint)을
+담은 binding 자체다. 기존 validation/readiness·subtitle-intake 경계는 legacy §4.6–§4.8 경로(RUNNING execution·
+legacy 선택 기계)에 있어 가짜 실행 없이 통합할 수 없으므로 첫 소비자로 재사용하지 않는다(해당 경로는 불변).
+ProcessingRun·DomainResult·Artifact·물리 파일은 만들지 않는다(결정적 로컬 변환의 진실한 provenance).
+
+**No Downstream Switching (Confirmed, S3-13):** 이 slice에서 subtitle·review·export·분석 등 어떤 기존 소비자도
+이 경계로 전환되지 않는다. 이후 통합은 각각 별도로 범위가 정해지고 독립적으로 리뷰되는 milestone이다.
+
+**Deferred (이후 milestone, S3-14):** downstream 전환(validation/subtitle/review/export/분석)·자동 staleness 대응
+(재처리·재생성·무효화·삭제)·추가 consumer kind·multi-source/병합 소비·content 기반 중복 제거·물리 materialization.
+placeholder는 도입하지 않는다.
+
+**Canonical Invariants (Confirmed):** (1) 현재 authority ≠ 소비된 source ≠ historical lineage ≠ currentness ≠
+무결성. (2) 모든 해석은 §20 resolver를 통하며 소비자는 resolver 논리를 복제하지 않는다. (3) 소비는 하나의
+immutable source에 고정되고 중간 재해석이 없다. (4) segment는 immutable source identity로 로드되며 mixed-source
+snapshot이 불가능하다. (5) source kind와 정확한 source identity·Raw parent가 보존된다. (6) no-history와 explicit
+fallback은 구분 가능한 provenance다. (7) inapplicable 선택은 새 소비를 명시적으로 차단하고 조용한 fallback이 없다.
+(8) binding identity는 결정적(consumer kind·intake·source kind·source identity)이다. (9) 동일 source 재소비는
+reused, 다른 source는 별도 binding이다. (10) currentness는 파생되며 mutable flag가 없다. (11) stale binding은
+유효하고 손상이 아니며 자동 재처리·삭제·전환이 없다. (12) binding persistence는 atomic이고 상류 record를 변경하지
+않는다. (13) 이 slice의 소비자는 중립 manifest 하나뿐이고 기존 소비자는 전환되지 않는다. (14) deferred 개념의
+placeholder는 없다.
 
 ## Related Documents
 
