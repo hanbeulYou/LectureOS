@@ -183,3 +183,8 @@ class ProviderTranscriptAdmissionId(OpaqueIdentity):
 @dataclass(frozen=True, slots=True)
 class CurrentRawTranscriptSelectionId(OpaqueIdentity):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class CorrectionCandidateAdmissionId(OpaqueIdentity):
+    pass

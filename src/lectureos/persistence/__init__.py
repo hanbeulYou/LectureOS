@@ -102,6 +102,10 @@ from .current_raw_transcript_selection import (
     SQLiteRawTranscriptSelectionCommandPersistence,
     SQLiteRawTranscriptSelectionRepository,
 )
+from .correction_candidate_admission import (
+    SQLiteCorrectionCandidateAdmissionCommandPersistence,
+    SQLiteCorrectionCandidateAdmissionRepository,
+)
 from .subtitle_final_subtitle import (
     SQLiteSubtitleFinalSubtitleCommandPersistence,
     SQLiteSubtitleFinalSubtitleRepository,
@@ -191,6 +195,8 @@ __all__ = [
     "SQLiteProviderTranscriptAdmissionRepository",
     "SQLiteRawTranscriptSelectionCommandPersistence",
     "SQLiteRawTranscriptSelectionRepository",
+    "SQLiteCorrectionCandidateAdmissionCommandPersistence",
+    "SQLiteCorrectionCandidateAdmissionRepository",
     "SQLiteSubtitleFinalSubtitleCommandPersistence",
     "SQLiteSubtitleFinalSubtitleRepository",
     "SQLiteSubtitleReviewDecisionCommandPersistence",

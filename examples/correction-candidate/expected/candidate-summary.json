@@ -1,0 +1,8 @@
+{
+  "candidate_a_id": "correction-candidate:7edbb21a1ad18b35152573d0acf8191d0f8f06874597d09a7dd0b1956ccae2a7",
+  "candidate_b_id": "correction-candidate:4293bec3ef4c4c18348ac4481937030651f3a9209d3a585f42b44c4a38940fe3",
+  "candidate_count": 2,
+  "intake_id": "transcript-source-intake:sha256:7be6a9582ff6c7bd4e66c052dc634a38b88909402f2fb330d663000d7f2079a5",
+  "raw_transcript_id": "raw-transcript:a4cd6712bd2fc6ea3be75b4a12cd2f0aa4e439746f033f64de18e8027a3c71c1",
+  "segment_id": "transcript-segment:a4cd6712bd2fc6ea3be75b4a12cd2f0aa4e439746f033f64de18e8027a3c71c1:0"
+}

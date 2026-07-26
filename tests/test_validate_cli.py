@@ -58,7 +58,7 @@ class ValidateCliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         document = json.loads(out)
         self.assertEqual(document["health"], "healthy")
-        self.assertEqual(document["schema_version"], 33)
+        self.assertEqual(document["schema_version"], 34)
         self.assertIn("diagnostics", document)
 
     def test_missing_database_exits_one(self) -> None:

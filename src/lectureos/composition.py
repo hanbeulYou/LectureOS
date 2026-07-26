@@ -58,6 +58,9 @@ from lectureos.application.local_asr_transcription import (
 from lectureos.application.current_raw_transcript_selection import (
     CurrentRawTranscriptSelectionService,
 )
+from lectureos.application.correction_candidate_admission import (
+    CorrectionCandidateAdmissionService,
+)
 from lectureos.application.edit_candidate_generation import (
     EditCandidateGenerationPort,
     EditCandidateGenerationService,
@@ -141,6 +144,8 @@ from lectureos.persistence import (
     SQLiteProviderTranscriptAdmissionRepository,
     SQLiteRawTranscriptSelectionCommandPersistence,
     SQLiteRawTranscriptSelectionRepository,
+    SQLiteCorrectionCandidateAdmissionCommandPersistence,
+    SQLiteCorrectionCandidateAdmissionRepository,
     SQLiteSubtitleReadingCommandPersistence,
     SQLiteSubtitleDecisionRevisionCommandPersistence,
     SQLiteSubtitleDecisionRevisionRepository,
@@ -574,6 +579,28 @@ def compose_sqlite_current_raw_transcript_selection_service(
     persistence = SQLiteRawTranscriptSelectionCommandPersistence(connection)
     return CurrentRawTranscriptSelectionService(
         intakes, read_model, read_model, persistence
+    )
+
+
+def compose_sqlite_correction_candidate_admission_service(
+    connection: sqlite3.Connection,
+) -> CorrectionCandidateAdmissionService:
+    """Build Correction Candidate Admission on one caller connection (040 §17).
+
+    Admits a proposed correction against the intake's current Raw Transcript segment — reusing the canonical
+    CorrectionCandidate — without applying it. It resolves readiness (current selection), the target segment, and
+    lineage read-only, and writes only the candidate + its provenance + the admission binding row; it never
+    mutates Raw Transcript text, the current selection, or produces a corrected revision or decision.
+    """
+
+    intakes = SQLiteTranscriptSourceIntakeRepository(connection)
+    selections = SQLiteRawTranscriptSelectionRepository(connection)
+    segments = SQLiteTranscriptSegmentRepository(connection)
+    raw_transcripts = SQLiteRawTranscriptRepository(connection)
+    admissions = SQLiteCorrectionCandidateAdmissionRepository(connection)
+    persistence = SQLiteCorrectionCandidateAdmissionCommandPersistence(connection)
+    return CorrectionCandidateAdmissionService(
+        intakes, selections, segments, raw_transcripts, admissions, persistence
     )
 
 

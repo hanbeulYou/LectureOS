@@ -75,7 +75,7 @@ class RepositoryValidatorTests(unittest.TestCase):
         self.assertTrue(report.ok)
         self.assertEqual(report.error_count, 0)
         self.assertEqual(report.warning_count, 0)
-        self.assertEqual(report.schema_version, 33)
+        self.assertEqual(report.schema_version, 34)
         self.assertGreater(report.objects_checked, 0)
 
     def test_validator_does_not_mutate_the_database(self) -> None:
@@ -793,6 +793,135 @@ class CurrentRawTranscriptSelectionValidationTests(unittest.TestCase):
             lambda c: c.execute(
                 "UPDATE current_raw_transcript_selections SET identity = '  ' WHERE sequence = 1"
             ),
+        )
+        self.assertIn("MALFORMED_IDENTITY", self._codes(broken))
+
+
+class CorrectionCandidateAdmissionValidationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        from lectureos.application.correction_candidate_admission import (
+            build_correction_candidate_input,
+        )
+        from lectureos.application.provider_transcript_admission import (
+            build_provider_transcript_document,
+        )
+        from lectureos.composition import (
+            compose_sqlite_correction_candidate_admission_service,
+            compose_sqlite_current_raw_transcript_selection_service,
+            compose_sqlite_media_import_service,
+            compose_sqlite_provider_transcript_admission_service,
+            compose_sqlite_transcript_source_intake_service,
+        )
+        from lectureos.persistence import (
+            SQLiteRawTranscriptRepository,
+            SQLiteTranscriptSegmentRepository,
+        )
+        from lectureos.transcript.identities import TranscriptId
+
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.base = Path(self.tempdir.name)
+        self.healthy = self.base / "correction.db"
+        connection = initialize_sqlite_database(self.healthy)
+        source = self.base / "s.bin"
+        source.write_bytes(b"correction-validation \x00\x01")
+        media_id = (
+            compose_sqlite_media_import_service(connection).import_media(str(source)).record.identity.value
+        )
+        intake = (
+            compose_sqlite_transcript_source_intake_service(connection).admit(media_id).intake.identity.value
+        )
+        raw = compose_sqlite_provider_transcript_admission_service(connection).admit(
+            intake_id=intake,
+            document=build_provider_transcript_document(
+                {"provider": "fake", "model": "tiny", "language": "ko", "provider_result_ref": "A",
+                 "segments": [{"start": 0.0, "end": 2.0, "text": "원본"}]}
+            ),
+        ).admission.raw_transcript_id.value
+        compose_sqlite_current_raw_transcript_selection_service(connection).select(intake, raw)
+        segment = SQLiteRawTranscriptRepository(connection).get(TranscriptId(raw)).segment_ids[0].value
+        text = SQLiteTranscriptSegmentRepository(connection).get(
+            SQLiteRawTranscriptRepository(connection).get(TranscriptId(raw)).segment_ids[0]
+        ).text
+        compose_sqlite_correction_candidate_admission_service(connection).admit(
+            intake_id=intake,
+            candidate=build_correction_candidate_input(
+                {"raw_transcript_id": raw, "segment_id": segment, "candidate_ref": "c1",
+                 "source_type": "manual", "source_reference": "human", "proposed_text": "교정",
+                 "source_text_snapshot": text, "rationale": "fix"}
+            ),
+        )
+        connection.close()
+
+    def tearDown(self) -> None:
+        self.tempdir.cleanup()
+
+    def _corrupt(self, name: str, mutate) -> Path:
+        target = self.base / name
+        shutil.copyfile(self.healthy, target)
+        connection = sqlite3.connect(target)
+        try:
+            connection.execute("PRAGMA foreign_keys = OFF")
+            connection.execute("BEGIN")
+            mutate(connection)
+            connection.execute("COMMIT")
+        finally:
+            connection.close()
+        return target
+
+    def _codes(self, database: Path) -> set[str]:
+        return {d.code for d in validate_database(str(database)).diagnostics}
+
+    def test_healthy_correction_repository_is_clean(self) -> None:
+        report = validate_database(str(self.healthy))
+        self.assertTrue(report.ok)
+        self.assertEqual(report.health, RepositoryHealth.HEALTHY)
+
+    def test_source_text_disagreement_detected(self) -> None:
+        broken = self._corrupt(
+            "snapshot.db",
+            lambda c: c.execute(
+                "UPDATE correction_candidate_admissions SET source_text_snapshot = 'DRIFTED'"
+            ),
+        )
+        self.assertIn("CORRECTION_CANDIDATE_SOURCE_TEXT_DISAGREEMENT", self._codes(broken))
+
+    def test_segment_not_in_raw_transcript_detected(self) -> None:
+        broken = self._corrupt(
+            "seg.db",
+            lambda c: c.execute(
+                "UPDATE correction_candidate_admissions "
+                "SET raw_transcript_id = 'raw-transcript:" + "9" * 64 + "'"
+            ),
+        )
+        codes = self._codes(broken)
+        self.assertTrue(
+            "CORRECTION_CANDIDATE_SEGMENT_NOT_IN_RAW_TRANSCRIPT" in codes
+            or "CORRECTION_CANDIDATE_DANGLING_RAW_TRANSCRIPT" in codes
+            or "CORRECTION_CANDIDATE_RAW_TRANSCRIPT_NOT_IN_INTAKE" in codes
+        )
+
+    def test_lineage_disagreement_detected(self) -> None:
+        broken = self._corrupt(
+            "lineage.db",
+            lambda c: c.execute(
+                "UPDATE correction_candidates SET segment_id = 'transcript-segment:" + "9" * 64 + ":0'"
+            ),
+        )
+        self.assertIn(
+            "CORRECTION_CANDIDATE_ADMISSION_LINEAGE_DISAGREEMENT", self._codes(broken)
+        )
+
+    def test_empty_proposed_text_detected(self) -> None:
+        broken = self._corrupt(
+            "empty.db",
+            lambda c: c.execute("UPDATE correction_candidates SET proposed_text = '   '"),
+        )
+        self.assertIn("CORRECTION_CANDIDATE_EMPTY_PROPOSED_TEXT", self._codes(broken))
+
+    def test_blank_admission_identity_detected(self) -> None:
+        broken = self._corrupt(
+            "blank.db",
+            lambda c: c.execute("UPDATE correction_candidate_admissions SET identity = '  '"),
         )
         self.assertIn("MALFORMED_IDENTITY", self._codes(broken))
 

@@ -60,6 +60,7 @@ _INSPECTED_TABLES = (
     "transcript_source_intakes",
     "provider_transcript_admissions",
     "current_raw_transcript_selections",
+    "correction_candidate_admissions",
 )
 _IDENTITY_TABLES = (
     "domain_result_references",
@@ -72,6 +73,7 @@ _IDENTITY_TABLES = (
     "transcript_source_intakes",
     "provider_transcript_admissions",
     "current_raw_transcript_selections",
+    "correction_candidate_admissions",
 )
 _APPROVING_KINDS = ("accept", "modify")
 
@@ -745,6 +747,147 @@ def _check_current_raw_transcript_selection(
     return diagnostics
 
 
+def _check_correction_candidate_admission(
+    connection: sqlite3.Connection,
+) -> list[Diagnostic]:
+    if not _table_exists(connection, "correction_candidate_admissions"):
+        return []
+    diagnostics: list[Diagnostic] = []
+
+    # Dangling references — also foreign-key enforced; checked for defense in depth.
+    for target, column, code, message in (
+        ("correction_candidates", "correction_candidate_id",
+         "CORRECTION_CANDIDATE_DANGLING_CANDIDATE",
+         "admission references a missing correction candidate"),
+        ("transcript_source_intakes", "transcript_source_intake_id",
+         "CORRECTION_CANDIDATE_DANGLING_INTAKE",
+         "admission references a missing transcript source intake"),
+        ("raw_transcripts", "raw_transcript_id",
+         "CORRECTION_CANDIDATE_DANGLING_RAW_TRANSCRIPT",
+         "admission references a missing raw transcript"),
+        ("transcript_segments", "segment_id",
+         "CORRECTION_CANDIDATE_DANGLING_SEGMENT",
+         "admission references a missing transcript segment"),
+    ):
+        if not _table_exists(connection, target):
+            continue
+        for (identity,) in connection.execute(
+            f"""
+            SELECT a.identity
+            FROM correction_candidate_admissions a
+            LEFT JOIN {target} r ON a.{column} = r.identity
+            WHERE r.identity IS NULL
+            ORDER BY a.identity
+            """
+        ).fetchall():
+            diagnostics.append(
+                Diagnostic(
+                    code=code,
+                    severity=Severity.ERROR,
+                    location=f"correction_candidate_admissions:{identity}",
+                    message=message,
+                )
+            )
+
+    # The target raw transcript must be an admitted Raw Transcript of the admission's intake.
+    if _table_exists(connection, "provider_transcript_admissions"):
+        for (identity,) in connection.execute(
+            """
+            SELECT a.identity
+            FROM correction_candidate_admissions a
+            LEFT JOIN provider_transcript_admissions p
+                ON p.raw_transcript_id = a.raw_transcript_id
+            WHERE p.transcript_source_intake_id IS NULL
+               OR p.transcript_source_intake_id <> a.transcript_source_intake_id
+            ORDER BY a.identity
+            """
+        ).fetchall():
+            diagnostics.append(
+                Diagnostic(
+                    code="CORRECTION_CANDIDATE_RAW_TRANSCRIPT_NOT_IN_INTAKE",
+                    severity=Severity.ERROR,
+                    location=f"correction_candidate_admissions:{identity}",
+                    message="target raw transcript is not an admitted Raw Transcript of the intake",
+                )
+            )
+
+    # The target segment must belong to the target raw transcript, and the source-text snapshot must match it.
+    if _table_exists(connection, "transcript_segments"):
+        for (identity,) in connection.execute(
+            """
+            SELECT a.identity
+            FROM correction_candidate_admissions a
+            JOIN transcript_segments s ON s.identity = a.segment_id
+            WHERE s.transcript_id <> a.raw_transcript_id
+            ORDER BY a.identity
+            """
+        ).fetchall():
+            diagnostics.append(
+                Diagnostic(
+                    code="CORRECTION_CANDIDATE_SEGMENT_NOT_IN_RAW_TRANSCRIPT",
+                    severity=Severity.ERROR,
+                    location=f"correction_candidate_admissions:{identity}",
+                    message="target segment does not belong to the target raw transcript",
+                )
+            )
+        for (identity,) in connection.execute(
+            """
+            SELECT a.identity
+            FROM correction_candidate_admissions a
+            JOIN transcript_segments s ON s.identity = a.segment_id
+            WHERE a.source_text_snapshot <> s.text
+            ORDER BY a.identity
+            """
+        ).fetchall():
+            diagnostics.append(
+                Diagnostic(
+                    code="CORRECTION_CANDIDATE_SOURCE_TEXT_DISAGREEMENT",
+                    severity=Severity.ERROR,
+                    location=f"correction_candidate_admissions:{identity}",
+                    message="source-text snapshot no longer matches the segment text",
+                )
+            )
+
+    # The admitted candidate's own lineage must agree with the admission, and proposed text must be non-empty.
+    if _table_exists(connection, "correction_candidates"):
+        for (identity,) in connection.execute(
+            """
+            SELECT a.identity
+            FROM correction_candidate_admissions a
+            JOIN correction_candidates c ON c.identity = a.correction_candidate_id
+            WHERE c.transcript_id <> a.raw_transcript_id
+               OR c.segment_id <> a.segment_id
+            ORDER BY a.identity
+            """
+        ).fetchall():
+            diagnostics.append(
+                Diagnostic(
+                    code="CORRECTION_CANDIDATE_ADMISSION_LINEAGE_DISAGREEMENT",
+                    severity=Severity.ERROR,
+                    location=f"correction_candidate_admissions:{identity}",
+                    message="admitted candidate transcript/segment disagree with the admission",
+                )
+            )
+        for (identity,) in connection.execute(
+            """
+            SELECT a.identity
+            FROM correction_candidate_admissions a
+            JOIN correction_candidates c ON c.identity = a.correction_candidate_id
+            WHERE length(trim(c.proposed_text)) = 0
+            ORDER BY a.identity
+            """
+        ).fetchall():
+            diagnostics.append(
+                Diagnostic(
+                    code="CORRECTION_CANDIDATE_EMPTY_PROPOSED_TEXT",
+                    severity=Severity.ERROR,
+                    location=f"correction_candidate_admissions:{identity}",
+                    message="admitted correction candidate has empty proposed text",
+                )
+            )
+    return diagnostics
+
+
 def _check_raw_transcript_segments(connection: sqlite3.Connection) -> list[Diagnostic]:
     if not _table_exists(connection, "raw_transcript_segments"):
         return []
@@ -839,6 +982,7 @@ def validate_repository(connection: sqlite3.Connection) -> ValidationReport:
     diagnostics += _check_transcript_source_intake(connection)
     diagnostics += _check_provider_transcript_admission(connection)
     diagnostics += _check_current_raw_transcript_selection(connection)
+    diagnostics += _check_correction_candidate_admission(connection)
     diagnostics += _check_raw_transcript_segments(connection)
     diagnostics += _check_malformed_identities(connection)
 
