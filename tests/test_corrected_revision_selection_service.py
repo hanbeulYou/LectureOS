@@ -24,6 +24,7 @@ from lectureos.application.correction_candidate_decision import CorrectionCandid
 from lectureos.application.identities import (
     CorrectedRevisionGenerationId,
     CorrectionCandidateAdmissionId,
+    CurrentRawTranscriptSelectionId,
     TranscriptSourceIntakeId,
 )
 from lectureos.application.transcript_source_intake import (
@@ -96,6 +97,9 @@ def _decision(candidate, kind, sequence=0, previous=None):
 @dataclass
 class _RawSelection:
     raw_transcript_id: TranscriptId
+    identity: CurrentRawTranscriptSelectionId = CurrentRawTranscriptSelectionId(
+        "current-raw-transcript-selection:" + "0" * 64
+    )
 
 
 class _Fakes:

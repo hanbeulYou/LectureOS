@@ -37,7 +37,11 @@ from lectureos.review.identities import HumanActorReference
 from lectureos.review.models import DecisionKind
 from lectureos.transcript.identities import TranscriptId, TranscriptRevisionId
 
-from .identities import CorrectedRevisionSelectionId, TranscriptSourceIntakeId
+from .identities import (
+    CorrectedRevisionSelectionId,
+    CurrentRawTranscriptSelectionId,
+    TranscriptSourceIntakeId,
+)
 from .provider_transcript_admission import (
     ProviderTranscriptAdmissionError,
     require_canonical_intake_id,
@@ -176,7 +180,12 @@ class SelectionApplicability:
 
 @dataclass(frozen=True, slots=True)
 class EffectiveTranscript:
-    """Explicit structured result of effective-transcript resolution (never a hidden nullable)."""
+    """Explicit structured result of effective-transcript resolution (never a hidden nullable).
+
+    ``raw_selection_id`` and ``corrected_selection_id`` are the exact authority records the resolver
+    observed (040 §21 provenance for downstream consumption); they add no new resolution meaning.
+    ``corrected_selection_id`` is ``None`` exactly when no selection history exists.
+    """
 
     transcript_source_intake_id: TranscriptSourceIntakeId
     selection_state: SelectionState
@@ -184,6 +193,8 @@ class EffectiveTranscript:
     raw_transcript_id: TranscriptId
     corrected_revision_id: TranscriptRevisionId | None = None
     inapplicability_reason: str | None = None
+    raw_selection_id: CurrentRawTranscriptSelectionId | None = None
+    corrected_selection_id: CorrectedRevisionSelectionId | None = None
 
 
 class TranscriptSourceIntakeQuery(Protocol):
@@ -421,6 +432,8 @@ class CorrectedRevisionSelectionService:
                 ),
                 effective_kind=EffectiveKind.RAW_TRANSCRIPT,
                 raw_transcript_id=current_raw.raw_transcript_id,
+                raw_selection_id=current_raw.identity,
+                corrected_selection_id=None if current is None else current.identity,
             )
         generation = self._generations.get_by_revision(current.corrected_revision_id)
         if generation is None:
@@ -435,6 +448,8 @@ class CorrectedRevisionSelectionService:
                 effective_kind=EffectiveKind.CORRECTED_REVISION,
                 raw_transcript_id=current_raw.raw_transcript_id,
                 corrected_revision_id=current.corrected_revision_id,
+                raw_selection_id=current_raw.identity,
+                corrected_selection_id=current.identity,
             )
         # Never silently fall back: an inapplicable selected revision is an explicit state.
         return EffectiveTranscript(
@@ -444,6 +459,8 @@ class CorrectedRevisionSelectionService:
             raw_transcript_id=current_raw.raw_transcript_id,
             corrected_revision_id=current.corrected_revision_id,
             inapplicability_reason=applicability.reason,
+            raw_selection_id=current_raw.identity,
+            corrected_selection_id=current.identity,
         )
 
 

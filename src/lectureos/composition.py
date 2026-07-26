@@ -67,6 +67,10 @@ from lectureos.application.correction_candidate_decision import (
 from lectureos.application.corrected_revision_generation import (
     CorrectedRevisionGenerationService,
 )
+from lectureos.application.effective_transcript_consumption import (
+    EffectiveTranscriptConsumptionService,
+    EffectiveTranscriptInputService,
+)
 from lectureos.application.corrected_revision_selection import (
     CorrectedRevisionSelectionService,
 )
@@ -182,6 +186,8 @@ from lectureos.persistence import (
     SQLiteCorrectionCandidateRepository,
     SQLiteCorrectedTranscriptRevisionRepository,
     SQLiteDomainResultReferenceRepository,
+    SQLiteEffectiveTranscriptConsumptionCommandPersistence,
+    SQLiteEffectiveTranscriptConsumptionRepository,
     SQLiteExecutionCommandPersistence,
     SQLiteFailureRepository,
     SQLiteProcessingRunRepository,
@@ -676,6 +682,30 @@ def compose_sqlite_corrected_revision_selection_service(
     persistence = SQLiteCorrectedRevisionSelectionCommandPersistence(connection)
     return CorrectedRevisionSelectionService(
         intakes, generations, admissions, decisions, raw_selections, selections, persistence
+    )
+
+
+def compose_sqlite_effective_transcript_consumption_service(
+    connection: sqlite3.Connection,
+) -> EffectiveTranscriptConsumptionService:
+    """Build the Effective Transcript Consumption Boundary on one caller connection (040 §21).
+
+    Acquisition resolves solely through the §20 resolver, loads the snapshot by immutable source
+    identity, and records the deterministic consumption binding for the bounded manifest consumer —
+    read-only over every upstream record; only `effective_transcript_consumptions` is written.
+    """
+
+    selection_service = compose_sqlite_corrected_revision_selection_service(connection)
+    input_service = EffectiveTranscriptInputService(
+        selection_service,
+        SQLiteRawTranscriptRepository(connection),
+        SQLiteCorrectedTranscriptRevisionRepository(connection),
+        SQLiteTranscriptSegmentRepository(connection),
+    )
+    consumptions = SQLiteEffectiveTranscriptConsumptionRepository(connection)
+    persistence = SQLiteEffectiveTranscriptConsumptionCommandPersistence(connection)
+    return EffectiveTranscriptConsumptionService(
+        input_service, selection_service, consumptions, persistence
     )
 
 

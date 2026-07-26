@@ -1,0 +1,10 @@
+{
+  "binding_count": 3,
+  "consumption_c1_id": "transcript-consumption:328024bb6e7ba1a5d850e4a6d3e9c83e72a48af015a2c5fa60a6210cd1f9d27d",
+  "consumption_r1_id": "transcript-consumption:88d0b709b7c8258da642c7e61bac4c6e4a691614683e1435b336bc1d8364cd43",
+  "consumption_r2_id": "transcript-consumption:5d2bf5399fe5c38d1de1d99bd4e6734d3957b57081fe772ba0c72183ef634100",
+  "intake_id": "transcript-source-intake:sha256:7be6a9582ff6c7bd4e66c052dc634a38b88909402f2fb330d663000d7f2079a5",
+  "raw_1_id": "raw-transcript:a4cd6712bd2fc6ea3be75b4a12cd2f0aa4e439746f033f64de18e8027a3c71c1",
+  "raw_2_id": "raw-transcript:83fdb1e260f7a70c1f9860afe4f1db94325a2545f40cdfccf4d9736204de7776",
+  "revision_id": "corrected-revision:41626b3049148ab918e89ebbbce839cb35d8255aaedb199a4731155f4d93f218"
+}

@@ -14,6 +14,8 @@ malformed identities. The validator is edit-export focused (the current MVP) but
 
 from __future__ import annotations
 
+import hashlib
+import json
 import sqlite3
 from pathlib import Path
 
@@ -64,6 +66,7 @@ _INSPECTED_TABLES = (
     "correction_candidate_decisions",
     "corrected_revision_generations",
     "corrected_revision_selections",
+    "effective_transcript_consumptions",
 )
 _IDENTITY_TABLES = (
     "domain_result_references",
@@ -80,6 +83,7 @@ _IDENTITY_TABLES = (
     "correction_candidate_decisions",
     "corrected_revision_generations",
     "corrected_revision_selections",
+    "effective_transcript_consumptions",
 )
 _APPROVING_KINDS = ("accept", "modify")
 
@@ -1226,6 +1230,210 @@ def _check_corrected_revision_selection(
     return diagnostics
 
 
+def _snapshot_content_fingerprint(
+    connection: sqlite3.Connection, membership_table: str, owner_column: str, owner: str
+) -> tuple[str, int]:
+    """Recompute the canonical §19 content fingerprint (order/text/timing) of one stored snapshot."""
+
+    rows = connection.execute(
+        f"""
+        SELECT seg.text, seg.start, seg.end, seg.source_order
+        FROM {membership_table} m
+        JOIN transcript_segments seg ON seg.identity = m.transcript_segment_id
+        WHERE m.{owner_column} = ?
+        ORDER BY m.ordinal
+        """,
+        (owner,),
+    ).fetchall()
+    payload = json.dumps(
+        [
+            {"text": text, "start": start, "end": end, "source_order": source_order}
+            for text, start, end, source_order in rows
+        ],
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest(), len(rows)
+
+
+def _check_effective_transcript_consumption(
+    connection: sqlite3.Connection,
+) -> list[Diagnostic]:
+    """Integrity of consumption bindings only (040 §21). Currentness is NEVER integrity: a binding whose
+    source is no longer effective — later Reject, raw switch, changed corrected selection, later fallback —
+    is historically valid and produces no diagnostic here."""
+
+    if not _table_exists(connection, "effective_transcript_consumptions"):
+        return []
+    diagnostics: list[Diagnostic] = []
+
+    # Dangling references — also foreign-key enforced; checked for defense in depth.
+    for target, column, code, message in (
+        ("transcript_source_intakes", "transcript_source_intake_id",
+         "CONSUMPTION_DANGLING_INTAKE",
+         "consumption references a missing transcript source intake"),
+        ("raw_transcripts", "parent_raw_transcript_id",
+         "CONSUMPTION_DANGLING_RAW_SOURCE",
+         "consumption references a missing parent raw transcript"),
+        ("corrected_transcript_revisions", "corrected_revision_id",
+         "CONSUMPTION_DANGLING_REVISION_SOURCE",
+         "consumption references a missing corrected transcript revision"),
+        ("current_raw_transcript_selections", "raw_selection_id",
+         "CONSUMPTION_DANGLING_SELECTION",
+         "consumption references a missing raw transcript selection authority"),
+        ("corrected_revision_selections", "corrected_selection_id",
+         "CONSUMPTION_DANGLING_SELECTION",
+         "consumption references a missing corrected revision selection authority"),
+    ):
+        if not _table_exists(connection, target):
+            continue
+        for (identity,) in connection.execute(
+            f"""
+            SELECT c.identity
+            FROM effective_transcript_consumptions c
+            LEFT JOIN {target} r ON c.{column} = r.identity
+            WHERE c.{column} IS NOT NULL AND r.identity IS NULL
+            ORDER BY c.identity
+            """
+        ).fetchall():
+            diagnostics.append(
+                Diagnostic(
+                    code=code,
+                    severity=Severity.ERROR,
+                    location=f"effective_transcript_consumptions:{identity}",
+                    message=message,
+                )
+            )
+
+    # Source kind, exact source identity, and resolution state must agree (CHECK-enforced on the
+    # released schema; validated for defense in depth against tampered schemas).
+    for (identity,) in connection.execute(
+        """
+        SELECT identity FROM effective_transcript_consumptions
+        WHERE NOT ((source_kind = 'raw_transcript' AND corrected_revision_id IS NULL
+                    AND source_transcript_identity = parent_raw_transcript_id
+                    AND resolution_state IN ('no_history', 'raw_fallback')
+                    AND ((resolution_state = 'no_history' AND corrected_selection_id IS NULL)
+                         OR (resolution_state = 'raw_fallback'
+                             AND corrected_selection_id IS NOT NULL)))
+                OR (source_kind = 'corrected_transcript_revision'
+                    AND corrected_revision_id IS NOT NULL
+                    AND source_transcript_identity = corrected_revision_id
+                    AND resolution_state = 'corrected_revision_selected'
+                    AND corrected_selection_id IS NOT NULL))
+        ORDER BY identity
+        """
+    ).fetchall():
+        diagnostics.append(
+            Diagnostic(
+                code="CONSUMPTION_SOURCE_KIND_DISAGREEMENT",
+                severity=Severity.ERROR,
+                location=f"effective_transcript_consumptions:{identity}",
+                message="consumption source kind, source identity, and resolution state disagree",
+            )
+        )
+
+    if _table_exists(connection, "corrected_transcript_revisions"):
+        # A corrected consumption's recorded Raw parent must be the revision's immutable parent.
+        for (identity,) in connection.execute(
+            """
+            SELECT c.identity
+            FROM effective_transcript_consumptions c
+            JOIN corrected_transcript_revisions r ON r.identity = c.corrected_revision_id
+            WHERE r.parent_raw_transcript_id IS NULL
+               OR r.parent_raw_transcript_id <> c.parent_raw_transcript_id
+            ORDER BY c.identity
+            """
+        ).fetchall():
+            diagnostics.append(
+                Diagnostic(
+                    code="CONSUMPTION_PARENT_MISMATCH",
+                    severity=Severity.ERROR,
+                    location=f"effective_transcript_consumptions:{identity}",
+                    message="consumption parent raw transcript does not match the revision's parent",
+                )
+            )
+
+    # Observed authority provenance must be internally consistent. These facts were true at
+    # acquisition and every referenced record is immutable, so they hold forever; a disagreement
+    # is corruption, not staleness.
+    if _table_exists(connection, "current_raw_transcript_selections"):
+        for (identity,) in connection.execute(
+            """
+            SELECT c.identity
+            FROM effective_transcript_consumptions c
+            JOIN current_raw_transcript_selections s ON s.identity = c.raw_selection_id
+            WHERE s.transcript_source_intake_id <> c.transcript_source_intake_id
+               OR s.raw_transcript_id <> c.parent_raw_transcript_id
+            ORDER BY c.identity
+            """
+        ).fetchall():
+            diagnostics.append(
+                Diagnostic(
+                    code="CONSUMPTION_AUTHORITY_MISMATCH",
+                    severity=Severity.ERROR,
+                    location=f"effective_transcript_consumptions:{identity}",
+                    message="observed raw selection authority does not match the consumption's context or source",
+                )
+            )
+    if _table_exists(connection, "corrected_revision_selections"):
+        for (identity,) in connection.execute(
+            """
+            SELECT c.identity
+            FROM effective_transcript_consumptions c
+            JOIN corrected_revision_selections s ON s.identity = c.corrected_selection_id
+            WHERE s.transcript_source_intake_id <> c.transcript_source_intake_id
+               OR (c.resolution_state = 'raw_fallback' AND s.kind <> 'raw_fallback')
+               OR (c.resolution_state = 'corrected_revision_selected'
+                   AND (s.kind <> 'corrected_revision'
+                        OR s.corrected_revision_id <> c.corrected_revision_id))
+            ORDER BY c.identity
+            """
+        ).fetchall():
+            diagnostics.append(
+                Diagnostic(
+                    code="CONSUMPTION_AUTHORITY_MISMATCH",
+                    severity=Severity.ERROR,
+                    location=f"effective_transcript_consumptions:{identity}",
+                    message="observed corrected selection authority does not match the consumption's context or source",
+                )
+            )
+
+    # The persisted manifest must match the bound immutable snapshot (deterministic recomputation).
+    if _table_exists(connection, "transcript_segments"):
+        for identity, source_kind, source, fingerprint, count in connection.execute(
+            """
+            SELECT identity, source_kind, source_transcript_identity,
+                   content_fingerprint, segment_count
+            FROM effective_transcript_consumptions
+            ORDER BY identity
+            """
+        ).fetchall():
+            if source_kind == "corrected_transcript_revision":
+                membership, owner_column = (
+                    "corrected_transcript_revision_segments", "transcript_revision_id",
+                )
+            else:
+                membership, owner_column = ("raw_transcript_segments", "raw_transcript_id")
+            if not _table_exists(connection, membership):
+                continue
+            recomputed, recomputed_count = _snapshot_content_fingerprint(
+                connection, membership, owner_column, source
+            )
+            if recomputed != fingerprint or recomputed_count != count:
+                diagnostics.append(
+                    Diagnostic(
+                        code="CONSUMPTION_FINGERPRINT_MISMATCH",
+                        severity=Severity.ERROR,
+                        location=f"effective_transcript_consumptions:{identity}",
+                        message="persisted content manifest does not match the bound source snapshot",
+                    )
+                )
+
+    return diagnostics
+
+
 def _check_raw_transcript_segments(connection: sqlite3.Connection) -> list[Diagnostic]:
     if not _table_exists(connection, "raw_transcript_segments"):
         return []
@@ -1324,6 +1532,7 @@ def validate_repository(connection: sqlite3.Connection) -> ValidationReport:
     diagnostics += _check_correction_candidate_decision(connection)
     diagnostics += _check_corrected_revision_generation(connection)
     diagnostics += _check_corrected_revision_selection(connection)
+    diagnostics += _check_effective_transcript_consumption(connection)
     diagnostics += _check_raw_transcript_segments(connection)
     diagnostics += _check_malformed_identities(connection)
 

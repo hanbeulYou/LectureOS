@@ -75,7 +75,7 @@ class RepositoryValidatorTests(unittest.TestCase):
         self.assertTrue(report.ok)
         self.assertEqual(report.error_count, 0)
         self.assertEqual(report.warning_count, 0)
-        self.assertEqual(report.schema_version, 37)
+        self.assertEqual(report.schema_version, 38)
         self.assertGreater(report.objects_checked, 0)
 
     def test_validator_does_not_mutate_the_database(self) -> None:
@@ -1353,6 +1353,233 @@ class CorrectedRevisionSelectionValidationTests(unittest.TestCase):
             ),
         )
         self.assertIn("MALFORMED_IDENTITY", self._codes(broken))
+
+
+class EffectiveTranscriptConsumptionValidationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        from lectureos.application.correction_candidate_admission import (
+            build_correction_candidate_input,
+        )
+        from lectureos.application.provider_transcript_admission import (
+            build_provider_transcript_document,
+        )
+        from lectureos.composition import (
+            compose_sqlite_corrected_revision_generation_service,
+            compose_sqlite_corrected_revision_selection_service,
+            compose_sqlite_correction_candidate_admission_service,
+            compose_sqlite_correction_candidate_decision_service,
+            compose_sqlite_current_raw_transcript_selection_service,
+            compose_sqlite_effective_transcript_consumption_service,
+            compose_sqlite_media_import_service,
+            compose_sqlite_provider_transcript_admission_service,
+            compose_sqlite_transcript_source_intake_service,
+        )
+        from lectureos.persistence import (
+            SQLiteRawTranscriptRepository,
+            SQLiteTranscriptSegmentRepository,
+        )
+
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.base = Path(self.tempdir.name)
+        self.healthy = self.base / "consumption.db"
+        connection = initialize_sqlite_database(self.healthy)
+        source = self.base / "s.bin"
+        source.write_bytes(b"consumption-validation \x00\x01")
+        media_id = compose_sqlite_media_import_service(connection).import_media(str(source)).record.identity.value
+        intake = compose_sqlite_transcript_source_intake_service(connection).admit(media_id).intake.identity.value
+        provider = compose_sqlite_provider_transcript_admission_service(connection)
+        raw = provider.admit(
+            intake_id=intake,
+            document=build_provider_transcript_document(
+                {"provider": "fake", "model": "tiny", "language": "ko", "provider_result_ref": "A",
+                 "segments": [{"start": 0.0, "end": 2.0, "text": "원본"}]}
+            ),
+        ).admission
+        self.raw_1 = raw.raw_transcript_id.value
+        raw_selection = compose_sqlite_current_raw_transcript_selection_service(connection)
+        raw_selection.select(intake, self.raw_1)
+        consumption = compose_sqlite_effective_transcript_consumption_service(connection)
+        consumption.consume(intake_id=intake)  # raw binding
+        raw_record = SQLiteRawTranscriptRepository(connection).get(raw.raw_transcript_id)
+        segment = raw_record.segment_ids[0]
+        text = SQLiteTranscriptSegmentRepository(connection).get(segment).text
+        candidate = compose_sqlite_correction_candidate_admission_service(connection).admit(
+            intake_id=intake,
+            candidate=build_correction_candidate_input(
+                {"raw_transcript_id": self.raw_1, "segment_id": segment.value,
+                 "candidate_ref": "c1", "source_type": "manual", "source_reference": "human",
+                 "proposed_text": "교정", "source_text_snapshot": text, "rationale": "fix"}
+            ),
+        ).candidate.identity.value
+        decisions = compose_sqlite_correction_candidate_decision_service(connection)
+        decisions.decide(candidate_id=candidate, kind="accept", reviewer="r:kim")
+        revision = compose_sqlite_corrected_revision_generation_service(connection).generate(
+            candidate_id=candidate
+        ).revision.identity.value
+        compose_sqlite_corrected_revision_selection_service(connection).select_revision(
+            revision_id=revision, reviewer="s:kim"
+        )
+        consumption.consume(intake_id=intake)  # corrected binding
+        # Later authority changes: staleness must NEVER be corruption (040 §21 S3-11).
+        decisions.decide(candidate_id=candidate, kind="reject", reviewer="r:kim")
+        raw_2 = provider.admit(
+            intake_id=intake,
+            document=build_provider_transcript_document(
+                {"provider": "fake", "model": "tiny", "language": "ko", "provider_result_ref": "B",
+                 "segments": [{"start": 0.0, "end": 2.0, "text": "다른 원본"}]}
+            ),
+        ).admission.raw_transcript_id.value
+        self.second_raw_selection = raw_selection.select(intake, raw_2).selection.identity.value
+        connection.close()
+
+    def tearDown(self) -> None:
+        self.tempdir.cleanup()
+
+    def _corrupt(self, name: str, mutate) -> Path:
+        target = self.base / name
+        shutil.copyfile(self.healthy, target)
+        connection = sqlite3.connect(target)
+        try:
+            connection.execute("PRAGMA foreign_keys = OFF")
+            connection.execute("BEGIN")
+            mutate(connection)
+            connection.execute("COMMIT")
+        finally:
+            connection.close()
+        return target
+
+    def _codes(self, database: Path) -> set[str]:
+        return {d.code for d in validate_database(str(database)).diagnostics}
+
+    def test_healthy_bindings_stay_clean_after_reject_and_raw_switch(self) -> None:
+        report = validate_database(str(self.healthy))
+        self.assertTrue(report.ok)
+        self.assertEqual(report.health, RepositoryHealth.HEALTHY)
+
+    def test_dangling_intake_detected(self) -> None:
+        broken = self._corrupt(
+            "intake.db",
+            lambda c: c.execute(
+                "UPDATE effective_transcript_consumptions "
+                "SET transcript_source_intake_id = 'transcript-source-intake:sha256:ghost'"
+            ),
+        )
+        self.assertIn("CONSUMPTION_DANGLING_INTAKE", self._codes(broken))
+
+    def test_dangling_raw_source_detected(self) -> None:
+        ghost = "raw-transcript:" + "0" * 64
+        broken = self._corrupt(
+            "rawsource.db",
+            lambda c: c.execute(
+                "UPDATE effective_transcript_consumptions "
+                f"SET parent_raw_transcript_id = '{ghost}', source_transcript_identity = '{ghost}' "
+                "WHERE source_kind = 'raw_transcript'"
+            ),
+        )
+        self.assertIn("CONSUMPTION_DANGLING_RAW_SOURCE", self._codes(broken))
+
+    def test_dangling_revision_source_detected(self) -> None:
+        ghost = "corrected-revision:" + "0" * 64
+        broken = self._corrupt(
+            "revsource.db",
+            lambda c: c.execute(
+                "UPDATE effective_transcript_consumptions "
+                f"SET corrected_revision_id = '{ghost}', source_transcript_identity = '{ghost}' "
+                "WHERE source_kind = 'corrected_transcript_revision'"
+            ),
+        )
+        self.assertIn("CONSUMPTION_DANGLING_REVISION_SOURCE", self._codes(broken))
+
+    def test_dangling_selection_authority_detected(self) -> None:
+        broken = self._corrupt(
+            "authority.db",
+            lambda c: c.execute(
+                "UPDATE effective_transcript_consumptions "
+                "SET raw_selection_id = 'raw-transcript-selection:ghost'"
+            ),
+        )
+        self.assertIn("CONSUMPTION_DANGLING_SELECTION", self._codes(broken))
+
+    def test_authority_mismatch_detected(self) -> None:
+        # Point a binding's observed raw-selection provenance at the (real) later selection whose
+        # raw transcript differs from the binding's recorded parent.
+        broken = self._corrupt(
+            "mismatch.db",
+            lambda c: c.execute(
+                "UPDATE effective_transcript_consumptions "
+                f"SET raw_selection_id = '{self.second_raw_selection}'"
+            ),
+        )
+        self.assertIn("CONSUMPTION_AUTHORITY_MISMATCH", self._codes(broken))
+
+    def test_parent_mismatch_detected(self) -> None:
+        broken = self._corrupt(
+            "parent.db",
+            lambda c: c.execute(
+                "UPDATE effective_transcript_consumptions "
+                "SET parent_raw_transcript_id = ("
+                "  SELECT identity FROM raw_transcripts WHERE identity <> ("
+                "    SELECT parent_raw_transcript_id FROM corrected_transcript_revisions LIMIT 1"
+                "  ) LIMIT 1"
+                ") WHERE source_kind = 'corrected_transcript_revision'"
+            ),
+        )
+        self.assertIn("CONSUMPTION_PARENT_MISMATCH", self._codes(broken))
+
+    def test_fingerprint_mismatch_detected(self) -> None:
+        broken = self._corrupt(
+            "fingerprint.db",
+            lambda c: c.execute(
+                "UPDATE effective_transcript_consumptions SET content_fingerprint = ?",
+                ("f" * 64,),
+            ),
+        )
+        self.assertIn("CONSUMPTION_FINGERPRINT_MISMATCH", self._codes(broken))
+
+    def test_segment_count_mismatch_detected(self) -> None:
+        broken = self._corrupt(
+            "count.db",
+            lambda c: c.execute(
+                "UPDATE effective_transcript_consumptions SET segment_count = 42"
+            ),
+        )
+        self.assertIn("CONSUMPTION_FINGERPRINT_MISMATCH", self._codes(broken))
+
+    def test_source_kind_disagreement_detected_on_tampered_schema(self) -> None:
+        # The real schema CHECK-enforces kind/state consistency; exercise the read-only check on a
+        # minimal tampered schema where that constraint is absent (the established pattern).
+        path = self.base / "kind.db"
+        connection = sqlite3.connect(path)
+        try:
+            connection.executescript(
+                """
+                CREATE TABLE schema_metadata (singleton INTEGER PRIMARY KEY, version INTEGER NOT NULL);
+                INSERT INTO schema_metadata VALUES (1, 38);
+                CREATE TABLE effective_transcript_consumptions (
+                    identity TEXT PRIMARY KEY,
+                    consumer_kind TEXT,
+                    transcript_source_intake_id TEXT,
+                    resolution_state TEXT,
+                    source_kind TEXT,
+                    source_transcript_identity TEXT,
+                    parent_raw_transcript_id TEXT,
+                    corrected_revision_id TEXT,
+                    raw_selection_id TEXT,
+                    corrected_selection_id TEXT,
+                    content_fingerprint TEXT,
+                    segment_count INTEGER
+                );
+                INSERT INTO effective_transcript_consumptions VALUES
+                    ('transcript-consumption:x', 'transcript_consumption_manifest',
+                     'transcript-source-intake:sha256:m', 'no_history', 'raw_transcript',
+                     'raw-transcript:a', 'raw-transcript:a', 'corrected-revision:b',
+                     'raw-transcript-selection:s', NULL, 'f', 1);
+                """
+            )
+            connection.commit()
+        finally:
+            connection.close()
+        self.assertIn("CONSUMPTION_SOURCE_KIND_DISAGREEMENT", self._codes(path))
 
 
 if __name__ == "__main__":

@@ -203,3 +203,8 @@ class CorrectedRevisionGenerationId(OpaqueIdentity):
 @dataclass(frozen=True, slots=True)
 class CorrectedRevisionSelectionId(OpaqueIdentity):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class EffectiveTranscriptConsumptionId(OpaqueIdentity):
+    pass
