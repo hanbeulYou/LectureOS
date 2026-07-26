@@ -97,6 +97,14 @@ and derives `health` (`healthy` / `warnings` / `errors`) and `ok` (no errors).
 | `CORRECTION_DECISION_DANGLING_CANDIDATE` | error | a human decision references a missing correction candidate |
 | `CORRECTION_DECISION_SEQUENCE_NONCONTIGUOUS` | error | a candidate's decision sequences are not a contiguous `0..n-1` sequence |
 | `CORRECTION_DECISION_BROKEN_SUPERSESSION` | error | a non-initial decision does not supersede its candidate's immediately prior sequence |
+| `CORRECTED_REVISION_DANGLING_REVISION` | error | a generation references a missing corrected transcript revision |
+| `CORRECTED_REVISION_DANGLING_CANDIDATE` | error | a generation references a missing correction candidate |
+| `CORRECTED_REVISION_DANGLING_DECISION` | error | a generation references a missing authorizing decision |
+| `CORRECTED_REVISION_DANGLING_PARENT` | error | a generation references a missing parent raw transcript |
+| `CORRECTED_REVISION_AUTHORIZING_DECISION_NOT_ACCEPT` | error | a generation's specific authorizing decision is not an Accept (the candidate's later/current authority is deliberately not checked) |
+| `CORRECTED_REVISION_DECISION_CANDIDATE_MISMATCH` | error | a generation's authorizing decision does not belong to its candidate |
+| `CORRECTED_REVISION_PARENT_MISMATCH` | error | a generated revision's parent disagrees with its generation record |
+| `CORRECTED_REVISION_MEMBERSHIP_DISAGREEMENT` | error | a revision's membership disagrees with the generation's replaced/replacement segments |
 | `MALFORMED_IDENTITY` | error | one or more rows have an empty or blank identity |
 
 ## Scope

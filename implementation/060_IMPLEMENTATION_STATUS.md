@@ -2263,3 +2263,55 @@ authority evolution and proves candidate/Raw-Transcript immutability and healthy
 2079-test suite passes. Applying accepted decisions, corrected-revision generation, current corrected-revision
 selection, Modify, ranking, automatic correction, and review UI remain later, separately-gated milestones and are
 out of scope.
+
+## First Corrected Transcript Revision — One-Candidate Explicit Application (First Slice, 040 §19 / GOAL-010)
+
+- Blueprint: approved `docs/040_TRANSCRIPT_PIPELINE.md §19` / `patches/PATCH-0026`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema **v36** (one new table `corrected_revision_generations`; the v5
+  `corrected_transcript_revisions` / segment / domain-result records are reused unchanged)
+- Commit: `feat: add first corrected transcript revision generation`
+- Immediate next milestone (GOAL-011): Current Corrected Revision Selection — a separate authority deciding
+  which corrected revision is the current downstream input, deferred
+
+This milestone establishes the first **immutable Corrected Transcript Revision** (040 §19 / PATCH-0026,
+GOAL-010): explicitly applying exactly **one currently Accepted** Correction Candidate (§17/§18) to its
+authoritative source Raw Transcript. Acceptance authorizes; generation applies — separate boundaries: accepting
+never creates a revision, and `CorrectedRevisionGenerationService.generate` is an explicit request naming one
+candidate. Generation requires the candidate's **current** §18 authority to be Accepted (Undecided/Rejected
+ineligible; historical acceptance insufficient after a later Reject) and structural applicability against the
+candidate's own §17 lineage (its Raw Transcript is the intake's current selection; the target segment belongs to
+it; the persisted segment text equals the source-text snapshot — staleness is ineligibility, never corruption,
+never fuzzy-matched). Application is a pure deterministic transformation reusing the **canonical v5
+`CorrectedTranscriptRevision`** (complete snapshot via ordered segment references — no second transcript
+representation): one new replacement segment with the candidate's exact proposed text and `replaces_segment_id`,
+timing/order/timeline/speaker preserved, every unaffected segment referenced unchanged, human/provider provenance
+kept distinct. All identities derive from the anchor `(candidate, authorizing_accepted_decision)` — the revision
+references the **specific authorizing Accepted Decision**, distinct re-acceptances yield distinct revisions
+(immutable records acquire no new provenance; a separate content fingerprint keeps entity vs content identity
+distinct), identical replay reuses (also after restart and under near-concurrent duplicates), and same-anchor
+content divergence is an explicit conflict. `Accept → Generate → Reject` leaves the revision persisted and
+queryable; the Reject only blocks new generation. Revisions coexist; **none is selected as current** (no
+current/active flags — GOAL-011). Nothing mutates the Raw Transcript, candidate, decision history, or current
+selection; the revision is a domain record, not a file.
+
+**Reuse investigation (GOAL-010 §7):** the v5 `CorrectedTranscriptRevision` + segment/domain-result records and
+their transaction-free insert helpers are reused (the PATCH-0021/24 pattern); the execution-coupled
+`TranscriptService.create_corrected_revision` (RUNNING execution) is not used — no fake executions. What is new
+is only the additive v36 `corrected_revision_generations` binding (identity PK, `UNIQUE(corrected_revision_id)`,
+`UNIQUE(candidate, authorizing_decision)` replay anchor, FKs → revision/candidate/decision/raw-transcript/
+segments, content fingerprint). **Architect Decision judged not required:** the existing confirmed v5 revision
+contract answers owner/representation/parent/segment-identity (GOAL-010 §14/§24/§28/§29); §36 is resolved
+conservatively by immutability (distinct authorizing decisions → distinct revisions); nothing is weakened and
+GOAL-011 selection remains fully open. Every released version v1..v35 chains single-step to v36 preserving rows;
+downgrade/direct-skip/unsupported-target rejected. Read-only validation gains generation checks (dangling
+revision/candidate/decision/parent, authorizing-decision-not-Accept — inspecting the **specific** authorizing
+decision, never current authority, decision-candidate mismatch, parent mismatch, membership disagreement). One
+CLI (`lectureos.corrected_revision_cli` with `generate`/`show`/`list`, no `--force`/`--apply-all`) reports
+created/reused and that the revision was not selected as current. A deterministic demo
+(`lectureos.corrected_revision_demo`) with a golden proves the §70–§73 scenarios (undecided/rejected blocked,
+acceptance-alone creates nothing, exact application with preservation, replay reuse, authority-change survival,
+healthy validation). The complete 2133-test suite passes. Current corrected revision selection,
+multiple-candidate merge, overlap resolution, revision chaining, ranking, automatic/LLM correction, linguistic
+validation, mutable editing, segment structure changes, timing correction, and subtitle/export changes remain
+later, separately-gated milestones and are out of scope.
