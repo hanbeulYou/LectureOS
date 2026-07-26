@@ -2361,3 +2361,55 @@ all states, and exits 0/1 leaving the repository unchanged on failure. A determi
 (`lectureos.corrected_selection_demo`) with a golden proves the §63–§67 scenarios. The complete 2188-test suite
 passes. Downstream resolver integration, ranking/recommendation, automatic selection, multi-candidate revisions,
 revision chaining, and review UI remain later, separately-gated milestones and are out of scope.
+
+## Effective Transcript Consumption Boundary (First Slice, 040 §21 / GOAL-012)
+
+- Blueprint: approved `docs/040_TRANSCRIPT_PIPELINE.md §21` / `patches/PATCH-0028`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema **v38** (one insert-only table `effective_transcript_consumptions`)
+- Commit: `feat: add effective transcript consumption boundary with manifest consumer`
+- Immediate next milestone: switch one real downstream operation (transcript validation, subtitle preparation,
+  review preparation, or export) to consume this boundary — product-gated, deferred
+
+This milestone establishes the first **Effective Transcript Consumption Boundary** (040 §21 / PATCH-0028,
+GOAL-012): the shared application boundary through which downstream transcript-derived operations acquire one
+immutable transcript source. Five distinctions are preserved: current authority ≠ consumed source ≠ historical
+binding lineage ≠ binding currentness ≠ repository integrity. All effective-source determination flows through
+the **sole §20 resolver** (extended additively to expose the authority record identities it observed — no new
+resolution meaning); no consumer duplicates selection/acceptance/parent/fallback logic. Acquisition validates
+consumability (no current Raw selection → explicit failure; selected-but-inapplicable corrected revision →
+explicit refusal with the resolver's reason — **never a silent Raw fallback**) and loads the ordered canonical
+`TranscriptSegment` snapshot **by immutable resolved source identity**, never back through current authority, so
+mixed-source snapshots are impossible; text, timing, speaker, `replaces_segment_id` replacement lineage, and
+provider/human provenance pass through untouched, and the §19 `content_fingerprint_for` is reused verbatim.
+
+The persisted **consumption binding** pins one consumer to one exact source: deterministic identity
+`transcript-consumption:<sha256(consumer kind, intake, source kind, exact source identity)>`; the row records
+the exact source and Raw parent, the observed raw/corrected selection authority (no-history and explicit
+fallback remain distinguishable), and the deterministic manifest (segment count + fingerprint). Replay: same
+consumer + same source → reused (UNIQUE replay anchor, converge-on-collision); different source → distinct
+binding; same content under different source entities stays distinct; fingerprint disagreement is an explicit
+conflict. Later authority changes (Reject, Raw switch, selection change, fallback) never rewrite, delete, or
+reinterpret a binding — currentness is **derived** (`current` / `stale_due_to_raw_selection_change` /
+`stale_due_to_corrected_selection_change` / `stale_due_to_selected_revision_inapplicability` / `unresolvable`),
+never a stored flag, and no automatic reprocessing/deletion/switching exists.
+
+**First-consumer decision (GOAL-012 §7):** the preferred existing candidates — the transcript
+validation/readiness boundary and the subtitle transcript intake — live on the legacy §4.6–§4.8 path (legacy
+`TranscriptCurrentSelection`, ApplicabilityEvaluation, ReviewItem/CandidateReference, RUNNING unit executions)
+and cannot join the §13–§20 chain without fabricated execution machinery; both remain untouched. The bounded
+first consumer is therefore the neutral deterministic **consumption manifest**
+(`transcript_consumption_manifest`, the only member of `SUPPORTED_CONSUMER_KINDS`), whose persisted output is
+the binding itself; no ProcessingRun/DomainResult/Artifact/physical file is fabricated. **Architect Decision
+judged not required:** the binding owner (consumer kind + intake context) follows the §16/§20 precedent,
+persistence is justified by the goal's own criteria (replay, audit, non-reinterpretation, validation), result
+identity depends on immutable source identity (not current selection), and both sources already share the
+canonical segment snapshot. Every released version v1..v37 chains single-step to v38 preserving all rows;
+downgrade/direct-skip/unsupported-target rejected. Read-only validation gains eight integrity-only
+`CONSUMPTION_*` checks (dangling refs, kind/state disagreement, parent mismatch, observed-authority mismatch,
+manifest recomputation) — staleness is deliberately never flagged (tested healthy after Reject + Raw switch).
+One CLI (`lectureos.transcript_consumption_cli` with `resolve-input`/`consume`/`status`, no `--force`) and a
+deterministic demo (`lectureos.transcript_consumption_demo`) with a byte-stable golden prove the §62–§65
+scenarios. The complete 2250-test suite passes. Switching real downstream consumers, automatic staleness
+reactions, additional consumer kinds, and merged/multi-source consumption remain later, separately-gated
+milestones and are out of scope.

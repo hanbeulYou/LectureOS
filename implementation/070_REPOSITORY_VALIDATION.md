@@ -111,6 +111,14 @@ and derives `health` (`healthy` / `warnings` / `errors`) and `ok` (no errors).
 | `CORRECTED_SELECTION_CONTEXT_MISMATCH` | error | a selected revision's lineage does not belong to the selection's intake context |
 | `CORRECTED_SELECTION_SEQUENCE_NONCONTIGUOUS` | error | an intake's selection sequences are not a contiguous `0..n-1` sequence |
 | `CORRECTED_SELECTION_BROKEN_SUPERSESSION` | error | a non-initial selection does not supersede its intake's immediately prior selection |
+| `CONSUMPTION_DANGLING_INTAKE` | error | a consumption binding references a missing transcript source intake |
+| `CONSUMPTION_DANGLING_RAW_SOURCE` | error | a consumption binding references a missing parent raw transcript |
+| `CONSUMPTION_DANGLING_REVISION_SOURCE` | error | a consumption binding references a missing corrected transcript revision |
+| `CONSUMPTION_DANGLING_SELECTION` | error | a consumption binding references a missing raw/corrected selection authority record |
+| `CONSUMPTION_SOURCE_KIND_DISAGREEMENT` | error | a binding's source kind, exact source identity, and resolution state disagree |
+| `CONSUMPTION_PARENT_MISMATCH` | error | a corrected consumption's recorded Raw parent disagrees with the revision's immutable parent |
+| `CONSUMPTION_AUTHORITY_MISMATCH` | error | a binding's observed selection provenance disagrees with its context or consumed source (staleness against *current* authority is deliberately never checked) |
+| `CONSUMPTION_FINGERPRINT_MISMATCH` | error | a binding's persisted content manifest (fingerprint/segment count) does not match its bound immutable snapshot |
 | `MALFORMED_IDENTITY` | error | one or more rows have an empty or blank identity |
 
 ## Scope

@@ -29,7 +29,7 @@ LectureOS는 긴 한국어 강의의 후반작업에서 생기는 반복 작업�
 ### ✅ Implemented (구현 완료 · 테스트됨)
 
 - **실행 · lineage** — 처리 실행(run), 유닛 실행, `DomainResult` provenance를 SQLite에 durable하게 저장(스키마
-  **v37**, 이전 모든 버전에서 additive 단일 단계 마이그레이션).
+  **v38**, 이전 모든 버전에서 additive 단일 단계 마이그레이션).
 - **미디어 임포트(Media Import)** — 로컬 파일을 **content-addressed** canonical Source Media 기록으로 등록
   (스트리밍 SHA-256 → `sha256:<digest>`, 경로는 identity가 아님, 동일 내용 idempotent). 파일 identity와
   provenance만 기록하며 디코딩·transcode·probe·재생·transcription은 하지 않습니다. `lectureos.media_import_cli`.
@@ -73,6 +73,12 @@ LectureOS는 긴 한국어 강의의 후반작업에서 생기는 반복 작업�
   resolver**를 제공합니다(040 §20). revision은 자동으로 current가 되지 않고, 선택은 아무것도 변경하지 않으며,
   이후 Reject·Raw 전환은 선택을 inapplicable하게 만들 뿐(조용한 fallback 없음) history는 불변입니다. 새 선택은
   write-time 적격성(현재 Raw parent + 현재 Accepted 후보)을 요구합니다. `lectureos.corrected_selection_cli`.
+- **Effective Transcript 소비 경계** — downstream transcript 파생 작업이 **하나의 immutable transcript
+  source**를 획득하는 공유 경계입니다(040 §21). 모든 해석은 §20 resolver를 통하고, snapshot은 immutable source
+  identity로 로드되며, 결정적 **consumption binding**이 정확한 source·Raw parent·authority provenance·content
+  fingerprint를 기록합니다. 이후 authority 변경은 binding을 바꾸지 않고 currentness가 파생되며,
+  selected-but-inapplicable revision은 새 소비를 명시적으로 차단합니다(조용한 fallback 없음). 이 슬라이스의 유일한
+  소비자는 중립 manifest이며 기존 소비자는 전환되지 않습니다. `lectureos.transcript_consumption_cli`.
 - **인식문 파이프라인** — 원본 인식문 + provider 결과, 교정 생성·적용, 검수 준비, 사람의 검수 결정, applicability,
   current selection, ready state.
 - **자막 파이프라인** — 인테이크, 후보 생성, reading/time 표현, 구조 검증, 검수 준비, 사람의 검수 결정, 결정 적용,
@@ -418,6 +424,34 @@ PYTHONPATH=src python3 -m lectureos.corrected_selection_cli resolve --intake tra
 [`examples/corrected-selection/`](examples/corrected-selection/README.md), 계약은
 `docs/040_TRANSCRIPT_PIPELINE.md §20`과 `implementation/101_CORRECTED_REVISION_SELECTION.md`를 참고하세요.
 
+## Effective Transcript Consumption Boundary
+
+downstream transcript 파생 작업이 **하나의 immutable transcript source**를 획득하는 공유 소비 경계입니다(040
+§21). **현재 authority ≠ 소비된 source ≠ historical lineage ≠ currentness ≠ 무결성.**
+**identity를 받습니다(경로 아님). `--force`는 없습니다:**
+
+```bash
+# effective transcript input 해석(읽기 전용): resolver 상태·provenance·source·segment manifest
+PYTHONPATH=src python3 -m lectureos.transcript_consumption_cli resolve-input --intake transcript-source-intake:sha256:<digest> --database /path/to/lectureos.sqlite3
+
+# manifest consumption binding 기록(또는 동일 source 재사용 수렴)
+PYTHONPATH=src python3 -m lectureos.transcript_consumption_cli consume --intake transcript-source-intake:sha256:<digest> --database /path/to/lectureos.sqlite3
+
+# 저장된 binding과 파생 currentness 조회
+PYTHONPATH=src python3 -m lectureos.transcript_consumption_cli status --intake transcript-source-intake:sha256:<digest> --database /path/to/lectureos.sqlite3
+```
+
+- 모든 해석은 §20 resolver를 통하며(소비자는 resolver 논리를 복제하지 않음) segment는 immutable source identity로
+  로드됩니다 — mixed-source snapshot은 불가능합니다. binding identity는 (consumer kind·intake·source kind·정확한
+  source identity)에서 결정적으로 파생됩니다.
+- 같은 source 재소비는 `reused`(중복 binding 없음), source 전환은 별도 binding입니다. 이후 Reject·Raw 전환은 기존
+  binding을 바꾸지 않고 currentness(`current`/`stale_due_to_*`/`unresolvable`)가 파생됩니다. staleness는 손상이
+  아니며 자동 재처리·삭제·전환은 없습니다.
+
+결정적 데모: `PYTHONPATH=src python3 -m lectureos.transcript_consumption_demo`. 동작 예제는
+[`examples/transcript-consumption/`](examples/transcript-consumption/README.md), 계약은
+`docs/040_TRANSCRIPT_PIPELINE.md §21`과 `implementation/102_EFFECTIVE_TRANSCRIPT_CONSUMPTION.md`를 참고하세요.
+
 ## Repository Validation (저장소 검증)
 
 저장소가 내부적으로 일관적인지 **읽기 전용**으로 검증합니다(저장소를 수정하지 않습니다). identity, 참조,
@@ -465,7 +499,7 @@ golden 출력이 포함됩니다. export된 JSON은 서술적입니다 — 실�
 LectureOS/
 ├── src/lectureos/
 │   ├── application/        # 순수 domain + application 서비스(모델·불변식·오케스트레이션)
-│   ├── persistence/        # insert-only SQLite 저장소 + additive 스키마(v37)
+│   ├── persistence/        # insert-only SQLite 저장소 + additive 스키마(v38)
 │   ├── infrastructure/     # 로컬 파일시스템 writer(temp-file + 원자적 배치)
 │   ├── execution/          # 처리 실행, 유닛 실행, DomainResult lineage
 │   ├── providers/          # 선택적 provider 어댑터(예: OpenAI) — MVP에는 불필요
@@ -479,6 +513,7 @@ LectureOS/
 │   ├── correction_candidate_decision_cli.py # 교정 후보 Human Authority 결정 CLI
 │   ├── corrected_revision_cli.py # Corrected Transcript Revision 생성 CLI
 │   ├── corrected_selection_cli.py # Current Corrected Revision 선택 & resolve CLI
+│   ├── transcript_consumption_cli.py # Effective Transcript 소비 경계 CLI
 │   ├── edit_export_cli.py  # 실행 가능한 Edit Export CLI
 │   ├── edit_export_demo.py # 실행 가능한 mock end-to-end 데모(미디어·네트워크 불필요)
 │   └── *_acceptance.py     # 인프로세스 end-to-end 인수 실행기
@@ -510,7 +545,7 @@ LectureOS/
 ## Development Status (개발 상태)
 
 - **Blueprint:** **PATCH-0020**까지 안정(`docs/`, `patches/`).
-- **구현:** edit-export MVP 완료; SQLite 스키마 **v37**; 전체 스위트 green(1800개 이상).
+- **구현:** edit-export MVP 완료; SQLite 스키마 **v38**; 전체 스위트 green(1800개 이상).
 - **거버넌스:** Blueprint 우선 — 제품 의미를 바꾸려면 PATCH를 먼저 쓰고 나서 구현합니다.
   `AGENTS.md`와 `implementation/050_IMPLEMENTATION_WORKFLOW.md` 참고.
 
