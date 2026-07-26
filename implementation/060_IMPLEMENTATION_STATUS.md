@@ -2170,3 +2170,49 @@ history-preserving switching, unrelated-selection rejection, readiness, and heal
 1973-test suite passes. Transcript correction, candidates, structural validation, review, scoring/ranking,
 merging/ensemble, subtitle/export changes, queues, and additional adapters remain later, separately-gated
 milestones and are out of scope.
+
+## First Transcript Correction Candidate Admission (First Slice, 040 §17)
+
+- Blueprint: approved `docs/040_TRANSCRIPT_PIPELINE.md §17` / `patches/PATCH-0024`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema **v34** (one new table `correction_candidate_admissions`; the v5
+  `correction_candidates` records are reused unchanged)
+- Commit: `feat: add first transcript correction candidate admission`
+- Immediate next milestone: the first Human Authority decision on a Correction Candidate — accept/reject one
+  admitted candidate and prepare (not auto-create) the first corrected transcript revision (040 §4.7), deferred
+
+This milestone records a **proposed** correction for one segment of the intake's **currently selected** Raw
+Transcript (040 §17 / PATCH-0024) **without applying it** — the first application slice of §4.4 Correction. A
+Correction Candidate is a suggestion, not canonical transcript content. `CorrectionCandidateAdmissionService.admit`
+resolves the intake, requires **readiness** (a valid current Raw Transcript selection, §16) and that the target
+Raw Transcript is that current selection, resolves the target segment and verifies it belongs to the Raw
+Transcript, and verifies the supplied **source-text snapshot** equals the persisted segment text (stale
+detection); it rejects empty and **no-op** proposed text. It **reuses the canonical `CorrectionCandidate`** (v5 —
+no second correction hierarchy) with external/manual provenance (deterministic markers, no internal RUNNING
+execution) and binds it via the additive v34 `correction_candidate_admissions` record (intake, segment, immutable
+snapshot, source metadata). Identity is deterministic from the anchor `(intake, raw_transcript, segment,
+source_type, source_reference, candidate_ref)`; admission is idempotent by a content fingerprint and a conflicting
+reuse of the same anchor is rejected without overwrite. Multiple distinct suggestions per segment coexist (distinct
+`candidate_ref`). Admission **never** mutates Raw Transcript text, the current selection, the Source Media, or the
+intake, and creates no corrected revision, decision, acceptance, ranking, or review. After a later selection
+switch, existing candidates remain immutable historical evidence, surfaced as no longer applicable — not
+corruption.
+
+The AGENTS.md Architect Checklist is entirely `No`: no existing contract change (CorrectionCandidate/Raw
+Transcript/§16 selection unchanged), no responsibility shift, one additive identity
+(`CorrectionCandidateAdmissionId`), one additive migration, and no Blueprint contradiction. Additive schema
+**v34** adds the `correction_candidate_admissions` table (identity PK, `UNIQUE(correction_candidate_id)`, FKs →
+`correction_candidates`, `transcript_source_intakes`, `raw_transcripts`, `transcript_segments`); every released
+version v1..v33 chains single-step to v34 preserving rows, and downgrade/direct-skip/unsupported-target migrations
+are rejected. Read-only repository validation gains `correction_candidate_admissions` checks (dangling candidate/
+intake/raw-transcript/segment, raw-transcript-not-in-intake, segment-not-in-raw-transcript, source-text
+disagreement, admission lineage disagreement, empty proposed text) — and deliberately does not diagnose a
+historical candidate as corruption merely because a different Raw Transcript is currently selected. One CLI
+(`lectureos.correction_candidate_cli` with `admit`/`list`, no `--apply`) accepts identities (never paths), states
+the candidate was not applied, lists candidates with current-selection applicability (not ranked), and exits 0/1
+leaving the repository unchanged on failure. A deterministic demo (`lectureos.correction_candidate_demo`, fake
+provider results + manual candidates) with a golden proves readiness gating, immutable-segment targeting,
+unchanged Raw Transcript text, idempotent replay, coexisting candidates, no ranking/application, history-preserving
+selection switch, and stale/not-current rejection. The complete 2026-test suite passes. Candidate acceptance/
+rejection/modification, ranking, automatic correction, LLM/rule engines, corrected transcript revision, review,
+and subtitle/export changes remain later, separately-gated milestones and are out of scope.

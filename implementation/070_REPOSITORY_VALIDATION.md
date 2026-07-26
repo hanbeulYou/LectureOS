@@ -85,6 +85,15 @@ and derives `health` (`healthy` / `warnings` / `errors`) and `ok` (no errors).
 | `RAW_TRANSCRIPT_SELECTION_LINEAGE_MISMATCH` | error | a selected raw transcript is not an admitted candidate of the selection's intake |
 | `RAW_TRANSCRIPT_SELECTION_SEQUENCE_NONCONTIGUOUS` | error | an intake's selection sequences are not a contiguous `0..n-1` sequence |
 | `RAW_TRANSCRIPT_SELECTION_BROKEN_SUPERSESSION` | error | a non-initial selection does not supersede its intake's immediately prior sequence |
+| `CORRECTION_CANDIDATE_DANGLING_CANDIDATE` | error | a correction-candidate admission references a missing correction candidate |
+| `CORRECTION_CANDIDATE_DANGLING_INTAKE` | error | a correction-candidate admission references a missing transcript source intake |
+| `CORRECTION_CANDIDATE_DANGLING_RAW_TRANSCRIPT` | error | a correction-candidate admission references a missing raw transcript |
+| `CORRECTION_CANDIDATE_DANGLING_SEGMENT` | error | a correction-candidate admission references a missing transcript segment |
+| `CORRECTION_CANDIDATE_RAW_TRANSCRIPT_NOT_IN_INTAKE` | error | the target raw transcript is not an admitted Raw Transcript of the admission's intake |
+| `CORRECTION_CANDIDATE_SEGMENT_NOT_IN_RAW_TRANSCRIPT` | error | the target segment does not belong to the target raw transcript |
+| `CORRECTION_CANDIDATE_SOURCE_TEXT_DISAGREEMENT` | error | a candidate's source-text snapshot no longer matches the segment text |
+| `CORRECTION_CANDIDATE_ADMISSION_LINEAGE_DISAGREEMENT` | error | an admitted candidate's transcript/segment disagree with its admission |
+| `CORRECTION_CANDIDATE_EMPTY_PROPOSED_TEXT` | error | an admitted correction candidate has empty proposed text |
 | `MALFORMED_IDENTITY` | error | one or more rows have an empty or blank identity |
 
 ## Scope

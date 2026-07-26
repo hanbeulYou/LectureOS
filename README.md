@@ -29,7 +29,7 @@ LectureOS는 긴 한국어 강의의 후반작업에서 생기는 반복 작업�
 ### ✅ Implemented (구현 완료 · 테스트됨)
 
 - **실행 · lineage** — 처리 실행(run), 유닛 실행, `DomainResult` provenance를 SQLite에 durable하게 저장(스키마
-  **v33**, 이전 모든 버전에서 additive 단일 단계 마이그레이션).
+  **v34**, 이전 모든 버전에서 additive 단일 단계 마이그레이션).
 - **미디어 임포트(Media Import)** — 로컬 파일을 **content-addressed** canonical Source Media 기록으로 등록
   (스트리밍 SHA-256 → `sha256:<digest>`, 경로는 identity가 아님, 동일 내용 idempotent). 파일 identity와
   provenance만 기록하며 디코딩·transcode·probe·재생·transcription은 하지 않습니다. `lectureos.media_import_cli`.
@@ -52,6 +52,11 @@ LectureOS는 긴 한국어 강의의 후반작업에서 생기는 반복 작업�
   후보는 identity 순으로 열거되며(provider/model로 ranking하지 않음), 선택은 append-only(전환 시 이전 record 보존)·
   idempotent이고, 다른 intake의 transcript 선택은 거부됩니다. transcript 내용을 바꾸지 않으며 Correction을 실행하지
   않습니다. `lectureos.raw_transcript_selection_cli`.
+- **Transcript 교정 후보 admission** — 현재 선택된 Raw Transcript의 한 segment에 대한 **제안된 교정을 적용하지 않고**
+  기록합니다(040 §17). readiness(현재 선택)를 요구하고, immutable segment를 target하며, source-text snapshot으로 stale을
+  감지하고, Raw Transcript 내용을 **결코 바꾸지 않습니다.** 후보는 결정적 identity·idempotent이며 같은 참조에 다른
+  내용은 conflict로 거부됩니다. 하나의 segment에 여러 후보가 공존하고, 후보는 **ranking·적용·수락·review되지 않습니다**
+  (수락·corrected revision은 이후 단계). `lectureos.correction_candidate_cli`.
 - **인식문 파이프라인** — 원본 인식문 + provider 결과, 교정 생성·적용, 검수 준비, 사람의 검수 결정, applicability,
   current selection, ready state.
 - **자막 파이프라인** — 인테이크, 후보 생성, reading/time 표현, 구조 검증, 검수 준비, 사람의 검수 결정, 결정 적용,
@@ -284,6 +289,33 @@ PYTHONPATH=src python3 -m lectureos.raw_transcript_selection_cli readiness \
 [`examples/raw-transcript-selection/`](examples/raw-transcript-selection/README.md), 계약은
 `docs/040_TRANSCRIPT_PIPELINE.md §16`과 `implementation/097_RAW_TRANSCRIPT_SELECTION.md`를 참고하세요.
 
+## Transcript Correction Candidate Admission
+
+현재 선택된 Raw Transcript의 한 segment에 대한 **제안된 교정을 적용하지 않고** 기록합니다(040 §17). Correction
+Candidate는 **제안**이며 Raw Transcript 내용을 결코 바꾸지 않습니다. **intake·raw transcript·segment identity를
+받습니다(경로가 아님). `--apply` 옵션은 없습니다:**
+
+```bash
+# 제안 교정 admit (적용되지 않음)
+PYTHONPATH=src python3 -m lectureos.correction_candidate_cli admit \
+  --intake transcript-source-intake:sha256:<digest> \
+  --input candidate.json --database /path/to/lectureos.sqlite3
+
+# admit된 후보 목록 (current 선택에 대한 applicability 포함, ranking 없음)
+PYTHONPATH=src python3 -m lectureos.correction_candidate_cli list \
+  --intake transcript-source-intake:sha256:<digest> --database /path/to/lectureos.sqlite3
+```
+
+- admission은 intake의 readiness(현재 Raw Transcript 선택)와 target segment가 그 current Raw Transcript에 속함을
+  요구하며, source-text snapshot이 segment text와 일치해야 합니다(stale 감지). no-op·빈 제안·unknown·unrelated·
+  conflict·not-ready는 exit 1로 거부되며 저장소는 변경되지 않습니다.
+- 후보는 결정적 identity로 idempotent하고, 하나의 segment에 여러 distinct 후보가 공존하며, 어떤 후보도 ranking·적용·
+  수락되지 않습니다. current Raw Transcript 전환 후에도 historical 후보는 보존되며 not-applicable로 표시됩니다.
+
+결정적 데모: `PYTHONPATH=src python3 -m lectureos.correction_candidate_demo`. 동작 예제는
+[`examples/correction-candidate/`](examples/correction-candidate/README.md), 계약은
+`docs/040_TRANSCRIPT_PIPELINE.md §17`과 `implementation/098_CORRECTION_CANDIDATE_ADMISSION.md`를 참고하세요.
+
 ## Repository Validation (저장소 검증)
 
 저장소가 내부적으로 일관적인지 **읽기 전용**으로 검증합니다(저장소를 수정하지 않습니다). identity, 참조,
@@ -331,7 +363,7 @@ golden 출력이 포함됩니다. export된 JSON은 서술적입니다 — 실�
 LectureOS/
 ├── src/lectureos/
 │   ├── application/        # 순수 domain + application 서비스(모델·불변식·오케스트레이션)
-│   ├── persistence/        # insert-only SQLite 저장소 + additive 스키마(v33)
+│   ├── persistence/        # insert-only SQLite 저장소 + additive 스키마(v34)
 │   ├── infrastructure/     # 로컬 파일시스템 writer(temp-file + 원자적 배치)
 │   ├── execution/          # 처리 실행, 유닛 실행, DomainResult lineage
 │   ├── providers/          # 선택적 provider 어댑터(예: OpenAI) — MVP에는 불필요
@@ -341,6 +373,7 @@ LectureOS/
 │   ├── transcript_result_admit_cli.py # External ASR Boundary provider 결과 admission CLI
 │   ├── local_asr_cli.py    # 로컬 ASR 실행 어댑터 CLI (faster-whisper)
 │   ├── raw_transcript_selection_cli.py # Current Raw Transcript 선택 & readiness CLI
+│   ├── correction_candidate_cli.py # Transcript 교정 후보 admission CLI
 │   ├── edit_export_cli.py  # 실행 가능한 Edit Export CLI
 │   ├── edit_export_demo.py # 실행 가능한 mock end-to-end 데모(미디어·네트워크 불필요)
 │   └── *_acceptance.py     # 인프로세스 end-to-end 인수 실행기
@@ -372,7 +405,7 @@ LectureOS/
 ## Development Status (개발 상태)
 
 - **Blueprint:** **PATCH-0020**까지 안정(`docs/`, `patches/`).
-- **구현:** edit-export MVP 완료; SQLite 스키마 **v33**; 전체 스위트 green(1800개 이상).
+- **구현:** edit-export MVP 완료; SQLite 스키마 **v34**; 전체 스위트 green(1800개 이상).
 - **거버넌스:** Blueprint 우선 — 제품 의미를 바꾸려면 PATCH를 먼저 쓰고 나서 구현합니다.
   `AGENTS.md`와 `implementation/050_IMPLEMENTATION_WORKFLOW.md` 참고.
 
