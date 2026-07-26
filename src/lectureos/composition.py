@@ -51,6 +51,10 @@ from lectureos.application.transcript_source_intake import (
 from lectureos.application.provider_transcript_admission import (
     ProviderTranscriptAdmissionService,
 )
+from lectureos.application.local_asr_transcription import (
+    LocalAsrEngineRunner,
+    LocalAsrTranscriptionService,
+)
 from lectureos.application.edit_candidate_generation import (
     EditCandidateGenerationPort,
     EditCandidateGenerationService,
@@ -510,6 +514,43 @@ def compose_sqlite_provider_transcript_admission_service(
     persistence = SQLiteProviderTranscriptAdmissionCommandPersistence(connection)
     return ProviderTranscriptAdmissionService(
         intakes, source_media, admissions, persistence
+    )
+
+
+def compose_sqlite_local_asr_transcription_service(
+    connection: sqlite3.Connection,
+    engine_runner: LocalAsrEngineRunner | None = None,
+) -> LocalAsrTranscriptionService:
+    """Build the local ASR execution adapter on one caller connection (040 §15).
+
+    Resolves an admitted intake and its Source Media read-only, verifies the reference-in-place source file is
+    available and unchanged, runs one concrete local ASR engine (faster-whisper by default; inject a fake runner
+    for tests/demo), and hands the provider-neutral result to the existing admission service — the sole write
+    boundary. Injecting ``engine_runner`` keeps the core importable and tests offline.
+    """
+
+    from lectureos.infrastructure.local_source_media_verifier import (
+        LocalSourceMediaVerifier,
+    )
+
+    intakes = SQLiteTranscriptSourceIntakeRepository(connection)
+    source_media = SQLiteSourceMediaRepository(connection)
+    admissions = SQLiteProviderTranscriptAdmissionRepository(connection)
+    admission_service = compose_sqlite_provider_transcript_admission_service(connection)
+    verifier = LocalSourceMediaVerifier()
+    if engine_runner is None:
+        from lectureos.infrastructure.faster_whisper_engine import (
+            FasterWhisperEngineRunner,
+        )
+
+        engine_runner = FasterWhisperEngineRunner()
+    return LocalAsrTranscriptionService(
+        intakes,
+        source_media,
+        admissions,
+        admission_service,
+        verifier,
+        engine_runner,
     )
 
 

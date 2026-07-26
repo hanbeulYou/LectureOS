@@ -294,6 +294,41 @@ def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def _anchor_digest(
+    intake_id_value: str, provider: str, model: str | None, provider_result_ref: str
+) -> str:
+    """The SHA-256 digest of the canonical admission anchor — the basis of every derived identity."""
+
+    return _sha256(
+        _canonical_json(
+            {
+                "intake": intake_id_value,
+                "provider": provider,
+                "model": model or "",
+                "provider_result_ref": provider_result_ref,
+            }
+        )
+    )
+
+
+def derive_provider_transcript_admission_identity(
+    intake_id: TranscriptSourceIntakeId,
+    provider: str,
+    model: str | None,
+    provider_result_ref: str,
+) -> ProviderTranscriptAdmissionId:
+    """The deterministic admission identity for an anchor, computable before any provider result exists.
+
+    Lets an upstream executor (e.g. a local ASR adapter) check whether an equivalent result was already admitted
+    and skip re-running the engine, without re-deriving the anchor logic itself.
+    """
+
+    return ProviderTranscriptAdmissionId(
+        f"{PROVIDER_TRANSCRIPT_ADMISSION_IDENTITY_PREFIX}:"
+        f"{_anchor_digest(intake_id.value, provider, model, provider_result_ref)}"
+    )
+
+
 class ProviderTranscriptAdmissionService:
     """Admits an external provider ASR result for an intake, producing one canonical Raw Transcript."""
 
@@ -329,15 +364,12 @@ class ProviderTranscriptAdmissionService:
                 "unknown source media: the intake references a missing Source Media record"
             )
 
-        anchor = _canonical_json(
-            {
-                "intake": intake_identity.value,
-                "provider": document.provider,
-                "model": document.model or "",
-                "provider_result_ref": document.provider_result_ref,
-            }
+        digest = _anchor_digest(
+            intake_identity.value,
+            document.provider,
+            document.model,
+            document.provider_result_ref,
         )
-        digest = _sha256(anchor)
         content_fingerprint = _sha256(_admission_payload(intake_identity, document))
         admission_identity = ProviderTranscriptAdmissionId(
             f"{PROVIDER_TRANSCRIPT_ADMISSION_IDENTITY_PREFIX}:{digest}"
@@ -477,6 +509,7 @@ __all__ = [
     "SourceMediaQuery",
     "TranscriptSourceIntakeQuery",
     "build_provider_transcript_document",
+    "derive_provider_transcript_admission_identity",
     "derive_source_timeline_id",
     "require_canonical_intake_id",
 ]
