@@ -67,6 +67,9 @@ _INSPECTED_TABLES = (
     "corrected_revision_generations",
     "corrected_revision_selections",
     "effective_transcript_consumptions",
+    "subtitle_effective_candidates",
+    "subtitle_effective_candidate_cues",
+    "subtitle_effective_candidate_cue_segments",
 )
 _IDENTITY_TABLES = (
     "domain_result_references",
@@ -84,6 +87,8 @@ _IDENTITY_TABLES = (
     "corrected_revision_generations",
     "corrected_revision_selections",
     "effective_transcript_consumptions",
+    "subtitle_effective_candidates",
+    "subtitle_effective_candidate_cues",
 )
 _APPROVING_KINDS = ("accept", "modify")
 
@@ -1434,6 +1439,201 @@ def _check_effective_transcript_consumption(
     return diagnostics
 
 
+
+def _check_effective_subtitle_candidates(
+    connection: sqlite3.Connection,
+) -> list[Diagnostic]:
+    """Integrity of effective-source subtitle candidate graphs only (041 §15). Currentness is NEVER
+    integrity: a candidate whose source binding is stale — later Reject, raw switch, changed
+    corrected selection — is historically valid and produces no diagnostic here."""
+
+    if not _table_exists(connection, "subtitle_effective_candidates"):
+        return []
+    diagnostics: list[Diagnostic] = []
+
+    def _flag(code: str, identity: str, message: str, table: str = "subtitle_effective_candidates") -> None:
+        diagnostics.append(
+            Diagnostic(
+                code=code,
+                severity=Severity.ERROR,
+                location=f"{table}:{identity}",
+                message=message,
+            )
+        )
+
+    # Dangling references — also foreign-key enforced; checked for defense in depth.
+    for target, column, code, message in (
+        ("transcript_source_intakes", "transcript_source_intake_id",
+         "EFFECTIVE_SUBTITLE_DANGLING_INTAKE",
+         "candidate references a missing transcript source intake"),
+        ("effective_transcript_consumptions", "consumption_binding_id",
+         "EFFECTIVE_SUBTITLE_DANGLING_BINDING",
+         "candidate references a missing effective transcript consumption binding"),
+        ("raw_transcripts", "parent_raw_transcript_id",
+         "EFFECTIVE_SUBTITLE_DANGLING_RAW_PARENT",
+         "candidate references a missing parent raw transcript"),
+        ("corrected_transcript_revisions", "corrected_revision_id",
+         "EFFECTIVE_SUBTITLE_DANGLING_REVISION",
+         "candidate references a missing corrected transcript revision"),
+    ):
+        if not _table_exists(connection, target):
+            continue
+        for (identity,) in connection.execute(
+            f"""
+            SELECT c.identity
+            FROM subtitle_effective_candidates c
+            LEFT JOIN {target} r ON c.{column} = r.identity
+            WHERE c.{column} IS NOT NULL AND r.identity IS NULL
+            ORDER BY c.identity
+            """
+        ).fetchall():
+            _flag(code, identity, message)
+
+    # Source kind vs exact-source columns must agree (CHECK-enforced; tampered-schema defense).
+    for (identity,) in connection.execute(
+        """
+        SELECT identity FROM subtitle_effective_candidates
+        WHERE NOT ((source_kind = 'raw_transcript' AND corrected_revision_id IS NULL)
+                OR (source_kind = 'corrected_transcript_revision'
+                    AND corrected_revision_id IS NOT NULL))
+        ORDER BY identity
+        """
+    ).fetchall():
+        _flag("EFFECTIVE_SUBTITLE_SOURCE_KIND_DISAGREEMENT", identity,
+              "candidate source kind disagrees with its exact-source columns")
+
+    if _table_exists(connection, "effective_transcript_consumptions"):
+        # The candidate's recorded context, source, and snapshot must equal its immutable binding.
+        for (identity,) in connection.execute(
+            """
+            SELECT c.identity
+            FROM subtitle_effective_candidates c
+            JOIN effective_transcript_consumptions b ON b.identity = c.consumption_binding_id
+            WHERE b.consumer_kind <> 'subtitle_candidate_generation'
+               OR b.transcript_source_intake_id <> c.transcript_source_intake_id
+               OR b.source_kind <> c.source_kind
+               OR b.parent_raw_transcript_id <> c.parent_raw_transcript_id
+               OR COALESCE(b.corrected_revision_id, '') <> COALESCE(c.corrected_revision_id, '')
+               OR b.content_fingerprint <> c.source_snapshot_fingerprint
+            ORDER BY c.identity
+            """
+        ).fetchall():
+            _flag("EFFECTIVE_SUBTITLE_BINDING_MISMATCH", identity,
+                  "candidate source facts disagree with its consumption binding")
+
+    if _table_exists(connection, "subtitle_effective_candidate_cues"):
+        # Complete, contiguous, unique cue membership.
+        for (identity,) in connection.execute(
+            """
+            SELECT c.identity
+            FROM subtitle_effective_candidates c
+            LEFT JOIN subtitle_effective_candidate_cues q ON q.candidate_id = c.identity
+            GROUP BY c.identity
+            HAVING COUNT(q.identity) <> MAX(c.cue_count)
+            ORDER BY c.identity
+            """
+        ).fetchall():
+            _flag("EFFECTIVE_SUBTITLE_CUE_COUNT_MISMATCH", identity,
+                  "candidate cue set does not match its declared cue count")
+        for (identity,) in connection.execute(
+            """
+            SELECT candidate_id
+            FROM subtitle_effective_candidate_cues
+            GROUP BY candidate_id
+            HAVING COUNT(*) <> MAX(ordinal) + 1 OR MIN(ordinal) <> 0
+                OR COUNT(DISTINCT ordinal) <> COUNT(*)
+            ORDER BY candidate_id
+            """
+        ).fetchall():
+            _flag("EFFECTIVE_SUBTITLE_CUE_ORDINAL_NONCONTIGUOUS", identity,
+                  "candidate cue ordinals are not a contiguous unique 0..n-1 sequence")
+        for (identity,) in connection.execute(
+            """
+            SELECT q.identity
+            FROM subtitle_effective_candidate_cues q
+            LEFT JOIN subtitle_effective_candidates c ON c.identity = q.candidate_id
+            WHERE c.identity IS NULL
+            ORDER BY q.identity
+            """
+        ).fetchall():
+            _flag("EFFECTIVE_SUBTITLE_ORPHAN_CUE", identity,
+                  "cue references a missing candidate",
+                  table="subtitle_effective_candidate_cues")
+
+    if _table_exists(connection, "subtitle_effective_candidate_cue_segments"):
+        for (cue_id,) in connection.execute(
+            """
+            SELECT s.cue_id
+            FROM subtitle_effective_candidate_cue_segments s
+            LEFT JOIN subtitle_effective_candidate_cues q ON q.identity = s.cue_id
+            WHERE q.identity IS NULL
+            ORDER BY s.cue_id
+            """
+        ).fetchall():
+            _flag("EFFECTIVE_SUBTITLE_ORPHAN_CUE_SEGMENT", cue_id,
+                  "cue source-segment lineage references a missing cue",
+                  table="subtitle_effective_candidate_cue_segments")
+        if _table_exists(connection, "subtitle_effective_candidate_cues"):
+            for (identity,) in connection.execute(
+                """
+                SELECT q.identity
+                FROM subtitle_effective_candidate_cues q
+                LEFT JOIN subtitle_effective_candidate_cue_segments s ON s.cue_id = q.identity
+                WHERE s.cue_id IS NULL
+                ORDER BY q.identity
+                """
+            ).fetchall():
+                _flag("EFFECTIVE_SUBTITLE_CUE_WITHOUT_SOURCE_SEGMENT", identity,
+                      "cue has no source-segment lineage",
+                      table="subtitle_effective_candidate_cues")
+            # Every cue lineage segment must belong to the bound source's own snapshot membership.
+            for identity, in connection.execute(
+                """
+                SELECT DISTINCT q.identity
+                FROM subtitle_effective_candidate_cues q
+                JOIN subtitle_effective_candidates c ON c.identity = q.candidate_id
+                JOIN subtitle_effective_candidate_cue_segments s ON s.cue_id = q.identity
+                WHERE (c.source_kind = 'raw_transcript'
+                       AND NOT EXISTS (
+                           SELECT 1 FROM raw_transcript_segments m
+                           WHERE m.raw_transcript_id = c.parent_raw_transcript_id
+                             AND m.transcript_segment_id = s.transcript_segment_id))
+                   OR (c.source_kind = 'corrected_transcript_revision'
+                       AND NOT EXISTS (
+                           SELECT 1 FROM corrected_transcript_revision_segments m
+                           WHERE m.transcript_revision_id = c.corrected_revision_id
+                             AND m.transcript_segment_id = s.transcript_segment_id))
+                ORDER BY q.identity
+                """
+            ).fetchall():
+                _flag("EFFECTIVE_SUBTITLE_CUE_SEGMENT_OUTSIDE_SNAPSHOT", identity,
+                      "cue source segment does not belong to the candidate's bound source snapshot",
+                      table="subtitle_effective_candidate_cues")
+            # v1 passthrough is deterministically verifiable: cue text/timing must equal the
+            # consumed segment. Later generator versions are exempt by construction.
+            if _table_exists(connection, "transcript_segments"):
+                for (identity,) in connection.execute(
+                    """
+                    SELECT q.identity
+                    FROM subtitle_effective_candidate_cues q
+                    JOIN subtitle_effective_candidates c ON c.identity = q.candidate_id
+                    JOIN subtitle_effective_candidate_cue_segments s ON s.cue_id = q.identity
+                    JOIN transcript_segments seg ON seg.identity = s.transcript_segment_id
+                    WHERE c.generator_kind = 'deterministic_segment_passthrough'
+                      AND c.generator_version = 1
+                      AND (q.text <> seg.text
+                           OR COALESCE(q.start, -1) <> COALESCE(seg.start, -1)
+                           OR COALESCE(q.end, -1) <> COALESCE(seg.end, -1))
+                    ORDER BY q.identity
+                    """
+                ).fetchall():
+                    _flag("EFFECTIVE_SUBTITLE_CUE_CONTENT_MISMATCH", identity,
+                          "passthrough cue text or timing disagrees with its consumed source segment",
+                          table="subtitle_effective_candidate_cues")
+
+    return diagnostics
+
+
 def _check_raw_transcript_segments(connection: sqlite3.Connection) -> list[Diagnostic]:
     if not _table_exists(connection, "raw_transcript_segments"):
         return []
@@ -1533,6 +1733,7 @@ def validate_repository(connection: sqlite3.Connection) -> ValidationReport:
     diagnostics += _check_corrected_revision_generation(connection)
     diagnostics += _check_corrected_revision_selection(connection)
     diagnostics += _check_effective_transcript_consumption(connection)
+    diagnostics += _check_effective_subtitle_candidates(connection)
     diagnostics += _check_raw_transcript_segments(connection)
     diagnostics += _check_malformed_identities(connection)
 

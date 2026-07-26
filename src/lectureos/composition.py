@@ -67,6 +67,9 @@ from lectureos.application.correction_candidate_decision import (
 from lectureos.application.corrected_revision_generation import (
     CorrectedRevisionGenerationService,
 )
+from lectureos.application.effective_subtitle_generation import (
+    EffectiveSubtitleGenerationService,
+)
 from lectureos.application.effective_transcript_consumption import (
     EffectiveTranscriptConsumptionService,
     EffectiveTranscriptInputService,
@@ -186,6 +189,8 @@ from lectureos.persistence import (
     SQLiteCorrectionCandidateRepository,
     SQLiteCorrectedTranscriptRevisionRepository,
     SQLiteDomainResultReferenceRepository,
+    SQLiteEffectiveSubtitleCandidateCommandPersistence,
+    SQLiteEffectiveSubtitleCandidateRepository,
     SQLiteEffectiveTranscriptConsumptionCommandPersistence,
     SQLiteEffectiveTranscriptConsumptionRepository,
     SQLiteExecutionCommandPersistence,
@@ -707,6 +712,23 @@ def compose_sqlite_effective_transcript_consumption_service(
     return EffectiveTranscriptConsumptionService(
         input_service, selection_service, consumptions, persistence
     )
+
+
+def compose_sqlite_effective_subtitle_generation_service(
+    connection: sqlite3.Connection,
+) -> EffectiveSubtitleGenerationService:
+    """Build the effective-transcript subtitle generation path on one caller connection (041 §15).
+
+    Source acquisition flows solely through the GOAL-012 consumption boundary (the binding exists
+    before generation); the deterministic passthrough generator persists one immutable candidate
+    graph — read-only over every upstream record; only the `subtitle_effective_*` tables are
+    written. Legacy subtitle tables are never touched.
+    """
+
+    consumption = compose_sqlite_effective_transcript_consumption_service(connection)
+    candidates = SQLiteEffectiveSubtitleCandidateRepository(connection)
+    persistence = SQLiteEffectiveSubtitleCandidateCommandPersistence(connection)
+    return EffectiveSubtitleGenerationService(consumption, candidates, persistence)
 
 
 DEFAULT_EDIT_CANDIDATE_CONTEXT_WINDOW_SECONDS = 15.0

@@ -6,22 +6,22 @@ from pathlib import Path
 from lectureos.persistence import (
     PersistenceError,
     SQLITE_SCHEMA_VERSION,
-    SQLiteSubtitleApprovedDocumentRepository,
+    SQLiteEffectiveSubtitleCandidateRepository,
     initialize_sqlite_database,
     migrate_sqlite_database,
     open_sqlite_database,
 )
 from lectureos.persistence import sqlite as sqlite_lifecycle
 
-V20_TABLES = {
-    "subtitle_approved_documents",
-    "subtitle_approved_units",
-    "subtitle_approved_unit_lines",
+V39_TABLES = {
+    "subtitle_effective_candidates",
+    "subtitle_effective_candidate_cues",
+    "subtitle_effective_candidate_cue_segments",
 }
 
 _ADDITION_BLOCKS = tuple(
     (level, getattr(sqlite_lifecycle, f"_V{level}_ADDITION_STATEMENTS"))
-    for level in range(2, 39)
+    for level in range(2, 40)
 )
 
 
@@ -52,7 +52,7 @@ def table_names(connection: sqlite3.Connection) -> set[str]:
     }
 
 
-class SQLiteSchemaVersionTwentyTests(unittest.TestCase):
+class SQLiteSchemaVersionThirtyNineTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.database_path = Path(self.temporary_directory.name) / "lectureos.sqlite3"
@@ -60,27 +60,26 @@ class SQLiteSchemaVersionTwentyTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
 
-    def test_v20_remains_a_supported_version(self) -> None:
-        self.assertIn(20, sqlite_lifecycle._SUPPORTED_SCHEMA_VERSIONS)
-        self.assertLessEqual(20, SQLITE_SCHEMA_VERSION)
+    def test_schema_version_is_thirty_nine(self) -> None:
+        self.assertEqual(SQLITE_SCHEMA_VERSION, 39)
 
-    def test_fresh_database_initializes_with_v20_tables(self) -> None:
+    def test_fresh_database_initializes_with_v39_tables(self) -> None:
         connection = initialize_sqlite_database(self.database_path)
         try:
-            self.assertTrue(V20_TABLES.issubset(table_names(connection)))
+            self.assertTrue(V39_TABLES.issubset(table_names(connection)))
             self.assertEqual(
                 connection.execute("SELECT version FROM schema_metadata").fetchone()[0],
-                SQLITE_SCHEMA_VERSION,
+                39,
             )
         finally:
             connection.close()
 
-    def test_migrates_v19_to_v20_preserving_existing_rows(self) -> None:
-        create_legacy_database(self.database_path, 19)
-        migrate_sqlite_database(self.database_path, 20)
+    def test_migrates_v38_to_v39_preserving_existing_rows(self) -> None:
+        create_legacy_database(self.database_path, 38)
+        migrate_sqlite_database(self.database_path, 39)
         connection = open_sqlite_database(self.database_path)
         try:
-            self.assertTrue(V20_TABLES.issubset(table_names(connection)))
+            self.assertTrue(V39_TABLES.issubset(table_names(connection)))
             preserved = connection.execute(
                 "SELECT purpose FROM processing_units WHERE identity = 'unit'"
             ).fetchone()
@@ -88,41 +87,38 @@ class SQLiteSchemaVersionTwentyTests(unittest.TestCase):
         finally:
             connection.close()
 
-    def test_v20_no_op_migration_is_allowed(self) -> None:
-        create_legacy_database(self.database_path, 19)
-        migrate_sqlite_database(self.database_path, 20)
-        migrate_sqlite_database(self.database_path, 20)
+    def test_v39_no_op_migration_is_allowed(self) -> None:
+        initialize_sqlite_database(self.database_path).close()
+        migrate_sqlite_database(self.database_path, 39)
         connection = open_sqlite_database(self.database_path)
         try:
             self.assertEqual(
                 connection.execute("SELECT version FROM schema_metadata").fetchone()[0],
-                20,
+                39,
             )
         finally:
             connection.close()
 
-    def test_direct_v18_to_v20_is_rejected(self) -> None:
-        create_legacy_database(self.database_path, 18)
+    def test_direct_v37_to_v39_is_rejected(self) -> None:
+        create_legacy_database(self.database_path, 37)
         with self.assertRaises(PersistenceError):
-            migrate_sqlite_database(self.database_path, 20)
+            migrate_sqlite_database(self.database_path, 39)
 
     def test_unsupported_target_is_rejected(self) -> None:
         initialize_sqlite_database(self.database_path).close()
         with self.assertRaises(PersistenceError):
             migrate_sqlite_database(self.database_path, 40)
 
-    def test_repository_rejects_pre_v20_schema(self) -> None:
-        create_legacy_database(self.database_path, 19)
+    def test_repository_rejects_pre_v39_schema(self) -> None:
+        create_legacy_database(self.database_path, 38)
         connection = open_sqlite_database(self.database_path)
         try:
             with self.assertRaises(Exception):
-                SQLiteSubtitleApprovedDocumentRepository(connection)
+                SQLiteEffectiveSubtitleCandidateRepository(connection)
         finally:
             connection.close()
 
-    def test_every_released_version_chains_to_v20_preserving_data(self) -> None:
-        # Migration compatibility: every released schema version reaches v20 through the
-        # supported single-step chain, preserving existing rows and meaning.
+    def test_every_released_version_chains_to_v39_preserving_data(self) -> None:
         for start in range(1, SQLITE_SCHEMA_VERSION):
             with self.subTest(start=start):
                 path = Path(self.temporary_directory.name) / f"chain-v{start}.sqlite3"
@@ -137,7 +133,7 @@ class SQLiteSchemaVersionTwentyTests(unittest.TestCase):
                         ).fetchone()[0],
                         SQLITE_SCHEMA_VERSION,
                     )
-                    self.assertTrue(V20_TABLES.issubset(table_names(connection)))
+                    self.assertTrue(V39_TABLES.issubset(table_names(connection)))
                     self.assertEqual(
                         connection.execute(
                             "SELECT purpose FROM processing_units WHERE identity = 'unit'"

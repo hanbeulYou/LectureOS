@@ -114,6 +114,10 @@ from .corrected_revision_generation import (
     SQLiteCorrectedRevisionGenerationCommandPersistence,
     SQLiteCorrectedRevisionGenerationRepository,
 )
+from .effective_subtitle_candidate import (
+    SQLiteEffectiveSubtitleCandidateCommandPersistence,
+    SQLiteEffectiveSubtitleCandidateRepository,
+)
 from .effective_transcript_consumption import (
     SQLiteEffectiveTranscriptConsumptionCommandPersistence,
     SQLiteEffectiveTranscriptConsumptionRepository,
@@ -219,6 +223,8 @@ __all__ = [
     "SQLiteCorrectedRevisionGenerationRepository",
     "SQLiteCorrectedRevisionSelectionCommandPersistence",
     "SQLiteCorrectedRevisionSelectionRepository",
+    "SQLiteEffectiveSubtitleCandidateCommandPersistence",
+    "SQLiteEffectiveSubtitleCandidateRepository",
     "SQLiteEffectiveTranscriptConsumptionCommandPersistence",
     "SQLiteEffectiveTranscriptConsumptionRepository",
     "SQLiteSubtitleFinalSubtitleCommandPersistence",

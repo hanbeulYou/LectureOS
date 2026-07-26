@@ -208,3 +208,13 @@ class CorrectedRevisionSelectionId(OpaqueIdentity):
 @dataclass(frozen=True, slots=True)
 class EffectiveTranscriptConsumptionId(OpaqueIdentity):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class EffectiveSubtitleCandidateId(OpaqueIdentity):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class EffectiveSubtitleCueId(OpaqueIdentity):
+    pass

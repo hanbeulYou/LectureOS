@@ -7,8 +7,8 @@ from pathlib import Path
 
 from .errors import PersistenceError, UnsupportedSchemaVersionError
 
-SQLITE_SCHEMA_VERSION = 38
-_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38)
+SQLITE_SCHEMA_VERSION = 39
+_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39)
 
 _V1_TABLE_STATEMENTS = (
     """CREATE TABLE schema_metadata (
@@ -1357,6 +1357,57 @@ _V38_ADDITION_STATEMENTS = (
 )""",
 )
 
+_V39_ADDITION_STATEMENTS = (
+    """CREATE TABLE subtitle_effective_candidates (
+    identity TEXT PRIMARY KEY,
+    transcript_source_intake_id TEXT NOT NULL,
+    consumption_binding_id TEXT NOT NULL,
+    source_kind TEXT NOT NULL CHECK (source_kind IN
+        ('raw_transcript', 'corrected_transcript_revision')),
+    corrected_revision_id TEXT,
+    parent_raw_transcript_id TEXT NOT NULL,
+    source_snapshot_fingerprint TEXT NOT NULL
+        CHECK (length(source_snapshot_fingerprint) = 64),
+    generator_kind TEXT NOT NULL CHECK (length(trim(generator_kind)) > 0),
+    generator_version INTEGER NOT NULL CHECK (generator_version >= 1),
+    generation_parameters_version INTEGER NOT NULL
+        CHECK (generation_parameters_version >= 1),
+    cue_count INTEGER NOT NULL CHECK (cue_count >= 1),
+    UNIQUE (consumption_binding_id, generator_kind, generator_version,
+            generation_parameters_version),
+    CHECK ((source_kind = 'raw_transcript' AND corrected_revision_id IS NULL)
+        OR (source_kind = 'corrected_transcript_revision'
+            AND corrected_revision_id IS NOT NULL)),
+    FOREIGN KEY (transcript_source_intake_id)
+        REFERENCES transcript_source_intakes(identity),
+    FOREIGN KEY (consumption_binding_id)
+        REFERENCES effective_transcript_consumptions(identity),
+    FOREIGN KEY (corrected_revision_id)
+        REFERENCES corrected_transcript_revisions(identity),
+    FOREIGN KEY (parent_raw_transcript_id) REFERENCES raw_transcripts(identity)
+)""",
+    """CREATE TABLE subtitle_effective_candidate_cues (
+    identity TEXT PRIMARY KEY,
+    candidate_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    text TEXT NOT NULL CHECK (length(trim(text)) > 0),
+    start REAL,
+    end REAL,
+    UNIQUE (candidate_id, ordinal),
+    CHECK ((start IS NULL AND end IS NULL) OR
+           (start IS NOT NULL AND end IS NOT NULL AND start >= 0 AND end >= start)),
+    FOREIGN KEY (candidate_id) REFERENCES subtitle_effective_candidates(identity)
+)""",
+    """CREATE TABLE subtitle_effective_candidate_cue_segments (
+    cue_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    transcript_segment_id TEXT NOT NULL,
+    PRIMARY KEY (cue_id, ordinal),
+    FOREIGN KEY (cue_id) REFERENCES subtitle_effective_candidate_cues(identity),
+    FOREIGN KEY (transcript_segment_id) REFERENCES transcript_segments(identity)
+)""",
+)
+
 _V9_ADDITION_STATEMENTS = (
     """CREATE TABLE transcript_current_selections (
     identity TEXT PRIMARY KEY,
@@ -2476,6 +2527,36 @@ _V38_EXPECTED_COLUMNS = {
 }
 
 
+_V39_EXPECTED_COLUMNS = {
+    **_V38_EXPECTED_COLUMNS,
+    "subtitle_effective_candidates": (
+        ("identity", "TEXT", 0, 1),
+        ("transcript_source_intake_id", "TEXT", 1, 0),
+        ("consumption_binding_id", "TEXT", 1, 0),
+        ("source_kind", "TEXT", 1, 0),
+        ("corrected_revision_id", "TEXT", 0, 0),
+        ("parent_raw_transcript_id", "TEXT", 1, 0),
+        ("source_snapshot_fingerprint", "TEXT", 1, 0),
+        ("generator_kind", "TEXT", 1, 0),
+        ("generator_version", "INTEGER", 1, 0),
+        ("generation_parameters_version", "INTEGER", 1, 0),
+        ("cue_count", "INTEGER", 1, 0),
+    ),
+    "subtitle_effective_candidate_cues": (
+        ("identity", "TEXT", 0, 1),
+        ("candidate_id", "TEXT", 1, 0),
+        ("ordinal", "INTEGER", 1, 0),
+        ("text", "TEXT", 1, 0),
+        ("start", "REAL", 0, 0),
+        ("end", "REAL", 0, 0),
+    ),
+    "subtitle_effective_candidate_cue_segments": (
+        ("cue_id", "TEXT", 1, 1),
+        ("ordinal", "INTEGER", 1, 2),
+        ("transcript_segment_id", "TEXT", 1, 0),
+    ),
+}
+
 def initialize_sqlite_database(database_path: str | Path) -> sqlite3.Connection:
     """Create the latest schema for a new path; validate existing databases."""
 
@@ -2514,7 +2595,7 @@ def migrate_sqlite_database(
 ) -> None:
     """Explicitly perform one approved migration step or validate a no-op target."""
 
-    if target_version not in (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38):
+    if target_version not in (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39):
         raise PersistenceError(f"unsupported SQLite migration target: {target_version}")
     path = _validate_database_path(database_path)
     if not path.is_file():
@@ -2635,6 +2716,9 @@ def migrate_sqlite_database(
         if current_version == 37 and target_version == 38:
             _migrate_v37_to_v38(connection)
             return
+        if current_version == 38 and target_version == 39:
+            _migrate_v38_to_v39(connection)
+            return
         raise PersistenceError(
             f"unsupported SQLite migration: {current_version} to {target_version}"
         )
@@ -2720,6 +2804,7 @@ def _initialize_latest_schema(connection: sqlite3.Connection) -> None:
             *_V36_ADDITION_STATEMENTS,
             *_V37_ADDITION_STATEMENTS,
             *_V38_ADDITION_STATEMENTS,
+            *_V39_ADDITION_STATEMENTS,
         ):
             connection.execute(statement)
         connection.execute(
@@ -3384,6 +3469,24 @@ def _migrate_v36_to_v37(connection: sqlite3.Connection) -> None:
         raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
 
 
+def _migrate_v38_to_v39(connection: sqlite3.Connection) -> None:
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        for statement in _V39_ADDITION_STATEMENTS:
+            connection.execute(statement)
+        connection.execute(
+            "UPDATE schema_metadata SET version = 39 WHERE singleton = 1"
+        )
+        _validate_initialized_connection(connection)
+        _commit(connection)
+    except PersistenceError:
+        _rollback(connection)
+        raise
+    except sqlite3.Error as error:
+        _rollback(connection)
+        raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
+
+
 def _migrate_v37_to_v38(connection: sqlite3.Connection) -> None:
     try:
         connection.execute("BEGIN IMMEDIATE")
@@ -3472,6 +3575,7 @@ def _validate_schema_shape(connection: sqlite3.Connection, version: int) -> None
         36: _V36_EXPECTED_COLUMNS,
         37: _V37_EXPECTED_COLUMNS,
         38: _V38_EXPECTED_COLUMNS,
+        39: _V39_EXPECTED_COLUMNS,
     }[version]
     for table, expected in expected_columns.items():
         actual = tuple(

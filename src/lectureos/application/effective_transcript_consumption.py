@@ -56,7 +56,11 @@ CONSUMPTION_IDENTITY_PREFIX = "transcript-consumption"
 # The single bounded first consumer of this slice (040 §21 S3-12). Further consumer kinds are
 # separately gated milestones — the service refuses unknown kinds instead of speculating.
 MANIFEST_CONSUMER_KIND = "transcript_consumption_manifest"
-SUPPORTED_CONSUMER_KINDS = frozenset({MANIFEST_CONSUMER_KIND})
+# 041 §15 / PATCH-0029: subtitle candidate generation is the approved second consumer.
+SUBTITLE_GENERATION_CONSUMER_KIND = "subtitle_candidate_generation"
+SUPPORTED_CONSUMER_KINDS = frozenset(
+    {MANIFEST_CONSUMER_KIND, SUBTITLE_GENERATION_CONSUMER_KIND}
+)
 
 
 class EffectiveTranscriptConsumptionError(ValueError):
@@ -458,6 +462,11 @@ class EffectiveTranscriptConsumptionService:
 
     # -- queries (derived; never mutate history) ------------------------------------------------------
 
+    def get_binding(self, identity) -> EffectiveTranscriptConsumption | None:
+        """Load one persisted binding by identity (read-only)."""
+
+        return self._consumptions.get(identity)
+
     def bindings(self, intake_id: str) -> tuple[EffectiveTranscriptConsumption, ...]:
         try:
             intake_identity = require_canonical_intake_id(intake_id)
@@ -510,6 +519,7 @@ class EffectiveTranscriptConsumptionService:
 __all__ = [
     "CONSUMPTION_IDENTITY_PREFIX",
     "MANIFEST_CONSUMER_KIND",
+    "SUBTITLE_GENERATION_CONSUMER_KIND",
     "SUPPORTED_CONSUMER_KINDS",
     "AtomicConsumptionPersistence",
     "ConsumedSourceKind",
