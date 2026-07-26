@@ -119,6 +119,19 @@ and derives `health` (`healthy` / `warnings` / `errors`) and `ok` (no errors).
 | `CONSUMPTION_PARENT_MISMATCH` | error | a corrected consumption's recorded Raw parent disagrees with the revision's immutable parent |
 | `CONSUMPTION_AUTHORITY_MISMATCH` | error | a binding's observed selection provenance disagrees with its context or consumed source (staleness against *current* authority is deliberately never checked) |
 | `CONSUMPTION_FINGERPRINT_MISMATCH` | error | a binding's persisted content manifest (fingerprint/segment count) does not match its bound immutable snapshot |
+| `EFFECTIVE_SUBTITLE_DANGLING_INTAKE` | error | an effective subtitle candidate references a missing transcript source intake |
+| `EFFECTIVE_SUBTITLE_DANGLING_BINDING` | error | an effective subtitle candidate references a missing consumption binding |
+| `EFFECTIVE_SUBTITLE_DANGLING_RAW_PARENT` | error | an effective subtitle candidate references a missing parent raw transcript |
+| `EFFECTIVE_SUBTITLE_DANGLING_REVISION` | error | an effective subtitle candidate references a missing corrected revision |
+| `EFFECTIVE_SUBTITLE_SOURCE_KIND_DISAGREEMENT` | error | a candidate's source kind disagrees with its exact-source columns |
+| `EFFECTIVE_SUBTITLE_BINDING_MISMATCH` | error | a candidate's context/source/snapshot facts disagree with its immutable consumption binding |
+| `EFFECTIVE_SUBTITLE_CUE_COUNT_MISMATCH` | error | a candidate's cue set does not match its declared cue count |
+| `EFFECTIVE_SUBTITLE_CUE_ORDINAL_NONCONTIGUOUS` | error | a candidate's cue ordinals are not a contiguous unique `0..n-1` sequence |
+| `EFFECTIVE_SUBTITLE_ORPHAN_CUE` | error | a cue references a missing effective subtitle candidate |
+| `EFFECTIVE_SUBTITLE_ORPHAN_CUE_SEGMENT` | error | cue source-segment lineage references a missing cue |
+| `EFFECTIVE_SUBTITLE_CUE_WITHOUT_SOURCE_SEGMENT` | error | a cue has no source-segment lineage |
+| `EFFECTIVE_SUBTITLE_CUE_SEGMENT_OUTSIDE_SNAPSHOT` | error | a cue's source segment does not belong to the candidate's bound source snapshot |
+| `EFFECTIVE_SUBTITLE_CUE_CONTENT_MISMATCH` | error | a v1 passthrough cue's text or timing disagrees with its consumed source segment (staleness against current authority is deliberately never checked) |
 | `MALFORMED_IDENTITY` | error | one or more rows have an empty or blank identity |
 
 ## Scope

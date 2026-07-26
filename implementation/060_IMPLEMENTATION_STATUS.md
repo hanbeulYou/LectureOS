@@ -2413,3 +2413,50 @@ deterministic demo (`lectureos.transcript_consumption_demo`) with a byte-stable 
 scenarios. The complete 2250-test suite passes. Switching real downstream consumers, automatic staleness
 reactions, additional consumer kinds, and merged/multi-source consumption remain later, separately-gated
 milestones and are out of scope.
+
+## Effective-Transcript Subtitle Candidate Generation (First Slice, 041 §15 / GOAL-013)
+
+- Blueprint: approved `docs/041_SUBTITLE_PIPELINE.md §15` (E1…E14) / `patches/PATCH-0029`, cross-referenced by
+  `docs/040_TRANSCRIPT_PIPELINE.md §21 S3-15`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema **v39** (three insert-only tables
+  `subtitle_effective_candidates` / `subtitle_effective_candidate_cues` /
+  `subtitle_effective_candidate_cue_segments`)
+- Commit: `feat: add effective transcript subtitle candidate generation`
+- Immediate next milestone: bridge effective-source candidates into one downstream stage (review preparation
+  with source currentness, or final-selection eligibility) — product-gated, deferred
+
+This milestone implements the first canonical subtitle generation path of the effective-transcript contract
+generation (041 §15 / PATCH-0029, GOAL-013). An **explicit** request acquires its transcript source **only**
+through the GOAL-012 consumption boundary — `SUPPORTED_CONSUMER_KINDS` gains exactly one production kind,
+`subtitle_candidate_generation`, and the persisted binding exists **before** generation, pinning the exact
+immutable source (Raw or Corrected), Raw parent, authority provenance, ordered snapshot, and §19 fingerprint.
+No current Raw selection or a selected-but-inapplicable corrected revision fails before any row is persisted —
+never a silent Raw fallback; nothing generates automatically on authority changes.
+
+The deterministic local generator (`deterministic_segment_passthrough` v1, parameters v1 — no
+ProcessingRun/UnitExecution, per E6) emits one ordered cue per consumed segment with exact text, timing, and
+single-segment lineage; corrected replacement cues reach the underlying Raw segment through the consumed
+segment's immutable `replaces_segment_id`, human-correction provenance stays distinct from generator
+provenance, and confidence is never fabricated. Candidate identity is deterministic and exact-source-sensitive
+(consumer kind, intake, binding, source kind, exact source, generator kind/version/parameters); cue identity
+is (candidate, ordinal, segment). Replay reuses (same binding + semantics), the Raw → Corrected → Raw round
+trip reuses the original Raw candidate, byte-identical content under different source entities stays distinct,
+near-concurrent identical requests converge on the UNIQUE replay anchor, and payload disagreement for one
+identity is an explicit conflict. The whole graph — candidate, cues, lineage — commits in one atomic
+transaction with full rollback (no partial candidate can exist). Currentness is derived through the GOAL-012
+vocabulary and stale candidates remain immutable, historically valid records.
+
+**Contract-generation isolation:** the legacy `subtitle_candidates` family (v12) and every legacy stage
+(review, decisions, final selection, SRT export) are untouched — no reads, writes, migration, backfill, or
+dual-write; the demo and tests assert zero rows appear in legacy/review/final/execution tables. Every released
+version v1..v38 chains single-step to v39 preserving all rows. Read-only validation gains thirteen
+integrity-only `EFFECTIVE_SUBTITLE_*` checks (dangling refs, binding mismatch, cue membership/ordinals/
+lineage, snapshot membership, v1 passthrough content recomputation) — staleness is never corruption (tested
+healthy after a later Reject). One CLI (`lectureos.effective_subtitle_cli` with
+`generate`/`show`/`list`/`status`, no `--force`) and a deterministic demo
+(`lectureos.effective_subtitle_demo`) with a byte-stable golden prove the Raw / replay / corrected-lineage /
+round-trip / same-content-different-source / inapplicable scenarios. The complete 2298-test suite passes.
+Downstream bridging (review, selection eligibility, export enforcement), additional generators or
+configurations, automatic staleness reactions, and legacy candidate migration remain later, separately-gated
+milestones and are out of scope.

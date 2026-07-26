@@ -29,7 +29,7 @@ LectureOS는 긴 한국어 강의의 후반작업에서 생기는 반복 작업�
 ### ✅ Implemented (구현 완료 · 테스트됨)
 
 - **실행 · lineage** — 처리 실행(run), 유닛 실행, `DomainResult` provenance를 SQLite에 durable하게 저장(스키마
-  **v38**, 이전 모든 버전에서 additive 단일 단계 마이그레이션).
+  **v39**, 이전 모든 버전에서 additive 단일 단계 마이그레이션).
 - **미디어 임포트(Media Import)** — 로컬 파일을 **content-addressed** canonical Source Media 기록으로 등록
   (스트리밍 SHA-256 → `sha256:<digest>`, 경로는 identity가 아님, 동일 내용 idempotent). 파일 identity와
   provenance만 기록하며 디코딩·transcode·probe·재생·transcription은 하지 않습니다. `lectureos.media_import_cli`.
@@ -79,6 +79,12 @@ LectureOS는 긴 한국어 강의의 후반작업에서 생기는 반복 작업�
   fingerprint를 기록합니다. 이후 authority 변경은 binding을 바꾸지 않고 currentness가 파생되며,
   selected-but-inapplicable revision은 새 소비를 명시적으로 차단합니다(조용한 fallback 없음). 이 슬라이스의 유일한
   소비자는 중립 manifest이며 기존 소비자는 전환되지 않습니다. `lectureos.transcript_consumption_cli`.
+- **Effective-Transcript Subtitle Candidate 생성** — effective transcript 계약 세대(041 §15)의 첫 canonical
+  subtitle 생성 경로입니다. 명시적 요청이 GOAL-012 소비 binding(생성 전에 존재)을 통해서만 source를 획득하고,
+  결정적 `deterministic_segment_passthrough` v1 generator가 immutable Candidate + 순서 있는 Cue + 정확한
+  segment lineage를 atomic하게 기록합니다. identity는 정확한 source에 민감하고(같은 내용 ≠ 같은 source),
+  Raw 왕복 재생성은 원래 Candidate를 재사용하며, stale은 파생될 뿐 Candidate를 바꾸지 않습니다. legacy
+  subtitle pipeline·review·final selection·export는 전환되지 않습니다. `lectureos.effective_subtitle_cli`.
 - **인식문 파이프라인** — 원본 인식문 + provider 결과, 교정 생성·적용, 검수 준비, 사람의 검수 결정, applicability,
   current selection, ready state.
 - **자막 파이프라인** — 인테이크, 후보 생성, reading/time 표현, 구조 검증, 검수 준비, 사람의 검수 결정, 결정 적용,
@@ -452,6 +458,35 @@ PYTHONPATH=src python3 -m lectureos.transcript_consumption_cli status --intake t
 [`examples/transcript-consumption/`](examples/transcript-consumption/README.md), 계약은
 `docs/040_TRANSCRIPT_PIPELINE.md §21`과 `implementation/102_EFFECTIVE_TRANSCRIPT_CONSUMPTION.md`를 참고하세요.
 
+## Effective-Transcript Subtitle Candidate Generation
+
+effective transcript 계약 세대(041 §15 / PATCH-0029)의 첫 canonical subtitle 생성 경로입니다. **transcript
+authority ≠ 소비 ≠ subtitle 생성 ≠ review ≠ decision ≠ final selection ≠ export.**
+**identity를 받습니다(경로 아님). `--force`는 없습니다:**
+
+```bash
+# 명시적 생성(또는 동일 semantic 재사용 수렴): GOAL-012 binding이 생성 전에 존재
+PYTHONPATH=src python3 -m lectureos.effective_subtitle_cli generate --intake transcript-source-intake:sha256:<digest> --database /path/to/lectureos.sqlite3
+
+# Candidate 상세(lineage + cue) / 목록 / 파생 currentness
+PYTHONPATH=src python3 -m lectureos.effective_subtitle_cli show --candidate subtitle-effective-candidate:<digest> --database /path/to/lectureos.sqlite3
+PYTHONPATH=src python3 -m lectureos.effective_subtitle_cli list --intake transcript-source-intake:sha256:<digest> --database /path/to/lectureos.sqlite3
+PYTHONPATH=src python3 -m lectureos.effective_subtitle_cli status --candidate subtitle-effective-candidate:<digest> --database /path/to/lectureos.sqlite3
+```
+
+- Raw와 Corrected source 모두 지원: 정확한 source identity·Raw parent·소비 binding·snapshot fingerprint가
+  Candidate에 고정되고, 교정 cue는 교체 segment lineage(`replaces_segment_id`)를 보존합니다.
+  selected-but-inapplicable revision은 생성을 명시적으로 차단합니다(조용한 fallback 없음).
+- 동일 binding + 동일 generator semantics 재생성은 `reused`(중복 없음), Raw → Corrected → Raw 왕복은 원래
+  Candidate를 재사용하며, 내용이 같아도 source entity가 다르면 별개 Candidate입니다. 이후 authority 변경은
+  Candidate를 변경하지 않고 currentness(`current`/`stale_due_to_*`)가 파생됩니다.
+- legacy subtitle 표현(별도 계약 세대)·review·Human Decision·final selection·SRT export는 읽지도 쓰지도
+  않으며 ProcessingRun/UnitExecution을 만들지 않습니다.
+
+결정적 데모: `PYTHONPATH=src python3 -m lectureos.effective_subtitle_demo`. 동작 예제는
+[`examples/effective-subtitle/`](examples/effective-subtitle/README.md), 계약은
+`docs/041_SUBTITLE_PIPELINE.md §15`와 `implementation/103_EFFECTIVE_SUBTITLE_GENERATION.md`를 참고하세요.
+
 ## Repository Validation (저장소 검증)
 
 저장소가 내부적으로 일관적인지 **읽기 전용**으로 검증합니다(저장소를 수정하지 않습니다). identity, 참조,
@@ -499,7 +534,7 @@ golden 출력이 포함됩니다. export된 JSON은 서술적입니다 — 실�
 LectureOS/
 ├── src/lectureos/
 │   ├── application/        # 순수 domain + application 서비스(모델·불변식·오케스트레이션)
-│   ├── persistence/        # insert-only SQLite 저장소 + additive 스키마(v38)
+│   ├── persistence/        # insert-only SQLite 저장소 + additive 스키마(v39)
 │   ├── infrastructure/     # 로컬 파일시스템 writer(temp-file + 원자적 배치)
 │   ├── execution/          # 처리 실행, 유닛 실행, DomainResult lineage
 │   ├── providers/          # 선택적 provider 어댑터(예: OpenAI) — MVP에는 불필요
@@ -514,6 +549,7 @@ LectureOS/
 │   ├── corrected_revision_cli.py # Corrected Transcript Revision 생성 CLI
 │   ├── corrected_selection_cli.py # Current Corrected Revision 선택 & resolve CLI
 │   ├── transcript_consumption_cli.py # Effective Transcript 소비 경계 CLI
+│   ├── effective_subtitle_cli.py # Effective-Transcript Subtitle Candidate 생성 CLI
 │   ├── edit_export_cli.py  # 실행 가능한 Edit Export CLI
 │   ├── edit_export_demo.py # 실행 가능한 mock end-to-end 데모(미디어·네트워크 불필요)
 │   └── *_acceptance.py     # 인프로세스 end-to-end 인수 실행기
@@ -545,7 +581,7 @@ LectureOS/
 ## Development Status (개발 상태)
 
 - **Blueprint:** **PATCH-0020**까지 안정(`docs/`, `patches/`).
-- **구현:** edit-export MVP 완료; SQLite 스키마 **v38**; 전체 스위트 green(1800개 이상).
+- **구현:** edit-export MVP 완료; SQLite 스키마 **v39**; 전체 스위트 green(1800개 이상).
 - **거버넌스:** Blueprint 우선 — 제품 의미를 바꾸려면 PATCH를 먼저 쓰고 나서 구현합니다.
   `AGENTS.md`와 `implementation/050_IMPLEMENTATION_WORKFLOW.md` 참고.
 

@@ -52,8 +52,8 @@ converge on the persistence collision; fingerprint disagreement for one identity
 itself. The legacy validation/readiness and subtitle-intake boundaries were investigated and rejected as first
 consumers: they live on the §4.6–§4.8 path (legacy `TranscriptCurrentSelection`, ApplicabilityEvaluation,
 ReviewItem/CandidateReference, RUNNING executions) and cannot join the §13–§20 chain without fabricated
-execution machinery. `SUPPORTED_CONSUMER_KINDS` admits only the manifest kind; further consumers are separate
-milestones. No ProcessingRun, DomainResult, Artifact, or physical file is created (truthful provenance of a
+execution machinery. `SUPPORTED_CONSUMER_KINDS` is a closed set: the manifest kind and, since GOAL-013 (041 §15 /
+PATCH-0029), `subtitle_candidate_generation`; further consumers are separate milestones. No ProcessingRun, DomainResult, Artifact, or physical file is created (truthful provenance of a
 deterministic local transformation).
 
 ## Derived currentness (never stored)
