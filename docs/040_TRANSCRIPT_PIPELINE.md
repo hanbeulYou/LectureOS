@@ -24,6 +24,7 @@
   - `../patches/PATCH-0021-external-asr-boundary-provider-transcript-admission.md`
   - `../patches/PATCH-0022-first-local-asr-execution-adapter.md`
   - `../patches/PATCH-0023-current-raw-transcript-selection-and-readiness.md`
+  - `../patches/PATCH-0024-first-transcript-correction-candidate-admission.md`
 
 ## Purpose
 
@@ -705,6 +706,75 @@ sequence)이다. (7) intake당 current는 최대 하나다. (8) readiness는 유
 admission은 current를 조용히 대체하지 않는다. (10) malformed·unknown·unrelated·dangling은 명시적으로 거부된다.
 (11) 실패는 부분 상태를 남기지 않고 상위 record를 변경하지 않는다. (12) transcript 내용은 변경되지 않는다.
 (13) deferred 개념의 placeholder는 없다.
+
+## 17. First Transcript Correction Candidate Admission (First Slice)
+
+이 절은 `PATCH-0024`로 승인된 Architect/Product 결정(K-1…K-14)을 기록한다. §4.4 Correction의 첫 application 실현이다.
+이 slice는 현재 선택된 Raw Transcript(§16)의 한 segment에 대한 **제안된 교정을 적용하지 않고 기록**한다. 오직 한
+질문에 답한다: "현재 Raw Transcript의 한 segment에 대한 제안 교정을 어떻게 기록하는가?" — 교정이 옳은지·수락해야
+하는지·누가 승인하는지·후보를 어떻게 ranking하는지·corrected revision을 어떻게 만드는지에는 답하지 않는다.
+Correction Candidate는 **제안**이며 canonical transcript 내용이 아니고 Raw Transcript text를 결코 변경하지 않는다.
+이 slice는 기존 canonical `CorrectionCandidate`(v5)를 재사용하고 additive record(v34)로 admission 문맥에 bind한다.
+
+**Target and Lineage (Confirmed, K-1):** 후보는 **하나의 immutable Raw Transcript segment**를 target한다. admission은
+intake가 **ready**(유효한 current Raw Transcript 선택)일 것과 target Raw Transcript가 **그 current 선택**일 것을
+요구한다. target segment는 그 Raw Transcript에, Raw Transcript는 intake에 속해야 한다. unknown·unrelated·malformed·
+stale 참조는 명시적으로 거부된다.
+
+**Proposed Text (Confirmed, K-2):** `proposed_text`는 필수·비공백이며 그대로 보존된다(한국어 포함). **no-op**(제안
+text가 source text와 동일)은 거부된다.
+
+**Source Snapshot (Confirmed, K-3):** **source-text snapshot**은 필수이며 admission 시점의 persist된 segment text와
+정확히 일치해야 한다(stale 감지). admission은 Raw Transcript text를 **결코 변경하지 않으며** segment는 immutable
+증거로 남는다.
+
+**Provenance and Source Type (Confirmed, K-4):** provenance는 external/manual이다: `source_type`(manual|external|
+rule), 비공백 `source_reference`(누가/무엇이 제안), 필수 `candidate_ref`(구분자), 선택적 `model_reference`. 실행 마커
+(run/unit-execution/domain-result)는 anchor에서 결정적으로 파생되며 **내부 RUNNING execution을 만들지 않는다**.
+후보의 `DomainResultReference`(kind `transcript_correction_candidate`, upstream = Raw Transcript의 domain result)는
+persist되어 admitted 후보가 generated 후보와 구조적으로 동일하다. 후보 **source**는 후보 **authority**와 구분된다 —
+admission은 수락을 의미하지 않는다.
+
+**Deterministic Identity (Confirmed, K-5):** 모든 identity는 anchor `(intake, raw_transcript, segment, source_type,
+source_reference, candidate_ref)`에서 결정적으로 파생된다(SHA-256). 어떤 identity에도 wall-clock·randomness가 관여하지
+않는다.
+
+**Idempotency (Confirmed, K-6):** admission은 전체 payload(proposed text·snapshot·rationale·model)의 content
+fingerprint로 idempotent하다. 같은 anchor·동일 payload 재admission은 기존 record를 반환한다.
+
+**Conflict (Confirmed, K-7):** 같은 anchor에 **다른 payload**를 admit하면 **conflict**이며 덮어쓰지 않고 거부된다.
+
+**Multiple Candidates (Confirmed, K-8):** 하나의 segment에 **여러 distinct** 제안이 공존할 수 있다(서로 다른
+`candidate_ref`).
+
+**Staleness and Applicability (Confirmed, K-9):** 후보 유효성은 **admission 시점의** 선택 Raw Transcript에 anchor된다.
+이후 current-Raw-Transcript 전환 후에도 기존 후보는 **immutable historical 증거**로 남는다: 삭제·다른 transcript로
+retarget되지 않으며 새 current Raw Transcript에 더 이상 **applicable하지 않음**으로 표시된다. 다른 Raw Transcript가
+선택되었다는 이유만으로 historical 후보를 저장소 손상으로 보지 않는다(applicability/history이지 integrity가 아님).
+
+**Failure Atomicity (Confirmed, K-10):** admission은 하나의 atomic transaction이다. 어떤 실패에서도 부분 후보·
+provenance·admission 상태를 남기지 않으며 Raw Transcript·current 선택·Source Media·intake를 변경하지 않는다.
+
+**No Application (Confirmed, K-11):** admission은 corrected revision을 만들지 않고 candidate decision을 만들지 않으며
+수락을 의미하지 않고 후보를 ranking하지 않으며 review를 트리거하지 않는다.
+
+**No Content Mutation (Confirmed, K-12):** admission은 Raw Transcript 내용을 결코 바꾸지 않는다. 기존 Current Raw
+Transcript Selection·Provider Transcript Admission·Raw Transcript identity·§4.8 corrected 현재 선택은 변경되지 않는다.
+
+**No Second Hierarchy (Confirmed, K-13):** 기존 canonical `CorrectionCandidate`를 재사용하며 두 번째 correction
+계층을 만들지 않는다.
+
+**Deferred (이후 milestone, K-14):** 후보 수락·거절·수정·ranking·recommended 선택·자동 correction·LLM/문법/구두점/
+사전 엔진·corrected transcript revision·current corrected revision 선택·transcript validation·review·subtitle/export/
+rendering 변경·ASR 변경·추가 adapter·provider registry. placeholder는 도입하지 않는다.
+
+**Canonical Invariants (Confirmed):** (1) 후보는 하나의 immutable Raw Transcript segment를 target한다. (2) admission은
+readiness와 current Raw Transcript를 요구한다. (3) proposed text는 필수·비공백이며 no-op은 거부된다. (4) source-text
+snapshot은 persist된 segment text와 일치해야 한다. (5) Raw Transcript text는 결코 변경되지 않는다. (6) identity는
+결정적(anchor)이다. (7) 동일 payload 재admission은 idempotent다. (8) 같은 anchor·다른 payload는 conflict로 거부된다.
+(9) segment당 여러 distinct 후보가 공존한다. (10) 전환 후 historical 후보는 보존되며 not-applicable로 표시된다.
+(11) 실패는 부분 상태를 남기지 않는다. (12) admission은 아무것도 적용·수락·ranking·review하지 않는다. (13) 기존
+CorrectionCandidate를 재사용한다. (14) deferred 개념의 placeholder는 없다.
 
 ## Related Documents
 
