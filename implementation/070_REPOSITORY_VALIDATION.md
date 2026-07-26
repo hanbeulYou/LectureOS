@@ -94,6 +94,9 @@ and derives `health` (`healthy` / `warnings` / `errors`) and `ok` (no errors).
 | `CORRECTION_CANDIDATE_SOURCE_TEXT_DISAGREEMENT` | error | a candidate's source-text snapshot no longer matches the segment text |
 | `CORRECTION_CANDIDATE_ADMISSION_LINEAGE_DISAGREEMENT` | error | an admitted candidate's transcript/segment disagree with its admission |
 | `CORRECTION_CANDIDATE_EMPTY_PROPOSED_TEXT` | error | an admitted correction candidate has empty proposed text |
+| `CORRECTION_DECISION_DANGLING_CANDIDATE` | error | a human decision references a missing correction candidate |
+| `CORRECTION_DECISION_SEQUENCE_NONCONTIGUOUS` | error | a candidate's decision sequences are not a contiguous `0..n-1` sequence |
+| `CORRECTION_DECISION_BROKEN_SUPERSESSION` | error | a non-initial decision does not supersede its candidate's immediately prior sequence |
 | `MALFORMED_IDENTITY` | error | one or more rows have an empty or blank identity |
 
 ## Scope

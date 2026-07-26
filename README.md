@@ -29,7 +29,7 @@ LectureOS는 긴 한국어 강의의 후반작업에서 생기는 반복 작업�
 ### ✅ Implemented (구현 완료 · 테스트됨)
 
 - **실행 · lineage** — 처리 실행(run), 유닛 실행, `DomainResult` provenance를 SQLite에 durable하게 저장(스키마
-  **v34**, 이전 모든 버전에서 additive 단일 단계 마이그레이션).
+  **v35**, 이전 모든 버전에서 additive 단일 단계 마이그레이션).
 - **미디어 임포트(Media Import)** — 로컬 파일을 **content-addressed** canonical Source Media 기록으로 등록
   (스트리밍 SHA-256 → `sha256:<digest>`, 경로는 identity가 아님, 동일 내용 idempotent). 파일 identity와
   provenance만 기록하며 디코딩·transcode·probe·재생·transcription은 하지 않습니다. `lectureos.media_import_cli`.
@@ -57,6 +57,11 @@ LectureOS는 긴 한국어 강의의 후반작업에서 생기는 반복 작업�
   감지하고, Raw Transcript 내용을 **결코 바꾸지 않습니다.** 후보는 결정적 identity·idempotent이며 같은 참조에 다른
   내용은 conflict로 거부됩니다. 하나의 segment에 여러 후보가 공존하고, 후보는 **ranking·적용·수락·review되지 않습니다**
   (수락·corrected revision은 이후 단계). `lectureos.correction_candidate_cli`.
+- **교정 후보 Human Authority 결정** — admit된 교정 후보에 대해 사람이 **accept 또는 reject를 명시적으로 결정**합니다
+  (040 §18, GOAL-009). 결정은 authority 기록일 뿐 아무것도 적용하지 않으며 후보·Raw Transcript를 변경하지 않고
+  corrected revision을 만들지 않습니다. 상태는 Undecided(부재로 파생)·Accepted·Rejected뿐이고(**Modify는 이후**),
+  history는 append-only이며 current authority는 최고 sequence로 파생됩니다. 동일 kind 재제출은 idempotent, Accepted
+  후보만 이후 revision 대상입니다. `lectureos.correction_candidate_decision_cli`.
 - **인식문 파이프라인** — 원본 인식문 + provider 결과, 교정 생성·적용, 검수 준비, 사람의 검수 결정, applicability,
   current selection, ready state.
 - **자막 파이프라인** — 인테이크, 후보 생성, reading/time 표현, 구조 검증, 검수 준비, 사람의 검수 결정, 결정 적용,
@@ -316,6 +321,37 @@ PYTHONPATH=src python3 -m lectureos.correction_candidate_cli list \
 [`examples/correction-candidate/`](examples/correction-candidate/README.md), 계약은
 `docs/040_TRANSCRIPT_PIPELINE.md §17`과 `implementation/098_CORRECTION_CANDIDATE_ADMISSION.md`를 참고하세요.
 
+## Correction Candidate Human Authority Decision
+
+admit된 교정 후보에 대해 사람이 **accept/reject를 명시적으로 결정**합니다(040 §18). 결정은 **authority 기록일 뿐**이며
+아무것도 적용하지 않고 후보·Raw Transcript를 변경하지 않으며 corrected revision을 만들지 않습니다. **candidate identity를
+받습니다(경로가 아님). `--apply`는 없습니다:**
+
+```bash
+# 사람의 accept/reject 결정 (적용되지 않음)
+PYTHONPATH=src python3 -m lectureos.correction_candidate_decision_cli decide \
+  --candidate correction-candidate:<digest> --kind accept --reviewer reviewer:kim \
+  --database /path/to/lectureos.sqlite3
+
+# 현재 authority (undecided / accepted / rejected) 와 revision 대상 여부
+PYTHONPATH=src python3 -m lectureos.correction_candidate_decision_cli status \
+  --candidate correction-candidate:<digest> --database /path/to/lectureos.sqlite3
+
+# append-only 결정 history
+PYTHONPATH=src python3 -m lectureos.correction_candidate_decision_cli history \
+  --candidate correction-candidate:<digest> --database /path/to/lectureos.sqlite3
+```
+
+- 상태는 Undecided(결정 record 없음; 부재로 파생)·Accepted·Rejected뿐입니다(**Modify는 이후 단계**). history는
+  append-only(마음이 바뀌면 새 결정 append, 이전 보존)이고 current authority는 최고 sequence로 파생됩니다.
+- identity는 `(candidate, kind, sequence)`에서 결정적으로 파생되어 동일 kind 재제출은 idempotent(`reused`)하며, 같은
+  anchor에 다른 provenance는 conflict로 거부됩니다. **Accepted** 후보만 이후 corrected-revision 대상입니다.
+- malformed·unknown·Modify·conflict는 exit 1로 거부되며 저장소는 변경되지 않습니다.
+
+결정적 데모: `PYTHONPATH=src python3 -m lectureos.correction_candidate_decision_demo`. 동작 예제는
+[`examples/correction-decision/`](examples/correction-decision/README.md), 계약은
+`docs/040_TRANSCRIPT_PIPELINE.md §18`과 `implementation/099_CORRECTION_CANDIDATE_DECISION.md`를 참고하세요.
+
 ## Repository Validation (저장소 검증)
 
 저장소가 내부적으로 일관적인지 **읽기 전용**으로 검증합니다(저장소를 수정하지 않습니다). identity, 참조,
@@ -363,7 +399,7 @@ golden 출력이 포함됩니다. export된 JSON은 서술적입니다 — 실�
 LectureOS/
 ├── src/lectureos/
 │   ├── application/        # 순수 domain + application 서비스(모델·불변식·오케스트레이션)
-│   ├── persistence/        # insert-only SQLite 저장소 + additive 스키마(v34)
+│   ├── persistence/        # insert-only SQLite 저장소 + additive 스키마(v35)
 │   ├── infrastructure/     # 로컬 파일시스템 writer(temp-file + 원자적 배치)
 │   ├── execution/          # 처리 실행, 유닛 실행, DomainResult lineage
 │   ├── providers/          # 선택적 provider 어댑터(예: OpenAI) — MVP에는 불필요
@@ -374,6 +410,7 @@ LectureOS/
 │   ├── local_asr_cli.py    # 로컬 ASR 실행 어댑터 CLI (faster-whisper)
 │   ├── raw_transcript_selection_cli.py # Current Raw Transcript 선택 & readiness CLI
 │   ├── correction_candidate_cli.py # Transcript 교정 후보 admission CLI
+│   ├── correction_candidate_decision_cli.py # 교정 후보 Human Authority 결정 CLI
 │   ├── edit_export_cli.py  # 실행 가능한 Edit Export CLI
 │   ├── edit_export_demo.py # 실행 가능한 mock end-to-end 데모(미디어·네트워크 불필요)
 │   └── *_acceptance.py     # 인프로세스 end-to-end 인수 실행기
@@ -405,7 +442,7 @@ LectureOS/
 ## Development Status (개발 상태)
 
 - **Blueprint:** **PATCH-0020**까지 안정(`docs/`, `patches/`).
-- **구현:** edit-export MVP 완료; SQLite 스키마 **v34**; 전체 스위트 green(1800개 이상).
+- **구현:** edit-export MVP 완료; SQLite 스키마 **v35**; 전체 스위트 green(1800개 이상).
 - **거버넌스:** Blueprint 우선 — 제품 의미를 바꾸려면 PATCH를 먼저 쓰고 나서 구현합니다.
   `AGENTS.md`와 `implementation/050_IMPLEMENTATION_WORKFLOW.md` 참고.
 

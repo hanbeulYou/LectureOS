@@ -2216,3 +2216,50 @@ unchanged Raw Transcript text, idempotent replay, coexisting candidates, no rank
 selection switch, and stale/not-current rejection. The complete 2026-test suite passes. Candidate acceptance/
 rejection/modification, ranking, automatic correction, LLM/rule engines, corrected transcript revision, review,
 and subtitle/export changes remain later, separately-gated milestones and are out of scope.
+
+## First Human Authority Decision on a Correction Candidate (First Slice, 040 §18 / GOAL-009)
+
+- Blueprint: approved `docs/040_TRANSCRIPT_PIPELINE.md §18` / `patches/PATCH-0025`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema **v35** (one append-only table `correction_candidate_decisions`;
+  the v5 `correction_candidates` records are reused unchanged)
+- Commit: `feat: add first human authority decision on a correction candidate`
+- Immediate next milestone (GOAL-010): consume Accepted decisions to prepare the first corrected transcript
+  revision input — no transcript mutation, product-gated, deferred
+
+This milestone establishes the first explicit **Human Authority** for Transcript Correction (040 §18 / PATCH-0025,
+GOAL-009): whether a human explicitly **accepts** or **rejects** an admitted `CorrectionCandidate` (§17). A
+suggestion is only evidence; authority exists only when a human decides. `CorrectionCandidateDecisionService.decide`
+records an append-only, immutable, deterministic decision referencing exactly one admitted candidate. Three states
+exist — **Undecided** (no record; derived by absence), **Accepted**, **Rejected** — with **no Modify** (deferred).
+History is append-only (INSERT-only; per-candidate `sequence` + `previous_decision_id`); the current authority is
+the highest-sequence record, always **derived**, never stored. Identity is deterministic from
+`(correction_candidate_id, kind, sequence)` (no wall-clock/randomness); the decision matrix (None→Insert;
+same-kind→Reuse; different-kind→Append) is enforced, replay is idempotent, and a same-anchor/different-provenance
+re-submission is a conflict rejected without overwrite. Only Accepted candidates are eligible for future
+corrected-revision generation (established, not implemented). The decision **never** mutates the candidate, the Raw
+Transcript, any segment, or the current selection, and creates no corrected revision, decision, or application.
+
+**Reuse investigation (GOAL-009 requirement):** the existing `TranscriptReviewDecision` (§4.6/§4.7) requires a
+revision context + review preparation + RUNNING execution + Modify — all forbidden here; the generic
+`review.models.ReviewDecision` references a review-domain `CandidateReference`/`ReviewItem`, not a
+`CorrectionCandidateId` (wrapping would be a second candidate hierarchy). Neither is reusable as the aggregate.
+The smallest additive aggregate was introduced, **reusing** the Review `DecisionKind` (accept/reject) and
+`HumanActorReference` value types and the 040 §16 append-only supersession pattern — no second candidate or review
+hierarchy. **Architect Decision was judged not required:** 040 §4.6 explicitly leaves candidate-review-item
+coupling unconfirmed (§11 "Requires Validation"), so a direct binary candidate decision contradicts no confirmed
+contract; §4.6/§4.7 remain intact for the revision-scoped review path. The AGENTS.md Architect Checklist is
+entirely `No`: no existing contract change, no responsibility shift, one additive identity
+(`CorrectionCandidateDecisionId`), one additive migration, and no Blueprint contradiction. Additive schema **v35**
+adds the `correction_candidate_decisions` table (identity PK, `UNIQUE(candidate, sequence)`, sequence/previous
+CHECK, kind CHECK accept/reject, FK → `correction_candidates`); every released version v1..v34 chains single-step
+to v35 preserving rows, and downgrade/direct-skip/unsupported-target migrations are rejected. Read-only repository
+validation gains `correction_candidate_decisions` checks (dangling candidate, non-contiguous sequence, broken
+supersession) — integrity only, never flagging a historical decision as corruption. One CLI
+(`lectureos.correction_candidate_decision_cli` with `decide`/`status`/`history`, no `--apply`) records/inspects
+authority and derives current status/eligibility, exiting 0/1 leaving the repository unchanged on failure. A
+deterministic demo (`lectureos.correction_candidate_decision_demo`) with a golden exercises the §51 A/B/C/D
+authority evolution and proves candidate/Raw-Transcript immutability and healthy validation. The complete
+2079-test suite passes. Applying accepted decisions, corrected-revision generation, current corrected-revision
+selection, Modify, ranking, automatic correction, and review UI remain later, separately-gated milestones and are
+out of scope.
