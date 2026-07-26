@@ -61,6 +61,7 @@ _INSPECTED_TABLES = (
     "provider_transcript_admissions",
     "current_raw_transcript_selections",
     "correction_candidate_admissions",
+    "correction_candidate_decisions",
 )
 _IDENTITY_TABLES = (
     "domain_result_references",
@@ -74,6 +75,7 @@ _IDENTITY_TABLES = (
     "provider_transcript_admissions",
     "current_raw_transcript_selections",
     "correction_candidate_admissions",
+    "correction_candidate_decisions",
 )
 _APPROVING_KINDS = ("accept", "modify")
 
@@ -888,6 +890,79 @@ def _check_correction_candidate_admission(
     return diagnostics
 
 
+def _check_correction_candidate_decision(
+    connection: sqlite3.Connection,
+) -> list[Diagnostic]:
+    if not _table_exists(connection, "correction_candidate_decisions"):
+        return []
+    diagnostics: list[Diagnostic] = []
+
+    # A dangling correction-candidate reference (also foreign-key enforced; checked for defense in depth).
+    if _table_exists(connection, "correction_candidates"):
+        for (identity,) in connection.execute(
+            """
+            SELECT d.identity
+            FROM correction_candidate_decisions d
+            LEFT JOIN correction_candidates c ON d.correction_candidate_id = c.identity
+            WHERE c.identity IS NULL
+            ORDER BY d.identity
+            """
+        ).fetchall():
+            diagnostics.append(
+                Diagnostic(
+                    code="CORRECTION_DECISION_DANGLING_CANDIDATE",
+                    severity=Severity.ERROR,
+                    location=f"correction_candidate_decisions:{identity}",
+                    message="decision references a missing correction candidate",
+                )
+            )
+
+    # Per-candidate sequences must be a contiguous 0..n-1 set (so exactly one highest-sequence current authority).
+    for (candidate_id,) in connection.execute(
+        """
+        SELECT correction_candidate_id
+        FROM correction_candidate_decisions
+        GROUP BY correction_candidate_id
+        HAVING COUNT(*) <> MAX(sequence) + 1
+            OR MIN(sequence) <> 0
+            OR COUNT(DISTINCT sequence) <> COUNT(*)
+        ORDER BY correction_candidate_id
+        """
+    ).fetchall():
+        diagnostics.append(
+            Diagnostic(
+                code="CORRECTION_DECISION_SEQUENCE_NONCONTIGUOUS",
+                severity=Severity.ERROR,
+                location=f"correction_candidate_decisions:{candidate_id}",
+                message="decision sequences for a candidate are not a contiguous 0..n-1 sequence",
+            )
+        )
+
+    # Supersession: each non-initial decision must supersede the same candidate's immediately prior sequence.
+    for (identity,) in connection.execute(
+        """
+        SELECT d.identity
+        FROM correction_candidate_decisions d
+        LEFT JOIN correction_candidate_decisions p
+            ON p.identity = d.previous_decision_id
+        WHERE d.sequence > 0
+          AND (p.identity IS NULL
+               OR p.correction_candidate_id <> d.correction_candidate_id
+               OR p.sequence <> d.sequence - 1)
+        ORDER BY d.identity
+        """
+    ).fetchall():
+        diagnostics.append(
+            Diagnostic(
+                code="CORRECTION_DECISION_BROKEN_SUPERSESSION",
+                severity=Severity.ERROR,
+                location=f"correction_candidate_decisions:{identity}",
+                message="decision does not supersede its candidate's immediately prior decision",
+            )
+        )
+    return diagnostics
+
+
 def _check_raw_transcript_segments(connection: sqlite3.Connection) -> list[Diagnostic]:
     if not _table_exists(connection, "raw_transcript_segments"):
         return []
@@ -983,6 +1058,7 @@ def validate_repository(connection: sqlite3.Connection) -> ValidationReport:
     diagnostics += _check_provider_transcript_admission(connection)
     diagnostics += _check_current_raw_transcript_selection(connection)
     diagnostics += _check_correction_candidate_admission(connection)
+    diagnostics += _check_correction_candidate_decision(connection)
     diagnostics += _check_raw_transcript_segments(connection)
     diagnostics += _check_malformed_identities(connection)
 

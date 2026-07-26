@@ -61,6 +61,9 @@ from lectureos.application.current_raw_transcript_selection import (
 from lectureos.application.correction_candidate_admission import (
     CorrectionCandidateAdmissionService,
 )
+from lectureos.application.correction_candidate_decision import (
+    CorrectionCandidateDecisionService,
+)
 from lectureos.application.edit_candidate_generation import (
     EditCandidateGenerationPort,
     EditCandidateGenerationService,
@@ -146,6 +149,8 @@ from lectureos.persistence import (
     SQLiteRawTranscriptSelectionRepository,
     SQLiteCorrectionCandidateAdmissionCommandPersistence,
     SQLiteCorrectionCandidateAdmissionRepository,
+    SQLiteCorrectionCandidateDecisionCommandPersistence,
+    SQLiteCorrectionCandidateDecisionRepository,
     SQLiteSubtitleReadingCommandPersistence,
     SQLiteSubtitleDecisionRevisionCommandPersistence,
     SQLiteSubtitleDecisionRevisionRepository,
@@ -602,6 +607,21 @@ def compose_sqlite_correction_candidate_admission_service(
     return CorrectionCandidateAdmissionService(
         intakes, selections, segments, raw_transcripts, admissions, persistence
     )
+
+
+def compose_sqlite_correction_candidate_decision_service(
+    connection: sqlite3.Connection,
+) -> CorrectionCandidateDecisionService:
+    """Build Correction Candidate Human Decision on one caller connection (040 §18).
+
+    Records append-only Human Accept/Reject authority on admitted Correction Candidates and derives the current
+    authority (Undecided/Accepted/Rejected) — read-only over the candidate. It never mutates the candidate, the
+    Raw Transcript, the current selection, or any segment, and creates no corrected revision.
+    """
+
+    decisions = SQLiteCorrectionCandidateDecisionRepository(connection)
+    persistence = SQLiteCorrectionCandidateDecisionCommandPersistence(connection)
+    return CorrectionCandidateDecisionService(decisions, decisions, persistence)
 
 
 DEFAULT_EDIT_CANDIDATE_CONTEXT_WINDOW_SECONDS = 15.0
