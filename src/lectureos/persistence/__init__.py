@@ -98,6 +98,10 @@ from .provider_transcript_admission import (
     SQLiteProviderTranscriptAdmissionCommandPersistence,
     SQLiteProviderTranscriptAdmissionRepository,
 )
+from .current_raw_transcript_selection import (
+    SQLiteRawTranscriptSelectionCommandPersistence,
+    SQLiteRawTranscriptSelectionRepository,
+)
 from .subtitle_final_subtitle import (
     SQLiteSubtitleFinalSubtitleCommandPersistence,
     SQLiteSubtitleFinalSubtitleRepository,
@@ -185,6 +189,8 @@ __all__ = [
     "SQLiteTranscriptSourceIntakeRepository",
     "SQLiteProviderTranscriptAdmissionCommandPersistence",
     "SQLiteProviderTranscriptAdmissionRepository",
+    "SQLiteRawTranscriptSelectionCommandPersistence",
+    "SQLiteRawTranscriptSelectionRepository",
     "SQLiteSubtitleFinalSubtitleCommandPersistence",
     "SQLiteSubtitleFinalSubtitleRepository",
     "SQLiteSubtitleReviewDecisionCommandPersistence",

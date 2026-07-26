@@ -1,0 +1,8 @@
+{
+  "candidate_count": 2,
+  "intake_id": "transcript-source-intake:sha256:7be6a9582ff6c7bd4e66c052dc634a38b88909402f2fb330d663000d7f2079a5",
+  "raw_a_id": "raw-transcript:391a88c6cd1f7d35322b1d195bbe4c680658d4abde708b634807b7e12d952074",
+  "raw_b_id": "raw-transcript:a053ddacef9743526f1833cc92a8c04ee916d1c606461e828cb9e189e444b779",
+  "selection_a_id": "raw-transcript-selection:fd674b4355f76dda6186fd852dbaa5c79e5fc5ef49adb0d32c68b05671dc8213",
+  "selection_b_id": "raw-transcript-selection:afa7bc2960dc9720f3e24e496d1a09f67ac12a96a4ddf2622593919c564cc28f"
+}

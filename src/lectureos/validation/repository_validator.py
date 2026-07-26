@@ -59,6 +59,7 @@ _INSPECTED_TABLES = (
     "source_media",
     "transcript_source_intakes",
     "provider_transcript_admissions",
+    "current_raw_transcript_selections",
 )
 _IDENTITY_TABLES = (
     "domain_result_references",
@@ -70,6 +71,7 @@ _IDENTITY_TABLES = (
     "source_media",
     "transcript_source_intakes",
     "provider_transcript_admissions",
+    "current_raw_transcript_selections",
 )
 _APPROVING_KINDS = ("accept", "modify")
 
@@ -639,6 +641,110 @@ def _check_provider_transcript_admission(
     return diagnostics
 
 
+def _check_current_raw_transcript_selection(
+    connection: sqlite3.Connection,
+) -> list[Diagnostic]:
+    if not _table_exists(connection, "current_raw_transcript_selections"):
+        return []
+    diagnostics: list[Diagnostic] = []
+
+    # Dangling references (intake, raw transcript) — also foreign-key enforced; checked for defense in depth.
+    for target, column, code, message in (
+        ("transcript_source_intakes", "transcript_source_intake_id",
+         "RAW_TRANSCRIPT_SELECTION_DANGLING_INTAKE",
+         "selection references a missing transcript source intake"),
+        ("raw_transcripts", "raw_transcript_id",
+         "RAW_TRANSCRIPT_SELECTION_DANGLING_RAW_TRANSCRIPT",
+         "selection references a missing raw transcript"),
+    ):
+        if not _table_exists(connection, target):
+            continue
+        for (identity,) in connection.execute(
+            f"""
+            SELECT s.identity
+            FROM current_raw_transcript_selections s
+            LEFT JOIN {target} r ON s.{column} = r.identity
+            WHERE r.identity IS NULL
+            ORDER BY s.identity
+            """
+        ).fetchall():
+            diagnostics.append(
+                Diagnostic(
+                    code=code,
+                    severity=Severity.ERROR,
+                    location=f"current_raw_transcript_selections:{identity}",
+                    message=message,
+                )
+            )
+
+    # Lineage: the selected raw transcript must be an admitted candidate of the SAME intake.
+    if _table_exists(connection, "provider_transcript_admissions"):
+        for (identity,) in connection.execute(
+            """
+            SELECT s.identity
+            FROM current_raw_transcript_selections s
+            LEFT JOIN provider_transcript_admissions a
+                ON a.raw_transcript_id = s.raw_transcript_id
+            WHERE a.transcript_source_intake_id IS NULL
+               OR a.transcript_source_intake_id <> s.transcript_source_intake_id
+            ORDER BY s.identity
+            """
+        ).fetchall():
+            diagnostics.append(
+                Diagnostic(
+                    code="RAW_TRANSCRIPT_SELECTION_LINEAGE_MISMATCH",
+                    severity=Severity.ERROR,
+                    location=f"current_raw_transcript_selections:{identity}",
+                    message="selected raw transcript is not an admitted candidate of this intake",
+                )
+            )
+
+    # Per-intake sequence must be a contiguous 0..n-1 set (so exactly one highest-sequence current selection).
+    for (intake_id,) in connection.execute(
+        """
+        SELECT transcript_source_intake_id
+        FROM current_raw_transcript_selections
+        GROUP BY transcript_source_intake_id
+        HAVING COUNT(*) <> MAX(sequence) + 1
+            OR MIN(sequence) <> 0
+            OR COUNT(DISTINCT sequence) <> COUNT(*)
+        ORDER BY transcript_source_intake_id
+        """
+    ).fetchall():
+        diagnostics.append(
+            Diagnostic(
+                code="RAW_TRANSCRIPT_SELECTION_SEQUENCE_NONCONTIGUOUS",
+                severity=Severity.ERROR,
+                location=f"current_raw_transcript_selections:{intake_id}",
+                message="selection sequences for an intake are not a contiguous 0..n-1 sequence",
+            )
+        )
+
+    # Supersession: each non-initial selection must supersede the same intake's immediately prior sequence.
+    for (identity,) in connection.execute(
+        """
+        SELECT s.identity
+        FROM current_raw_transcript_selections s
+        LEFT JOIN current_raw_transcript_selections p
+            ON p.identity = s.previous_selection_id
+        WHERE s.sequence > 0
+          AND (p.identity IS NULL
+               OR p.transcript_source_intake_id <> s.transcript_source_intake_id
+               OR p.sequence <> s.sequence - 1)
+        ORDER BY s.identity
+        """
+    ).fetchall():
+        diagnostics.append(
+            Diagnostic(
+                code="RAW_TRANSCRIPT_SELECTION_BROKEN_SUPERSESSION",
+                severity=Severity.ERROR,
+                location=f"current_raw_transcript_selections:{identity}",
+                message="selection does not supersede its intake's immediately prior selection",
+            )
+        )
+    return diagnostics
+
+
 def _check_raw_transcript_segments(connection: sqlite3.Connection) -> list[Diagnostic]:
     if not _table_exists(connection, "raw_transcript_segments"):
         return []
@@ -732,6 +838,7 @@ def validate_repository(connection: sqlite3.Connection) -> ValidationReport:
     diagnostics += _check_source_media(connection)
     diagnostics += _check_transcript_source_intake(connection)
     diagnostics += _check_provider_transcript_admission(connection)
+    diagnostics += _check_current_raw_transcript_selection(connection)
     diagnostics += _check_raw_transcript_segments(connection)
     diagnostics += _check_malformed_identities(connection)
 

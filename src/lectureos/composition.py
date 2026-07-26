@@ -55,6 +55,9 @@ from lectureos.application.local_asr_transcription import (
     LocalAsrEngineRunner,
     LocalAsrTranscriptionService,
 )
+from lectureos.application.current_raw_transcript_selection import (
+    CurrentRawTranscriptSelectionService,
+)
 from lectureos.application.edit_candidate_generation import (
     EditCandidateGenerationPort,
     EditCandidateGenerationService,
@@ -136,6 +139,8 @@ from lectureos.persistence import (
     SQLiteTranscriptSourceIntakeRepository,
     SQLiteProviderTranscriptAdmissionCommandPersistence,
     SQLiteProviderTranscriptAdmissionRepository,
+    SQLiteRawTranscriptSelectionCommandPersistence,
+    SQLiteRawTranscriptSelectionRepository,
     SQLiteSubtitleReadingCommandPersistence,
     SQLiteSubtitleDecisionRevisionCommandPersistence,
     SQLiteSubtitleDecisionRevisionRepository,
@@ -551,6 +556,24 @@ def compose_sqlite_local_asr_transcription_service(
         admission_service,
         verifier,
         engine_runner,
+    )
+
+
+def compose_sqlite_current_raw_transcript_selection_service(
+    connection: sqlite3.Connection,
+) -> CurrentRawTranscriptSelectionService:
+    """Build Current Raw Transcript Selection + readiness on one caller connection (040 §16).
+
+    Enumerates an intake's admitted Raw Transcript candidates (from provider_transcript_admissions), resolves and
+    switches the current selection (append-only, one current per intake), and derives readiness — read-only over
+    all upstream records; it mutates no transcript, provider result, Source Media, or intake row.
+    """
+
+    intakes = SQLiteTranscriptSourceIntakeRepository(connection)
+    read_model = SQLiteRawTranscriptSelectionRepository(connection)
+    persistence = SQLiteRawTranscriptSelectionCommandPersistence(connection)
+    return CurrentRawTranscriptSelectionService(
+        intakes, read_model, read_model, persistence
     )
 
 

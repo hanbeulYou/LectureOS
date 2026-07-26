@@ -178,3 +178,8 @@ class TranscriptSourceIntakeId(OpaqueIdentity):
 @dataclass(frozen=True, slots=True)
 class ProviderTranscriptAdmissionId(OpaqueIdentity):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class CurrentRawTranscriptSelectionId(OpaqueIdentity):
+    pass
