@@ -2315,3 +2315,49 @@ healthy validation). The complete 2133-test suite passes. Current corrected revi
 multiple-candidate merge, overlap resolution, revision chaining, ranking, automatic/LLM correction, linguistic
 validation, mutable editing, segment structure changes, timing correction, and subtitle/export changes remain
 later, separately-gated milestones and are out of scope.
+
+## Current Corrected Revision Selection and Effective Transcript Resolution (First Slice, 040 §20 / GOAL-011)
+
+- Blueprint: approved `docs/040_TRANSCRIPT_PIPELINE.md §20` / `patches/PATCH-0027`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema **v37** (one append-only table `corrected_revision_selections`)
+- Commit: `feat: add current corrected revision selection and effective transcript resolution`
+- Immediate next milestone: integrate the effective-transcript resolver into one specific downstream consumer
+  (e.g. subtitle transcript intake) as its explicit input authority — product-gated, deferred
+
+This milestone establishes the first explicit, append-only **Current Corrected Revision Selection** authority
+(040 §20 / PATCH-0027, GOAL-011): which immutable `CorrectedTranscriptRevision` (§19), if any, is currently
+selected for an intake's transcript context — with an explicit **Raw Transcript fallback** (a real authority
+fact, never a fake revision, historically distinguishable from never-having-selected) and the deterministic
+**effective-transcript resolver**. Four distinctions are preserved: revision existence ≠ selection ≠
+applicability ≠ effective resolution. Currentness is explicit — never inferred from recency/uniqueness/
+acceptance/generation — and `CorrectedRevisionSelectionService` mutates nothing upstream: revisions, candidates,
+decisions, Raw Transcripts, and the current Raw selection are untouched, and unselected revisions are never
+marked superseded. History is append-only (per-intake `sequence` + `previous_selection_id`; current = highest
+sequence, derived — no `is_current`, no timestamps); identity derives from SHA-256 of `(intake, kind,
+revision-or-none, sequence)`; the normative replay matrix holds (same target → reused, changed target → append
+with the superseded state reported; near-concurrent identical converge, divergent conflict explicitly). **New**
+selection requires write-time eligibility (revision + §19 generation binding; parent = the intake's current Raw
+selection; candidate's current §18 authority = Accepted; no `--force`); **existing** selection is never
+retro-judged — a later Reject or Raw switch makes it *inapplicable* (`candidate_not_accepted` /
+`parent_raw_transcript_not_current`) without any history mutation, auto-fallback, or corruption finding. The
+resolver returns raw (no history) / raw (explicit fallback) / corrected (applicable) / selected-but-inapplicable
+with a reason — never a silent fallback; no existing downstream consumer is switched in this slice.
+
+**Reuse investigation (GOAL-011 §13):** the legacy v9 `TranscriptCurrentSelection` (§4.8) requires an
+applicability evaluation + old-review-path decision/item/reference + RUNNING execution and cannot represent Raw
+fallback — not reusable for the §13–§19 chain (it remains untouched for its own path). The §16/§18 append-only
+idiom, `HumanActorReference`, the intake context, and the §19 generation lineage are reused; only the additive
+v37 table and the resolver are new. **Architect Decision judged not required:** the owner (intake context) is
+conservatively determined by the §16 precedent; fallback is representable without a fake revision; selected-vs-
+applicable resolves the later-Reject/Raw-switch tensions per the goal's own normative defaults; nothing is
+weakened and future downstream integration remains fully open. Every released version v1..v36 chains single-step
+to v37 preserving all rows; downgrade/direct-skip/unsupported-target rejected. Read-only validation gains
+`corrected_revision_selections` checks (dangling intake/revision, kind/revision disagreement, context mismatch
+via generation lineage, non-contiguous sequence, broken supersession) — integrity only, never flagging a
+later-Rejected selected revision (tested healthy). One CLI (`lectureos.corrected_selection_cli` with
+`select`/`fallback`/`status`/`history`/`resolve`, no `--force`) derives context from the revision, distinguishes
+all states, and exits 0/1 leaving the repository unchanged on failure. A deterministic demo
+(`lectureos.corrected_selection_demo`) with a golden proves the §63–§67 scenarios. The complete 2188-test suite
+passes. Downstream resolver integration, ranking/recommendation, automatic selection, multi-candidate revisions,
+revision chaining, and review UI remain later, separately-gated milestones and are out of scope.

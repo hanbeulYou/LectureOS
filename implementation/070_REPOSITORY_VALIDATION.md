@@ -105,6 +105,12 @@ and derives `health` (`healthy` / `warnings` / `errors`) and `ok` (no errors).
 | `CORRECTED_REVISION_DECISION_CANDIDATE_MISMATCH` | error | a generation's authorizing decision does not belong to its candidate |
 | `CORRECTED_REVISION_PARENT_MISMATCH` | error | a generated revision's parent disagrees with its generation record |
 | `CORRECTED_REVISION_MEMBERSHIP_DISAGREEMENT` | error | a revision's membership disagrees with the generation's replaced/replacement segments |
+| `CORRECTED_SELECTION_DANGLING_INTAKE` | error | a corrected-revision selection references a missing transcript source intake |
+| `CORRECTED_SELECTION_DANGLING_REVISION` | error | a corrected-revision selection references a missing corrected revision |
+| `CORRECTED_SELECTION_KIND_REVISION_DISAGREEMENT` | error | a selection's kind disagrees with the presence of a selected revision |
+| `CORRECTED_SELECTION_CONTEXT_MISMATCH` | error | a selected revision's lineage does not belong to the selection's intake context |
+| `CORRECTED_SELECTION_SEQUENCE_NONCONTIGUOUS` | error | an intake's selection sequences are not a contiguous `0..n-1` sequence |
+| `CORRECTED_SELECTION_BROKEN_SUPERSESSION` | error | a non-initial selection does not supersede its intake's immediately prior selection |
 | `MALFORMED_IDENTITY` | error | one or more rows have an empty or blank identity |
 
 ## Scope
