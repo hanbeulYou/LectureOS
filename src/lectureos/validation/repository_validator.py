@@ -62,6 +62,7 @@ _INSPECTED_TABLES = (
     "current_raw_transcript_selections",
     "correction_candidate_admissions",
     "correction_candidate_decisions",
+    "corrected_revision_generations",
 )
 _IDENTITY_TABLES = (
     "domain_result_references",
@@ -76,6 +77,7 @@ _IDENTITY_TABLES = (
     "current_raw_transcript_selections",
     "correction_candidate_admissions",
     "correction_candidate_decisions",
+    "corrected_revision_generations",
 )
 _APPROVING_KINDS = ("accept", "modify")
 
@@ -963,6 +965,137 @@ def _check_correction_candidate_decision(
     return diagnostics
 
 
+def _check_corrected_revision_generation(
+    connection: sqlite3.Connection,
+) -> list[Diagnostic]:
+    if not _table_exists(connection, "corrected_revision_generations"):
+        return []
+    diagnostics: list[Diagnostic] = []
+
+    # Dangling references — also foreign-key enforced; checked for defense in depth.
+    for target, column, code, message in (
+        ("corrected_transcript_revisions", "corrected_revision_id",
+         "CORRECTED_REVISION_DANGLING_REVISION",
+         "generation references a missing corrected transcript revision"),
+        ("correction_candidates", "correction_candidate_id",
+         "CORRECTED_REVISION_DANGLING_CANDIDATE",
+         "generation references a missing correction candidate"),
+        ("correction_candidate_decisions", "authorizing_decision_id",
+         "CORRECTED_REVISION_DANGLING_DECISION",
+         "generation references a missing authorizing decision"),
+        ("raw_transcripts", "parent_raw_transcript_id",
+         "CORRECTED_REVISION_DANGLING_PARENT",
+         "generation references a missing parent raw transcript"),
+    ):
+        if not _table_exists(connection, target):
+            continue
+        for (identity,) in connection.execute(
+            f"""
+            SELECT g.identity
+            FROM corrected_revision_generations g
+            LEFT JOIN {target} r ON g.{column} = r.identity
+            WHERE r.identity IS NULL
+            ORDER BY g.identity
+            """
+        ).fetchall():
+            diagnostics.append(
+                Diagnostic(
+                    code=code,
+                    severity=Severity.ERROR,
+                    location=f"corrected_revision_generations:{identity}",
+                    message=message,
+                )
+            )
+
+    if _table_exists(connection, "correction_candidate_decisions"):
+        # The AUTHORIZING decision (not the candidate's current authority) must be an Accept and must belong to
+        # the generation's candidate. A later Reject never makes a historical revision corruption.
+        for (identity,) in connection.execute(
+            """
+            SELECT g.identity
+            FROM corrected_revision_generations g
+            JOIN correction_candidate_decisions d ON d.identity = g.authorizing_decision_id
+            WHERE d.kind <> 'accept'
+            ORDER BY g.identity
+            """
+        ).fetchall():
+            diagnostics.append(
+                Diagnostic(
+                    code="CORRECTED_REVISION_AUTHORIZING_DECISION_NOT_ACCEPT",
+                    severity=Severity.ERROR,
+                    location=f"corrected_revision_generations:{identity}",
+                    message="authorizing decision is not an Accept",
+                )
+            )
+        for (identity,) in connection.execute(
+            """
+            SELECT g.identity
+            FROM corrected_revision_generations g
+            JOIN correction_candidate_decisions d ON d.identity = g.authorizing_decision_id
+            WHERE d.correction_candidate_id <> g.correction_candidate_id
+            ORDER BY g.identity
+            """
+        ).fetchall():
+            diagnostics.append(
+                Diagnostic(
+                    code="CORRECTED_REVISION_DECISION_CANDIDATE_MISMATCH",
+                    severity=Severity.ERROR,
+                    location=f"corrected_revision_generations:{identity}",
+                    message="authorizing decision does not belong to the generation's candidate",
+                )
+            )
+
+    if _table_exists(connection, "corrected_transcript_revisions"):
+        # The generated revision's parent must match the generation's recorded parent.
+        for (identity,) in connection.execute(
+            """
+            SELECT g.identity
+            FROM corrected_revision_generations g
+            JOIN corrected_transcript_revisions r ON r.identity = g.corrected_revision_id
+            WHERE r.parent_raw_transcript_id IS NULL
+               OR r.parent_raw_transcript_id <> g.parent_raw_transcript_id
+            ORDER BY g.identity
+            """
+        ).fetchall():
+            diagnostics.append(
+                Diagnostic(
+                    code="CORRECTED_REVISION_PARENT_MISMATCH",
+                    severity=Severity.ERROR,
+                    location=f"corrected_revision_generations:{identity}",
+                    message="generated revision parent disagrees with the generation record",
+                )
+            )
+
+    if _table_exists(connection, "corrected_transcript_revision_segments"):
+        # The revision membership must contain the replacement segment and must not retain the replaced one.
+        for (identity,) in connection.execute(
+            """
+            SELECT g.identity
+            FROM corrected_revision_generations g
+            WHERE NOT EXISTS (
+                SELECT 1 FROM corrected_transcript_revision_segments s
+                WHERE s.transcript_revision_id = g.corrected_revision_id
+                  AND s.transcript_segment_id = g.replacement_segment_id
+            )
+            OR EXISTS (
+                SELECT 1 FROM corrected_transcript_revision_segments s
+                WHERE s.transcript_revision_id = g.corrected_revision_id
+                  AND s.transcript_segment_id = g.replaced_segment_id
+            )
+            ORDER BY g.identity
+            """
+        ).fetchall():
+            diagnostics.append(
+                Diagnostic(
+                    code="CORRECTED_REVISION_MEMBERSHIP_DISAGREEMENT",
+                    severity=Severity.ERROR,
+                    location=f"corrected_revision_generations:{identity}",
+                    message="revision membership disagrees with the generation's replaced/replacement segments",
+                )
+            )
+    return diagnostics
+
+
 def _check_raw_transcript_segments(connection: sqlite3.Connection) -> list[Diagnostic]:
     if not _table_exists(connection, "raw_transcript_segments"):
         return []
@@ -1059,6 +1192,7 @@ def validate_repository(connection: sqlite3.Connection) -> ValidationReport:
     diagnostics += _check_current_raw_transcript_selection(connection)
     diagnostics += _check_correction_candidate_admission(connection)
     diagnostics += _check_correction_candidate_decision(connection)
+    diagnostics += _check_corrected_revision_generation(connection)
     diagnostics += _check_raw_transcript_segments(connection)
     diagnostics += _check_malformed_identities(connection)
 

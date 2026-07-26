@@ -193,3 +193,8 @@ class CorrectionCandidateAdmissionId(OpaqueIdentity):
 @dataclass(frozen=True, slots=True)
 class CorrectionCandidateDecisionId(OpaqueIdentity):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class CorrectedRevisionGenerationId(OpaqueIdentity):
+    pass

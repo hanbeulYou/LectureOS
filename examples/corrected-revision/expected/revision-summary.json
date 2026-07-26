@@ -1,0 +1,8 @@
+{
+  "authorizing_decision_id": "correction-candidate-decision:6003a7b05bd7f92c120535174827531ff4478c5ff34932362deda9f33a15d6bd",
+  "candidate_id": "correction-candidate:7edbb21a1ad18b35152573d0acf8191d0f8f06874597d09a7dd0b1956ccae2a7",
+  "content_fingerprint": "0228760017b88f271a379020e95edc1f8ddaf09a41784a503e8aa317ce3977ed",
+  "corrected_text": "\uc548\ub155\ud558\uc138\uc694 \uc5ec\ub7ec\ubd84",
+  "generation_id": "corrected-revision-generation:41626b3049148ab918e89ebbbce839cb35d8255aaedb199a4731155f4d93f218",
+  "revision_id": "corrected-revision:41626b3049148ab918e89ebbbce839cb35d8255aaedb199a4731155f4d93f218"
+}

@@ -64,6 +64,9 @@ from lectureos.application.correction_candidate_admission import (
 from lectureos.application.correction_candidate_decision import (
     CorrectionCandidateDecisionService,
 )
+from lectureos.application.corrected_revision_generation import (
+    CorrectedRevisionGenerationService,
+)
 from lectureos.application.edit_candidate_generation import (
     EditCandidateGenerationPort,
     EditCandidateGenerationService,
@@ -151,6 +154,8 @@ from lectureos.persistence import (
     SQLiteCorrectionCandidateAdmissionRepository,
     SQLiteCorrectionCandidateDecisionCommandPersistence,
     SQLiteCorrectionCandidateDecisionRepository,
+    SQLiteCorrectedRevisionGenerationCommandPersistence,
+    SQLiteCorrectedRevisionGenerationRepository,
     SQLiteSubtitleReadingCommandPersistence,
     SQLiteSubtitleDecisionRevisionCommandPersistence,
     SQLiteSubtitleDecisionRevisionRepository,
@@ -622,6 +627,28 @@ def compose_sqlite_correction_candidate_decision_service(
     decisions = SQLiteCorrectionCandidateDecisionRepository(connection)
     persistence = SQLiteCorrectionCandidateDecisionCommandPersistence(connection)
     return CorrectionCandidateDecisionService(decisions, decisions, persistence)
+
+
+def compose_sqlite_corrected_revision_generation_service(
+    connection: sqlite3.Connection,
+) -> CorrectedRevisionGenerationService:
+    """Build Corrected Revision Generation on one caller connection (040 §19).
+
+    Explicitly applies one currently Accepted correction candidate to its source Raw Transcript and persists one
+    immutable canonical CorrectedTranscriptRevision plus the generation binding — read-only over the candidate,
+    decision history, raw transcript, segments, and current selection. The revision is never selected as current.
+    """
+
+    admissions = SQLiteCorrectionCandidateAdmissionRepository(connection)
+    decisions = SQLiteCorrectionCandidateDecisionRepository(connection)
+    selections = SQLiteRawTranscriptSelectionRepository(connection)
+    raw_transcripts = SQLiteRawTranscriptRepository(connection)
+    segments = SQLiteTranscriptSegmentRepository(connection)
+    generations = SQLiteCorrectedRevisionGenerationRepository(connection)
+    persistence = SQLiteCorrectedRevisionGenerationCommandPersistence(connection)
+    return CorrectedRevisionGenerationService(
+        admissions, decisions, selections, raw_transcripts, segments, generations, persistence
+    )
 
 
 DEFAULT_EDIT_CANDIDATE_CONTEXT_WINDOW_SECONDS = 15.0

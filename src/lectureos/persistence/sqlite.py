@@ -7,8 +7,8 @@ from pathlib import Path
 
 from .errors import PersistenceError, UnsupportedSchemaVersionError
 
-SQLITE_SCHEMA_VERSION = 35
-_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35)
+SQLITE_SCHEMA_VERSION = 36
+_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)
 
 _V1_TABLE_STATEMENTS = (
     """CREATE TABLE schema_metadata (
@@ -1269,6 +1269,30 @@ _V35_ADDITION_STATEMENTS = (
 )""",
 )
 
+_V36_ADDITION_STATEMENTS = (
+    """CREATE TABLE corrected_revision_generations (
+    identity TEXT PRIMARY KEY,
+    corrected_revision_id TEXT NOT NULL,
+    correction_candidate_id TEXT NOT NULL,
+    authorizing_decision_id TEXT NOT NULL,
+    parent_raw_transcript_id TEXT NOT NULL,
+    replaced_segment_id TEXT NOT NULL,
+    replacement_segment_id TEXT NOT NULL,
+    content_fingerprint TEXT NOT NULL CHECK (length(content_fingerprint) = 64),
+    UNIQUE (corrected_revision_id),
+    UNIQUE (correction_candidate_id, authorizing_decision_id),
+    CHECK (replaced_segment_id <> replacement_segment_id),
+    FOREIGN KEY (corrected_revision_id)
+        REFERENCES corrected_transcript_revisions(identity),
+    FOREIGN KEY (correction_candidate_id) REFERENCES correction_candidates(identity),
+    FOREIGN KEY (authorizing_decision_id)
+        REFERENCES correction_candidate_decisions(identity),
+    FOREIGN KEY (parent_raw_transcript_id) REFERENCES raw_transcripts(identity),
+    FOREIGN KEY (replaced_segment_id) REFERENCES transcript_segments(identity),
+    FOREIGN KEY (replacement_segment_id) REFERENCES transcript_segments(identity)
+)""",
+)
+
 _V9_ADDITION_STATEMENTS = (
     """CREATE TABLE transcript_current_selections (
     identity TEXT PRIMARY KEY,
@@ -2341,6 +2365,20 @@ _V35_EXPECTED_COLUMNS = {
     ),
 }
 
+_V36_EXPECTED_COLUMNS = {
+    **_V35_EXPECTED_COLUMNS,
+    "corrected_revision_generations": (
+        ("identity", "TEXT", 0, 1),
+        ("corrected_revision_id", "TEXT", 1, 0),
+        ("correction_candidate_id", "TEXT", 1, 0),
+        ("authorizing_decision_id", "TEXT", 1, 0),
+        ("parent_raw_transcript_id", "TEXT", 1, 0),
+        ("replaced_segment_id", "TEXT", 1, 0),
+        ("replacement_segment_id", "TEXT", 1, 0),
+        ("content_fingerprint", "TEXT", 1, 0),
+    ),
+}
+
 
 def initialize_sqlite_database(database_path: str | Path) -> sqlite3.Connection:
     """Create the latest schema for a new path; validate existing databases."""
@@ -2380,7 +2418,7 @@ def migrate_sqlite_database(
 ) -> None:
     """Explicitly perform one approved migration step or validate a no-op target."""
 
-    if target_version not in (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35):
+    if target_version not in (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36):
         raise PersistenceError(f"unsupported SQLite migration target: {target_version}")
     path = _validate_database_path(database_path)
     if not path.is_file():
@@ -2492,6 +2530,9 @@ def migrate_sqlite_database(
         if current_version == 34 and target_version == 35:
             _migrate_v34_to_v35(connection)
             return
+        if current_version == 35 and target_version == 36:
+            _migrate_v35_to_v36(connection)
+            return
         raise PersistenceError(
             f"unsupported SQLite migration: {current_version} to {target_version}"
         )
@@ -2574,6 +2615,7 @@ def _initialize_latest_schema(connection: sqlite3.Connection) -> None:
             *_V33_ADDITION_STATEMENTS,
             *_V34_ADDITION_STATEMENTS,
             *_V35_ADDITION_STATEMENTS,
+            *_V36_ADDITION_STATEMENTS,
         ):
             connection.execute(statement)
         connection.execute(
@@ -3202,6 +3244,24 @@ def _migrate_v34_to_v35(connection: sqlite3.Connection) -> None:
         raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
 
 
+def _migrate_v35_to_v36(connection: sqlite3.Connection) -> None:
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        for statement in _V36_ADDITION_STATEMENTS:
+            connection.execute(statement)
+        connection.execute(
+            "UPDATE schema_metadata SET version = 36 WHERE singleton = 1"
+        )
+        _validate_initialized_connection(connection)
+        _commit(connection)
+    except PersistenceError:
+        _rollback(connection)
+        raise
+    except sqlite3.Error as error:
+        _rollback(connection)
+        raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
+
+
 def _validate_initialized_connection(connection: sqlite3.Connection) -> int:
     try:
         if connection.execute("PRAGMA foreign_keys").fetchone() != (1,):
@@ -3269,6 +3329,7 @@ def _validate_schema_shape(connection: sqlite3.Connection, version: int) -> None
         33: _V33_EXPECTED_COLUMNS,
         34: _V34_EXPECTED_COLUMNS,
         35: _V35_EXPECTED_COLUMNS,
+        36: _V36_EXPECTED_COLUMNS,
     }[version]
     for table, expected in expected_columns.items():
         actual = tuple(

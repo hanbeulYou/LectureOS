@@ -110,6 +110,10 @@ from .correction_candidate_decision import (
     SQLiteCorrectionCandidateDecisionCommandPersistence,
     SQLiteCorrectionCandidateDecisionRepository,
 )
+from .corrected_revision_generation import (
+    SQLiteCorrectedRevisionGenerationCommandPersistence,
+    SQLiteCorrectedRevisionGenerationRepository,
+)
 from .subtitle_final_subtitle import (
     SQLiteSubtitleFinalSubtitleCommandPersistence,
     SQLiteSubtitleFinalSubtitleRepository,
@@ -203,6 +207,8 @@ __all__ = [
     "SQLiteCorrectionCandidateAdmissionRepository",
     "SQLiteCorrectionCandidateDecisionCommandPersistence",
     "SQLiteCorrectionCandidateDecisionRepository",
+    "SQLiteCorrectedRevisionGenerationCommandPersistence",
+    "SQLiteCorrectedRevisionGenerationRepository",
     "SQLiteSubtitleFinalSubtitleCommandPersistence",
     "SQLiteSubtitleFinalSubtitleRepository",
     "SQLiteSubtitleReviewDecisionCommandPersistence",

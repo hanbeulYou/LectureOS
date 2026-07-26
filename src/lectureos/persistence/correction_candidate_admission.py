@@ -76,6 +76,21 @@ class SQLiteCorrectionCandidateAdmissionRepository:
     def candidate(self, candidate_id: CorrectionCandidateId) -> CorrectionCandidate | None:
         return SQLiteCorrectionCandidateRepository(self._connection).get(candidate_id)
 
+    def get_by_candidate(
+        self, candidate_id: CorrectionCandidateId
+    ) -> "CorrectionCandidateAdmission | None":
+        # Well-defined: the schema enforces UNIQUE(correction_candidate_id).
+        try:
+            row = self._connection.execute(
+                f"{_SELECT_COLUMNS} WHERE correction_candidate_id = ?",
+                (candidate_id.value,),
+            ).fetchone()
+            return None if row is None else _restore(row)
+        except sqlite3.Error as error:
+            raise PersistenceError(
+                f"could not read Correction Candidate Admission: {error}"
+            ) from error
+
     def candidates_for_intake(
         self,
         intake_id: TranscriptSourceIntakeId,
