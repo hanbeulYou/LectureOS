@@ -81,6 +81,21 @@ class SQLiteCorrectedRevisionGenerationRepository:
     ) -> CorrectedTranscriptRevision | None:
         return SQLiteCorrectedTranscriptRevisionRepository(self._connection).get(revision_id)
 
+    def get_by_revision(
+        self, revision_id: TranscriptRevisionId
+    ) -> "CorrectedRevisionGeneration | None":
+        # Well-defined: the schema enforces UNIQUE(corrected_revision_id).
+        try:
+            row = self._connection.execute(
+                f"{_SELECT_COLUMNS} WHERE corrected_revision_id = ?",
+                (revision_id.value,),
+            ).fetchone()
+            return None if row is None else _restore(row)
+        except sqlite3.Error as error:
+            raise PersistenceError(
+                f"could not read Corrected Revision Generation: {error}"
+            ) from error
+
     def generations_for_candidate(
         self, candidate_id: CorrectionCandidateId
     ) -> "tuple[CorrectedRevisionGeneration, ...]":

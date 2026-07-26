@@ -75,7 +75,7 @@ class RepositoryValidatorTests(unittest.TestCase):
         self.assertTrue(report.ok)
         self.assertEqual(report.error_count, 0)
         self.assertEqual(report.warning_count, 0)
-        self.assertEqual(report.schema_version, 36)
+        self.assertEqual(report.schema_version, 37)
         self.assertGreater(report.objects_checked, 0)
 
     def test_validator_does_not_mutate_the_database(self) -> None:
@@ -1175,6 +1175,182 @@ class CorrectedRevisionGenerationValidationTests(unittest.TestCase):
         broken = self._corrupt(
             "blank.db",
             lambda c: c.execute("UPDATE corrected_revision_generations SET identity = '  '"),
+        )
+        self.assertIn("MALFORMED_IDENTITY", self._codes(broken))
+
+
+class CorrectedRevisionSelectionValidationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        from lectureos.application.correction_candidate_admission import (
+            build_correction_candidate_input,
+        )
+        from lectureos.application.provider_transcript_admission import (
+            build_provider_transcript_document,
+        )
+        from lectureos.composition import (
+            compose_sqlite_corrected_revision_generation_service,
+            compose_sqlite_corrected_revision_selection_service,
+            compose_sqlite_correction_candidate_admission_service,
+            compose_sqlite_correction_candidate_decision_service,
+            compose_sqlite_current_raw_transcript_selection_service,
+            compose_sqlite_media_import_service,
+            compose_sqlite_provider_transcript_admission_service,
+            compose_sqlite_transcript_source_intake_service,
+        )
+        from lectureos.persistence import (
+            SQLiteRawTranscriptRepository,
+            SQLiteTranscriptSegmentRepository,
+        )
+
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.base = Path(self.tempdir.name)
+        self.healthy = self.base / "selection.db"
+        connection = initialize_sqlite_database(self.healthy)
+        source = self.base / "s.bin"
+        source.write_bytes(b"selection-validation \x00\x01")
+        media_id = compose_sqlite_media_import_service(connection).import_media(str(source)).record.identity.value
+        intake = compose_sqlite_transcript_source_intake_service(connection).admit(media_id).intake.identity.value
+        raw = compose_sqlite_provider_transcript_admission_service(connection).admit(
+            intake_id=intake,
+            document=build_provider_transcript_document(
+                {"provider": "fake", "model": "tiny", "language": "ko", "provider_result_ref": "A",
+                 "segments": [{"start": 0.0, "end": 2.0, "text": "원본"}]}
+            ),
+        ).admission
+        compose_sqlite_current_raw_transcript_selection_service(connection).select(
+            intake, raw.raw_transcript_id.value
+        )
+        raw_record = SQLiteRawTranscriptRepository(connection).get(raw.raw_transcript_id)
+        segment = raw_record.segment_ids[0]
+        text = SQLiteTranscriptSegmentRepository(connection).get(segment).text
+        candidate = compose_sqlite_correction_candidate_admission_service(connection).admit(
+            intake_id=intake,
+            candidate=build_correction_candidate_input(
+                {"raw_transcript_id": raw.raw_transcript_id.value, "segment_id": segment.value,
+                 "candidate_ref": "c1", "source_type": "manual", "source_reference": "human",
+                 "proposed_text": "교정", "source_text_snapshot": text, "rationale": "fix"}
+            ),
+        ).candidate.identity.value
+        decisions = compose_sqlite_correction_candidate_decision_service(connection)
+        decisions.decide(candidate_id=candidate, kind="accept", reviewer="r:kim")
+        revision = compose_sqlite_corrected_revision_generation_service(connection).generate(
+            candidate_id=candidate
+        ).revision.identity.value
+        selection = compose_sqlite_corrected_revision_selection_service(connection)
+        selection.select_revision(revision_id=revision, reviewer="s:kim")
+        selection.select_raw_fallback(intake_id=intake, reviewer="s:kim")  # two rows
+        # Later Reject: the historically selected revision must NOT be flagged as corruption (§44/§52).
+        decisions.decide(candidate_id=candidate, kind="reject", reviewer="r:kim")
+        connection.close()
+
+    def tearDown(self) -> None:
+        self.tempdir.cleanup()
+
+    def _corrupt(self, name: str, mutate) -> Path:
+        target = self.base / name
+        shutil.copyfile(self.healthy, target)
+        connection = sqlite3.connect(target)
+        try:
+            connection.execute("PRAGMA foreign_keys = OFF")
+            connection.execute("BEGIN")
+            mutate(connection)
+            connection.execute("COMMIT")
+        finally:
+            connection.close()
+        return target
+
+    def _codes(self, database: Path) -> set[str]:
+        return {d.code for d in validate_database(str(database)).diagnostics}
+
+    def test_healthy_selection_repository_is_clean_even_after_later_reject(self) -> None:
+        report = validate_database(str(self.healthy))
+        self.assertTrue(report.ok)
+        self.assertEqual(report.health, RepositoryHealth.HEALTHY)
+
+    def test_dangling_revision_detected(self) -> None:
+        broken = self._corrupt(
+            "dangrev.db",
+            lambda c: c.execute(
+                "UPDATE corrected_revision_selections "
+                "SET corrected_revision_id = 'corrected-revision:" + "0" * 64 + "' "
+                "WHERE kind = 'corrected_revision'"
+            ),
+        )
+        codes = self._codes(broken)
+        self.assertTrue(
+            "CORRECTED_SELECTION_DANGLING_REVISION" in codes
+            or "CORRECTED_SELECTION_CONTEXT_MISMATCH" in codes
+        )
+
+    def test_context_mismatch_detected(self) -> None:
+        broken = self._corrupt(
+            "context.db",
+            lambda c: c.execute(
+                "UPDATE corrected_revision_selections "
+                "SET transcript_source_intake_id = 'transcript-source-intake:sha256:other'"
+            ),
+        )
+        codes = self._codes(broken)
+        self.assertTrue(
+            "CORRECTED_SELECTION_CONTEXT_MISMATCH" in codes
+            or "CORRECTED_SELECTION_DANGLING_INTAKE" in codes
+        )
+
+    def test_kind_revision_disagreement_detected_on_tampered_schema(self) -> None:
+        # The real schema CHECK-enforces kind/revision consistency; exercise the read-only check on a
+        # minimal tampered schema where that constraint is absent (the established duplicate-test pattern).
+        path = self.base / "kind.db"
+        connection = sqlite3.connect(path)
+        try:
+            connection.executescript(
+                """
+                CREATE TABLE schema_metadata (singleton INTEGER PRIMARY KEY, version INTEGER NOT NULL);
+                INSERT INTO schema_metadata VALUES (1, 37);
+                CREATE TABLE corrected_revision_selections (
+                    identity TEXT PRIMARY KEY,
+                    transcript_source_intake_id TEXT,
+                    kind TEXT,
+                    corrected_revision_id TEXT,
+                    reviewer TEXT,
+                    sequence INTEGER,
+                    previous_selection_id TEXT,
+                    rationale TEXT
+                );
+                INSERT INTO corrected_revision_selections VALUES
+                    ('corrected-revision-selection:x', 'transcript-source-intake:sha256:m',
+                     'corrected_revision', NULL, 's', 0, NULL, NULL);
+                """
+            )
+            connection.commit()
+        finally:
+            connection.close()
+        self.assertIn("CORRECTED_SELECTION_KIND_REVISION_DISAGREEMENT", self._codes(path))
+
+    def test_sequence_gap_detected(self) -> None:
+        broken = self._corrupt(
+            "gap.db",
+            lambda c: c.execute(
+                "UPDATE corrected_revision_selections SET sequence = 5 WHERE sequence = 1"
+            ),
+        )
+        self.assertIn("CORRECTED_SELECTION_SEQUENCE_NONCONTIGUOUS", self._codes(broken))
+
+    def test_broken_supersession_detected(self) -> None:
+        broken = self._corrupt(
+            "supersession.db",
+            lambda c: c.execute(
+                "UPDATE corrected_revision_selections "
+                "SET previous_selection_id = 'corrected-revision-selection:ghost' WHERE sequence = 1"
+            ),
+        )
+        self.assertIn("CORRECTED_SELECTION_BROKEN_SUPERSESSION", self._codes(broken))
+
+    def test_blank_selection_identity_detected(self) -> None:
+        broken = self._corrupt(
+            "blank.db",
+            lambda c: c.execute(
+                "UPDATE corrected_revision_selections SET identity = '  ' WHERE sequence = 1"
+            ),
         )
         self.assertIn("MALFORMED_IDENTITY", self._codes(broken))
 

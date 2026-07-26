@@ -1,0 +1,8 @@
+{
+  "fallback_id": "corrected-revision-selection:97a9dbf45367faaf2fa35eff7c2805d0f103418d94c873dfd1ad8721c42965e7",
+  "history_length": 5,
+  "intake_id": "transcript-source-intake:sha256:7be6a9582ff6c7bd4e66c052dc634a38b88909402f2fb330d663000d7f2079a5",
+  "revision_a_id": "corrected-revision:41626b3049148ab918e89ebbbce839cb35d8255aaedb199a4731155f4d93f218",
+  "revision_b_id": "corrected-revision:2baac5f43d43bcdb7ff9b896041dddbe87a5e0e6869fe56b4af4665439284dd1",
+  "selection_a_id": "corrected-revision-selection:53e2e767248016be4d981c4e3312548f8509742657c9aab8bef4229ec30ca2c8"
+}

@@ -114,6 +114,10 @@ from .corrected_revision_generation import (
     SQLiteCorrectedRevisionGenerationCommandPersistence,
     SQLiteCorrectedRevisionGenerationRepository,
 )
+from .corrected_revision_selection import (
+    SQLiteCorrectedRevisionSelectionCommandPersistence,
+    SQLiteCorrectedRevisionSelectionRepository,
+)
 from .subtitle_final_subtitle import (
     SQLiteSubtitleFinalSubtitleCommandPersistence,
     SQLiteSubtitleFinalSubtitleRepository,
@@ -209,6 +213,8 @@ __all__ = [
     "SQLiteCorrectionCandidateDecisionRepository",
     "SQLiteCorrectedRevisionGenerationCommandPersistence",
     "SQLiteCorrectedRevisionGenerationRepository",
+    "SQLiteCorrectedRevisionSelectionCommandPersistence",
+    "SQLiteCorrectedRevisionSelectionRepository",
     "SQLiteSubtitleFinalSubtitleCommandPersistence",
     "SQLiteSubtitleFinalSubtitleRepository",
     "SQLiteSubtitleReviewDecisionCommandPersistence",

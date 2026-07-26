@@ -67,6 +67,9 @@ from lectureos.application.correction_candidate_decision import (
 from lectureos.application.corrected_revision_generation import (
     CorrectedRevisionGenerationService,
 )
+from lectureos.application.corrected_revision_selection import (
+    CorrectedRevisionSelectionService,
+)
 from lectureos.application.edit_candidate_generation import (
     EditCandidateGenerationPort,
     EditCandidateGenerationService,
@@ -156,6 +159,8 @@ from lectureos.persistence import (
     SQLiteCorrectionCandidateDecisionRepository,
     SQLiteCorrectedRevisionGenerationCommandPersistence,
     SQLiteCorrectedRevisionGenerationRepository,
+    SQLiteCorrectedRevisionSelectionCommandPersistence,
+    SQLiteCorrectedRevisionSelectionRepository,
     SQLiteSubtitleReadingCommandPersistence,
     SQLiteSubtitleDecisionRevisionCommandPersistence,
     SQLiteSubtitleDecisionRevisionRepository,
@@ -648,6 +653,29 @@ def compose_sqlite_corrected_revision_generation_service(
     persistence = SQLiteCorrectedRevisionGenerationCommandPersistence(connection)
     return CorrectedRevisionGenerationService(
         admissions, decisions, selections, raw_transcripts, segments, generations, persistence
+    )
+
+
+def compose_sqlite_corrected_revision_selection_service(
+    connection: sqlite3.Connection,
+) -> CorrectedRevisionSelectionService:
+    """Build Current Corrected Revision Selection + effective resolution on one caller connection (040 §20).
+
+    Explicit append-only selection of the current corrected revision (or explicit Raw fallback) for an intake,
+    with write-time eligibility, query-time applicability, and the deterministic effective-transcript resolver —
+    read-only over revisions, candidates, decisions, raw transcripts, and the raw selection; it mutates none of
+    them and never auto-promotes a revision.
+    """
+
+    intakes = SQLiteTranscriptSourceIntakeRepository(connection)
+    generations = SQLiteCorrectedRevisionGenerationRepository(connection)
+    admissions = SQLiteCorrectionCandidateAdmissionRepository(connection)
+    decisions = SQLiteCorrectionCandidateDecisionRepository(connection)
+    raw_selections = SQLiteRawTranscriptSelectionRepository(connection)
+    selections = SQLiteCorrectedRevisionSelectionRepository(connection)
+    persistence = SQLiteCorrectedRevisionSelectionCommandPersistence(connection)
+    return CorrectedRevisionSelectionService(
+        intakes, generations, admissions, decisions, raw_selections, selections, persistence
     )
 
 

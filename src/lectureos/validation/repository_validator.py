@@ -63,6 +63,7 @@ _INSPECTED_TABLES = (
     "correction_candidate_admissions",
     "correction_candidate_decisions",
     "corrected_revision_generations",
+    "corrected_revision_selections",
 )
 _IDENTITY_TABLES = (
     "domain_result_references",
@@ -78,6 +79,7 @@ _IDENTITY_TABLES = (
     "correction_candidate_admissions",
     "correction_candidate_decisions",
     "corrected_revision_generations",
+    "corrected_revision_selections",
 )
 _APPROVING_KINDS = ("accept", "modify")
 
@@ -1096,6 +1098,134 @@ def _check_corrected_revision_generation(
     return diagnostics
 
 
+def _check_corrected_revision_selection(
+    connection: sqlite3.Connection,
+) -> list[Diagnostic]:
+    if not _table_exists(connection, "corrected_revision_selections"):
+        return []
+    diagnostics: list[Diagnostic] = []
+
+    # Dangling references — also foreign-key enforced; checked for defense in depth.
+    for target, column, code, message in (
+        ("transcript_source_intakes", "transcript_source_intake_id",
+         "CORRECTED_SELECTION_DANGLING_INTAKE",
+         "selection references a missing transcript source intake"),
+        ("corrected_transcript_revisions", "corrected_revision_id",
+         "CORRECTED_SELECTION_DANGLING_REVISION",
+         "selection references a missing corrected transcript revision"),
+    ):
+        if not _table_exists(connection, target):
+            continue
+        for (identity,) in connection.execute(
+            f"""
+            SELECT s.identity
+            FROM corrected_revision_selections s
+            LEFT JOIN {target} r ON s.{column} = r.identity
+            WHERE s.{column} IS NOT NULL AND r.identity IS NULL
+            ORDER BY s.identity
+            """
+        ).fetchall():
+            diagnostics.append(
+                Diagnostic(
+                    code=code,
+                    severity=Severity.ERROR,
+                    location=f"corrected_revision_selections:{identity}",
+                    message=message,
+                )
+            )
+
+    # Kind/revision consistency (also CHECK-enforced).
+    for (identity,) in connection.execute(
+        """
+        SELECT identity FROM corrected_revision_selections
+        WHERE (kind = 'corrected_revision' AND corrected_revision_id IS NULL)
+           OR (kind = 'raw_fallback' AND corrected_revision_id IS NOT NULL)
+        ORDER BY identity
+        """
+    ).fetchall():
+        diagnostics.append(
+            Diagnostic(
+                code="CORRECTED_SELECTION_KIND_REVISION_DISAGREEMENT",
+                severity=Severity.ERROR,
+                location=f"corrected_revision_selections:{identity}",
+                message="selection kind disagrees with the presence of a selected revision",
+            )
+        )
+
+    # A selected revision must belong to the selection's own intake context (via its generation lineage).
+    if _table_exists(connection, "corrected_revision_generations") and _table_exists(
+        connection, "correction_candidate_admissions"
+    ):
+        for (identity,) in connection.execute(
+            """
+            SELECT s.identity
+            FROM corrected_revision_selections s
+            LEFT JOIN corrected_revision_generations g
+                ON g.corrected_revision_id = s.corrected_revision_id
+            LEFT JOIN correction_candidate_admissions a
+                ON a.correction_candidate_id = g.correction_candidate_id
+            WHERE s.corrected_revision_id IS NOT NULL
+              AND (g.identity IS NULL
+                   OR a.identity IS NULL
+                   OR a.transcript_source_intake_id <> s.transcript_source_intake_id)
+            ORDER BY s.identity
+            """
+        ).fetchall():
+            diagnostics.append(
+                Diagnostic(
+                    code="CORRECTED_SELECTION_CONTEXT_MISMATCH",
+                    severity=Severity.ERROR,
+                    location=f"corrected_revision_selections:{identity}",
+                    message="selected revision does not belong to the selection's intake context",
+                )
+            )
+
+    # Per-intake sequences must be a contiguous 0..n-1 set (one unambiguous current selection).
+    for (intake_id,) in connection.execute(
+        """
+        SELECT transcript_source_intake_id
+        FROM corrected_revision_selections
+        GROUP BY transcript_source_intake_id
+        HAVING COUNT(*) <> MAX(sequence) + 1
+            OR MIN(sequence) <> 0
+            OR COUNT(DISTINCT sequence) <> COUNT(*)
+        ORDER BY transcript_source_intake_id
+        """
+    ).fetchall():
+        diagnostics.append(
+            Diagnostic(
+                code="CORRECTED_SELECTION_SEQUENCE_NONCONTIGUOUS",
+                severity=Severity.ERROR,
+                location=f"corrected_revision_selections:{intake_id}",
+                message="selection sequences for an intake are not a contiguous 0..n-1 sequence",
+            )
+        )
+
+    # Supersession: each non-initial selection must supersede the same intake's immediately prior sequence.
+    for (identity,) in connection.execute(
+        """
+        SELECT s.identity
+        FROM corrected_revision_selections s
+        LEFT JOIN corrected_revision_selections p
+            ON p.identity = s.previous_selection_id
+        WHERE s.sequence > 0
+          AND (p.identity IS NULL
+               OR p.transcript_source_intake_id <> s.transcript_source_intake_id
+               OR p.sequence <> s.sequence - 1)
+        ORDER BY s.identity
+        """
+    ).fetchall():
+        diagnostics.append(
+            Diagnostic(
+                code="CORRECTED_SELECTION_BROKEN_SUPERSESSION",
+                severity=Severity.ERROR,
+                location=f"corrected_revision_selections:{identity}",
+                message="selection does not supersede its intake's immediately prior selection",
+            )
+        )
+    return diagnostics
+
+
 def _check_raw_transcript_segments(connection: sqlite3.Connection) -> list[Diagnostic]:
     if not _table_exists(connection, "raw_transcript_segments"):
         return []
@@ -1193,6 +1323,7 @@ def validate_repository(connection: sqlite3.Connection) -> ValidationReport:
     diagnostics += _check_correction_candidate_admission(connection)
     diagnostics += _check_correction_candidate_decision(connection)
     diagnostics += _check_corrected_revision_generation(connection)
+    diagnostics += _check_corrected_revision_selection(connection)
     diagnostics += _check_raw_transcript_segments(connection)
     diagnostics += _check_malformed_identities(connection)
 
