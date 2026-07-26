@@ -80,6 +80,11 @@ and derives `health` (`healthy` / `warnings` / `errors`) and `ok` (no errors).
 | `PROVIDER_TRANSCRIPT_ADMISSION_DUPLICATE_PROVIDER_RESULT` | error | a provider transcript result is admitted by more than one admission |
 | `PROVIDER_TRANSCRIPT_ADMISSION_DUPLICATE_RAW_TRANSCRIPT` | error | a raw transcript is admitted by more than one admission |
 | `RAW_TRANSCRIPT_SEGMENT_ORDINAL_NONCONTIGUOUS` | error | raw transcript segment ordinals are not a contiguous `0..n-1` sequence |
+| `RAW_TRANSCRIPT_SELECTION_DANGLING_INTAKE` | error | a current-selection references a missing transcript source intake |
+| `RAW_TRANSCRIPT_SELECTION_DANGLING_RAW_TRANSCRIPT` | error | a current-selection references a missing raw transcript |
+| `RAW_TRANSCRIPT_SELECTION_LINEAGE_MISMATCH` | error | a selected raw transcript is not an admitted candidate of the selection's intake |
+| `RAW_TRANSCRIPT_SELECTION_SEQUENCE_NONCONTIGUOUS` | error | an intake's selection sequences are not a contiguous `0..n-1` sequence |
+| `RAW_TRANSCRIPT_SELECTION_BROKEN_SUPERSESSION` | error | a non-initial selection does not supersede its intake's immediately prior sequence |
 | `MALFORMED_IDENTITY` | error | one or more rows have an empty or blank identity |
 
 ## Scope

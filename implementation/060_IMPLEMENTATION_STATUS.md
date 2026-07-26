@@ -2124,3 +2124,49 @@ healthy repository; nothing was committed (transient temp dir). Other engines/pr
 model management, queues, retries, progress, diarization, word timestamps, translation, and a generalized ffmpeg
 framework remain later, separately-gated milestones and are out of scope. Repository hygiene was corrected first:
 tracked `.pyc` bytecode was untracked and ignored so the tree is genuinely clean.
+
+## Current Raw Transcript Selection and Downstream Readiness (First Slice, 040 §16)
+
+- Blueprint: approved `docs/040_TRANSCRIPT_PIPELINE.md §16` / `patches/PATCH-0023`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema **v33** (one append-only table `current_raw_transcript_selections`)
+- Commit: `feat: add current raw transcript selection and downstream readiness`
+- Immediate next milestone: the smallest Transcript Correction capability — admit one AI/rule correction
+  candidate against the current Raw Transcript (040 §4.4), product-gated, deferred
+
+This milestone decides **which admitted `RawTranscript` is the current authoritative downstream input for a
+`TranscriptSourceIntake`** and whether the intake is **ready** for Correction (040 §16 / PATCH-0023). After
+External Provider Transcript Admission (§14) and the local ASR adapter (§15), one intake may hold several admitted
+Raw Transcripts; downstream Correction (§4.4) needs exactly one. `CurrentRawTranscriptSelectionService` enumerates
+candidates (the intake's admitted Raw Transcripts from `provider_transcript_admissions`, ordered by identity —
+**never ranked** by provider/model/time/length/confidence), resolves and switches the current selection, and
+derives readiness. Selection is an **explicit** repository-authority decision: admitting a result does not
+auto-select it (admission unchanged), so readiness stays `not_ready` until an explicit selection; history is
+**append-only** (each change is a new record with a per-intake `sequence` superseding the prior via
+`previous_selection_id`; the current selection is the highest sequence), so switching preserves all prior
+records and no transcript content is deleted or mutated. Selecting the already-current Raw Transcript is
+idempotent; a near-concurrent duplicate converges. Identity is deterministic
+(`raw-transcript-selection:<sha256(intake, raw_transcript, sequence)>`; no wall-clock/randomness). A malformed
+intake or Raw Transcript identity, an unknown intake or Raw Transcript, and a Raw Transcript belonging to a
+different intake are rejected explicitly; the append is atomic and any failure leaves no partial state and mutates
+neither the transcript, provider result, Source Media, nor intake. Readiness (`not_ready`/`ready`/`error`) is
+derived from current persisted facts only — never from source-file existence, ASR/provider availability, model
+accuracy, confidence, or review — and later admissions never silently replace the current selection.
+
+The AGENTS.md Architect Checklist is entirely `No`: no existing contract change (Admission/Raw Transcript identity
+and the §4.8 corrected current selection are unchanged), no responsibility shift, one additive identity
+(`CurrentRawTranscriptSelectionId`), one additive migration, and no Blueprint contradiction. Additive schema
+**v33** adds the append-only `current_raw_transcript_selections` table (identity PK, `UNIQUE(intake, sequence)`,
+sequence/previous CHECK, FKs → `transcript_source_intakes`, `raw_transcripts`); every released version v1..v32
+chains single-step to v33 preserving rows, and downgrade/direct-skip/unsupported-target migrations are rejected.
+Read-only repository validation gains `current_raw_transcript_selections` checks (dangling intake/raw-transcript,
+lineage mismatch, non-contiguous sequence, broken supersession), none checking ASR/model availability or
+source-file existence. A single runnable CLI (`lectureos.raw_transcript_selection_cli` with `candidates`,
+`select`, `readiness` subcommands) accepts intake/raw-transcript identities (never paths), lists candidates
+without ranking, reports created/reused/switched and readiness, and exits 0/1 leaving the repository unchanged on
+failure. A deterministic demo (`lectureos.raw_transcript_selection_demo`, fake provider results) with a golden
+proves multiple distinct candidates, identity-ordered (not ranked) enumeration, idempotent re-selection,
+history-preserving switching, unrelated-selection rejection, readiness, and healthy validation. The complete
+1973-test suite passes. Transcript correction, candidates, structural validation, review, scoring/ranking,
+merging/ensemble, subtitle/export changes, queues, and additional adapters remain later, separately-gated
+milestones and are out of scope.
