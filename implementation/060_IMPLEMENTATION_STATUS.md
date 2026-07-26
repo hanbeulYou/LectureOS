@@ -2078,3 +2078,49 @@ and validation tests, cover the slice. The complete 1875-test suite passes. ffmp
 audio extraction, Whisper and all ASR engines, model download/selection, provider/plugin registries, background
 jobs/queues/retries/progress, streaming, diarization, word/token timestamps, language detection, correction,
 review, and subtitle/export changes remain later, separately-gated milestones and are out of scope.
+
+## First Concrete Local ASR Execution Adapter — faster-whisper (First Slice, 040 §15)
+
+- Blueprint: approved `docs/040_TRANSCRIPT_PIPELINE.md §15` / `patches/PATCH-0022`
+- Status: **COMPLETE**
+- Selected persistence: **no schema change** (reuses the v32 Provider Transcript Admission structures);
+  `SQLITE_SCHEMA_VERSION` stays 32
+- Repository hygiene: accidentally-tracked compiled bytecode (359 `__pycache__/*.pyc`) removed from version
+  control and ignored; the working tree is now genuinely clean per `git status --porcelain`
+- Commit: `feat: add first concrete local ASR execution adapter (faster-whisper)`
+- Immediate next milestone: the smallest transcript-workflow capability after one working local adapter —
+  e.g. current-Raw-Transcript selection / readiness surfacing per intake — product-gated, deferred
+
+This milestone establishes the first **concrete local ASR execution adapter** (040 §15 / PATCH-0022) behind the
+unchanged provider-neutral admission boundary (040 §14). `LocalAsrTranscriptionService.transcribe` accepts an
+admitted `TranscriptSourceIntakeId` (not a media path), resolves its `SourceMedia`, verifies the reference-in-
+place source file is operationally available and still matches the stored content fingerprint (streaming,
+bounded memory, reusing the Media Import inspector's symlink/read policy; changed bytes are a distinct explicit
+failure directing re-import, never transcribed under the old `SourceMediaId`), runs **one** concrete local engine
+(`faster-whisper`, CPU by default) behind the `LocalAsrEngineRunner` port, converts the output into the existing
+`ProviderTranscriptDocument`, and hands it to the existing admission service — the **sole** write boundary. The
+adapter writes no Raw Transcript / Provider Transcript Result rows directly and never mutates the Source Media or
+intake. The engine dependency is optional and lazily imported (the core package and the whole suite run without
+`faster-whisper`); its absence, a missing/unusable model, an engine failure, and inadmissible output surface as
+typed `LocalAsr*` errors. The provider-result reference is deterministic (`local-asr:model=..:lang=..:media=
+<source_media_id>`; device/compute excluded), so the adapter reuses an already-admitted result **without
+re-running the engine** (avoiding spurious non-determinism conflicts); no wall-clock/randomness defines identity.
+No repository write occurs before a valid result is admitted; admission atomicity remains owned by the existing
+service.
+
+The AGENTS.md Architect Checklist is entirely `No`: no existing contract change (§14 boundary reused unchanged),
+no responsibility shift (admission remains the write boundary), no new identity semantics, no migration, and no
+Blueprint contradiction. Adapter contract tests drive the real faster-whisper invocation shape (model/device/
+compute-type propagation, `transcribe(path, language)`, segment/text/timestamp extraction, error translation,
+dependency detection) via an injected fake model factory with no real library/model; orchestration, source-
+verification, CLI, and deterministic-demo tests cover the rest offline. A runnable CLI
+(`lectureos.local_asr_cli --intake <id> --database <db> --model <model>`) performs real local ASR and reports
+identities, provider/model, segment count, created/reused, and whether real ASR ran. The deterministic demo
+(`lectureos.local_asr_demo`, fake engine) with a golden proves lineage use, source verification, reuse-without-
+rerun replay, failure-before-admission-writes-nothing, and healthy validation. The complete 1919-test suite
+passes. **Real ASR smoke test: PASS** — a self-authored `say`-generated speech fixture was imported, admitted,
+and transcribed by real faster-whisper `tiny` (3 real timestamped segments) end-to-end through the CLI with a
+healthy repository; nothing was committed (transient temp dir). Other engines/providers, registries, cloud ASR,
+model management, queues, retries, progress, diarization, word timestamps, translation, and a generalized ffmpeg
+framework remain later, separately-gated milestones and are out of scope. Repository hygiene was corrected first:
+tracked `.pyc` bytecode was untracked and ignored so the tree is genuinely clean.

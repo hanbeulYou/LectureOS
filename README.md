@@ -41,6 +41,12 @@ LectureOS는 긴 한국어 강의의 후반작업에서 생기는 반복 작업�
   Transcript는 별개 identity를 가집니다. identity는 결정적으로 파생되고 admission은 content로 idempotent하며 같은
   참조에 다른 내용은 conflict로 거부됩니다. **ASR 엔진을 실행하지 않으며**(Whisper·ffmpeg·network·media 접근 없음)
   결과는 로컬 JSON으로 공급됩니다. `lectureos.transcript_result_admit_cli`.
+- **로컬 ASR 실행 어댑터(faster-whisper)** — 이미 admit된 intake에 대해 하나의 **로컬 ASR 엔진**을 실행하여 그
+  출력을 기존 provider-neutral admission 경계로 넘겨 canonical Raw Transcript를 만듭니다(040 §15). 실행 시
+  `SourceMedia` 원본 파일의 존재·fingerprint를 재검증하며, 바뀐 바이트는 새 import를 요구합니다. `faster-whisper`는
+  **선택적 의존성**(지연 import; 미설치여도 core·테스트·데모 동작)이며 CPU 기본 실행입니다. admit 전에는 저장소에
+  아무것도 쓰지 않고, 동등 결과는 재실행 없이 재사용됩니다. 전사 정확도는 보장되지 않습니다.
+  `lectureos.local_asr_cli`.
 - **인식문 파이프라인** — 원본 인식문 + provider 결과, 교정 생성·적용, 검수 준비, 사람의 검수 결정, applicability,
   current selection, ready state.
 - **자막 파이프라인** — 인테이크, 후보 생성, reading/time 표현, 구조 검증, 검수 준비, 사람의 검수 결정, 결정 적용,
@@ -111,6 +117,14 @@ git clone <this-repo>
 cd LectureOS
 python3 --version            # 3.10 이상
 ```
+
+핵심 기능·전체 테스트·모든 데모는 **추가 의존성 없이** 표준 라이브러리만으로 동작합니다. **선택적** 의존성:
+
+- **로컬 ASR 실행**(`lectureos.local_asr_cli`): `pip install faster-whisper` + 로컬 모델. 미설치여도 패키지
+  import·전체 테스트·`local_asr_demo`(fake 엔진)는 동작합니다.
+
+컴파일된 바이트코드(`__pycache__/`, `*.pyc`)는 버전 관리에서 제외됩니다(`.gitignore`). 테스트 실행이 만드는
+바이트코드는 저장소를 dirty하게 만들지 않습니다.
 
 ## Quick Start (빠른 시작)
 
@@ -207,6 +221,34 @@ PYTHONPATH=src python3 -m lectureos.transcript_result_admit_cli \
 동작 예제는 [`examples/transcript-result-admission/`](examples/transcript-result-admission/README.md), 계약은
 `docs/040_TRANSCRIPT_PIPELINE.md §14`와 `implementation/095_EXTERNAL_ASR_BOUNDARY.md`를 참고하세요.
 
+## Local ASR Execution (faster-whisper)
+
+이미 admit된 intake에 대해 하나의 **로컬 ASR 엔진(faster-whisper)**을 실행하여 그 출력을 위 admission 경계로 넘겨
+canonical Raw Transcript를 만듭니다(040 §15). **intake identity를 받습니다(미디어 경로가 아님).** 실행 시 원본
+파일의 존재·fingerprint를 재검증하며 CPU 기본으로 동작합니다:
+
+```bash
+PYTHONPATH=src python3 -m lectureos.local_asr_cli \
+  --intake transcript-source-intake:sha256:<digest> \
+  --database /path/to/lectureos.sqlite3 --model tiny --language ko
+```
+
+- `faster-whisper`는 **선택적 런타임 의존성**입니다(설치: `pip install faster-whisper`). **미설치여도** 패키지
+  import·전체 테스트·아래 결정적 데모(fake 엔진)는 동작합니다. 실제 실행에는 로컬 모델이 추가로 필요합니다.
+- 바이트가 바뀐 원본은 옛 `SourceMediaId`로 전사되지 않고 새 import를 요구합니다. adapter는 Raw Transcript를 직접
+  쓰지 않고 admission service만 사용하며, 동등 결과는 **재실행 없이 재사용**됩니다.
+- 실패(source 없음/변경, 의존성/모델 없음, 엔진 실패, malformed 출력, admission conflict)는 exit 1이며 admit 이전에는
+  저장소를 변경하지 않습니다. **전사 정확도·모든 미디어 포맷·모든 OS·GPU 가용성은 보장되지 않습니다.**
+
+결정적 데모(실제 ASR 아님):
+
+```bash
+PYTHONPATH=src python3 -m lectureos.local_asr_demo
+```
+
+동작 예제는 [`examples/local-asr/`](examples/local-asr/README.md), 계약은
+`docs/040_TRANSCRIPT_PIPELINE.md §15`와 `implementation/096_LOCAL_ASR_ADAPTER.md`를 참고하세요.
+
 ## Repository Validation (저장소 검증)
 
 저장소가 내부적으로 일관적인지 **읽기 전용**으로 검증합니다(저장소를 수정하지 않습니다). identity, 참조,
@@ -262,6 +304,7 @@ LectureOS/
 │   ├── media_import_cli.py # 로컬 미디어 임포트 CLI
 │   ├── transcript_intake_cli.py # 전사 소스 인테이크 CLI
 │   ├── transcript_result_admit_cli.py # External ASR Boundary provider 결과 admission CLI
+│   ├── local_asr_cli.py    # 로컬 ASR 실행 어댑터 CLI (faster-whisper)
 │   ├── edit_export_cli.py  # 실행 가능한 Edit Export CLI
 │   ├── edit_export_demo.py # 실행 가능한 mock end-to-end 데모(미디어·네트워크 불필요)
 │   └── *_acceptance.py     # 인프로세스 end-to-end 인수 실행기
