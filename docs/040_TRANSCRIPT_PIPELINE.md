@@ -22,6 +22,7 @@
 - Amended By:
   - `../patches/PATCH-0020-source-media-transcription-intake-eligibility.md`
   - `../patches/PATCH-0021-external-asr-boundary-provider-transcript-admission.md`
+  - `../patches/PATCH-0022-first-local-asr-execution-adapter.md`
 
 ## Purpose
 
@@ -560,6 +561,82 @@ provenance를 담으며 내부 RUNNING execution을 요구하지 않는다. (4) 
 초 단위이며 `end > start`, 비겹침, 비내림차순이다. (11) text는 정확히 보존되고 빈 결과는 거부된다. (12) 실패는 부분
 상태를 남기지 않고 Source Media·intake를 변경하지 않는다. (13) 기존 Transcript·execution 계약이 우선한다. (14) deferred
 개념의 placeholder는 도입하지 않는다.
+
+## 15. First Concrete Local ASR Execution Adapter — faster-whisper (First Slice)
+
+이 절은 `PATCH-0022`로 승인된 Architect/Product 결정(L-1…L-14)을 기록한다. **첫 concrete local ASR execution
+adapter**는 §4.2 External ASR Boundary의 첫 구체 provider 실현이며, §14의 provider-neutral admission 경계(PATCH-0021)를
+**변경 없이** 그대로 사용한다. 이 slice는 하나의 로컬 엔진(`faster-whisper`)을 실행하여 그 출력을 기존
+`ProviderTranscriptDocument`로 변환하고 기존 admission service에 넘겨 canonical Raw Transcript를 만든다. 이 slice는
+하나의 concrete adapter를 도입할 뿐 provider framework를 만들지 않는다. **스키마를 바꾸지 않는다(v32 유지).**
+
+**Authoritative Boundary (Confirmed, L-1):** §14 admission service가 Provider Transcript Result·Raw Transcript
+상태의 **유일한 쓰기 경로**다. adapter는 상류 실행자일 뿐이며 Raw Transcript row를 직접 쓰지 않고, 엔진에 맞추려
+provider-result·Raw Transcript 의미를 바꾸지 않으며, admission service를 우회하지 않는다.
+
+**Selected Engine (Confirmed, L-2):** `faster-whisper`(CTranslate2 Whisper 구현). 로컬 실행, cloud credential 불필요,
+안정적 timestamp segment, CPU 실행 가능(GPU 선택), 제한된 pip 의존성, 실제 model 없이 injected factory로 테스트 가능,
+media를 내부에서 디코딩(별도 ffmpeg 단계 불필요). 라이브러리는 **지연 import**되어 core 패키지·테스트는 미설치
+상태에서도 동작하며 부재는 명시적 operational error다.
+
+**Operational Source Resolution (Confirmed, L-3):** 실행 시 persist된 `SourceMedia.observed_source_path`(reference in
+place)를 resolve한다. 경로는 읽을 수 있는 regular file로 존재해야 하며(확정된 Media Import symlink 정책 적용: symlink는
+regular-file 대상으로 resolve), 현재 바이트를 저장된 content fingerprint와 **재검증**한다(streaming, bounded memory).
+re-import·re-hash-into-new-identity를 하지 않고 record를 변경하지 않으며 `SourceMediaId`를 바꾸지 않는다.
+
+**Changed Bytes (Confirmed, L-4):** 없거나 읽을 수 없거나 디렉터리이거나 비어 있는 source는
+`LocalAsrSourceUnavailableError`다. 바이트가 바뀐 경우는 별개의 `LocalAsrSourceChangedError`이며 operator에게 바뀐
+파일을 **새 Source Media 기록으로 import**하도록 안내한다. LectureOS는 옛 identity로 바뀐 바이트를 조용히 전사하지
+않는다. 물리적 파일 부재는 실행 실패이지 저장소 손상이 아니다(045 §1 M-11, 040 §13 S-5와 일관).
+
+**Media Preparation (Confirmed, L-5):** 이 slice에서는 **없음**. faster-whisper가 source를 내부에서 디코딩하므로
+대칭성만을 위해 ffmpeg 단계를 추가하지 않는다. 이후 엔진이 준비를 요구하면 shell 없는(argument-array) bounded runner로
+격리된 임시 workspace에만 쓰고 성공·실패 모두 정리하며 원본을 덮어쓰지 않고, 확정 계약이 없는 한 추출 audio를
+Artifact로 persist하지 않는다.
+
+**Execution Metadata (Confirmed, L-6):** provider/model 메타데이터는 사실대로다: `provider = "faster-whisper"`,
+`model`은 operator가 지정한 식별자. 반환된 segment는 순서·시간·text를 그대로 보존하고, 사용/감지 언어는 사실대로
+기록한다.
+
+**Provider-Result Reference (Confirmed, L-7):** provider-result reference는 **결정적**이다 —
+`local-asr:model=<model>:lang=<language-or-auto>:media=<source_media_id>` — 즉 semantic request(model, 요청 language,
+source content identity)를 인코딩한다. device·compute-type은 operational 성능 설정이며 semantic identity가 아니므로
+reference에서 제외한다. 어떤 semantic identity에도 wall-clock·randomness가 관여하지 않는다.
+
+**Replay (Confirmed, L-8):** admission identity가 anchor에서 결정적이므로 adapter는 **엔진을 실행하기 전에** 이미
+admit된 동등 결과가 있는지 확인하고 있으면 **재실행 없이 재사용**한다(일반적 ASR 비결정성으로 인한 conflict를 회피).
+서로 다른 model/language/source는 서로 다른 admission을 만든다.
+
+**Conflict (Confirmed, L-9):** 같은 anchor에 대한 상충 결과는 결코 덮어쓰지 않는다(§14 A-9와 일관). reuse-before-rerun
+때문에 이 adapter를 통해서는 자연히 conflict가 발생하지 않는다.
+
+**Failure Atomicity (Confirmed, L-10):** 외부 ASR 작업은 롤백할 수 없으나 adapter는 **유효한 엔진 결과가 admit되기
+전에는 저장소에 아무것도 쓰지 않는다**. 어떤 실패(malformed/unknown intake·source unavailable/changed·dependency/model
+부재·engine 실패·inadmissible output)에서도 Provider Transcript Result·segment·Raw Transcript·admission 상태를 남기지
+않으며 Source Media·intake 기록을 바꾸지 않는다. admission 원자성은 기존 admission service가 소유한다.
+
+**Replaceability (Confirmed, L-11):** adapter는 변경되지 않은 provider-neutral 경계(§14)에서 종료하므로 엔진은
+admission 계약을 바꾸지 않고 교체 가능하다. 이 slice는 provider registry·plugin discovery·generic provider SDK를
+만들지 않는다.
+
+**Dependency Isolation (Confirmed, L-12):** 선택 엔진 의존성은 optional이며 지연 import로 격리된다. core 패키지와
+테스트는 의존성 미설치 상태에서도 import·실행된다.
+
+**No Schema Change (Confirmed, L-13):** 이 slice는 durable 실행 사실을 위한 새 table을 만들지 않는다. v32 admission
+구조를 그대로 재사용하며 `SQLITE_SCHEMA_VERSION`은 32로 유지된다.
+
+**Deferred (이후 milestone, L-14):** 다른 엔진/provider·provider registry·plugin discovery·cloud ASR·credential
+관리·model downloader/catalog·GPU 강제·background job·durable queue·retry scheduler·progress·cancellation·streaming/
+microphone·diarization·speaker 식별·word/token timestamp·confidence rewriting·자동 correction·translation·subtitle/
+NLE/rendering 변경·managed media storage·영구 추출-audio 저장·일반화된 ffmpeg framework. 이들 deferred 개념의
+placeholder는 도입하지 않는다.
+
+**Canonical Invariants (Confirmed):** (1) §14 admission service가 유일한 쓰기 경로다. (2) 하나의 concrete 엔진
+(faster-whisper)만 통합하며 framework를 만들지 않는다. (3) source는 실행 시 존재·regular-file·fingerprint 재검증된다.
+(4) 바뀐 바이트는 옛 identity로 전사되지 않고 새 import를 요구한다. (5) `SourceMediaId`·record는 변경되지 않는다.
+(6) provider-result reference와 identity는 결정적이며 device/compute·wall-clock을 제외한다. (7) 엔진 실행 전에
+재사용을 확인한다. (8) admit 전에는 저장소에 아무것도 쓰지 않는다. (9) 엔진 의존성은 optional·격리된다. (10) 스키마
+변경 없음. (11) 엔진은 admission 계약을 바꾸지 않고 교체 가능하다. (12) deferred 개념의 placeholder는 없다.
 
 ## Related Documents
 
