@@ -23,6 +23,7 @@
   - `../patches/PATCH-0020-source-media-transcription-intake-eligibility.md`
   - `../patches/PATCH-0021-external-asr-boundary-provider-transcript-admission.md`
   - `../patches/PATCH-0022-first-local-asr-execution-adapter.md`
+  - `../patches/PATCH-0023-current-raw-transcript-selection-and-readiness.md`
 
 ## Purpose
 
@@ -637,6 +638,73 @@ placeholder는 도입하지 않는다.
 (6) provider-result reference와 identity는 결정적이며 device/compute·wall-clock을 제외한다. (7) 엔진 실행 전에
 재사용을 확인한다. (8) admit 전에는 저장소에 아무것도 쓰지 않는다. (9) 엔진 의존성은 optional·격리된다. (10) 스키마
 변경 없음. (11) 엔진은 admission 계약을 바꾸지 않고 교체 가능하다. (12) deferred 개념의 placeholder는 없다.
+
+## 16. Current Raw Transcript Selection and Downstream Readiness (First Slice)
+
+이 절은 `PATCH-0023`으로 승인된 Architect/Product 결정(R-1…R-13)을 기록한다. External Provider Transcript
+Admission(§14)과 첫 local ASR adapter(§15) 이후 하나의 `TranscriptSourceIntake`는 여러 admitted `RawTranscript`를
+가질 수 있다. 이 slice는 두 질문에 답한다: "이 intake의 여러 Raw Transcript 중 **어느 것이 downstream 작업의 현재
+authoritative 입력인가?**" 그리고 "이 intake는 downstream **Correction을 시작할 준비가 되었는가?**" — 어느 transcript가
+가장 정확한지·어느 model이 나은지·text가 언어적으로 맞는지·timing 품질·review 완료·subtitle/export 여부에는 답하지
+않는다. **Correction·Validation·Review·Subtitle·Export를 구현하지 않는다.**
+
+**Selection Authority (Confirmed, R-1):** selection은 명시적 Product·repository authority 결정이다. provider 이름·
+model 크기·최근 wall-clock·transcript 길이·confidence로 **추론하지 않으며** 어떤 후보도 "best"로 표시하지 않는다.
+후보 열거는 결정적이다(Raw Transcript identity 오름차순) — provider/model provenance 메타데이터만 담고 ranking은
+담지 않는다. intake의 후보는 정확히 그 admitted Raw Transcript들(`provider_transcript_admissions`)이다.
+
+**Explicit Initial Selection (Confirmed, R-2):** selection은 **항상 명시적**이다(후보가 하나여도). Provider
+Transcript Admission은 변경되지 않으며(admit이 자동 선택하지 않는다) authority는 단순 존재로 암시되지 않는다.
+readiness는 명시적 선택 전까지 `not_ready`다: 0개 → not_ready; 1개 → 선택 전 not_ready, 선택 후 ready; 2개+ → 정확히
+하나의 명시적 current 선택 필요.
+
+**Append-only Supersession (Confirmed, R-3):** history는 **append-only**다(저장소의 확립된 authority-change idiom).
+각 selection은 intake별 `sequence`(0-based)를 가진 immutable record이며 `previous_selection_id`로 이전 current를
+supersede한다. **current**는 그 intake의 최고 `sequence` record다(ordering은 sequence이며 wall-clock이 아니다).
+
+**Switching (Confirmed, R-4):** 전환은 새 record(`sequence`+1)를 만들고 **모든 이전 record를 보존**한다 — 전환은
+어떤 transcript나 이전 selection도 삭제·변경하지 않는다.
+
+**Idempotency (Confirmed, R-5):** 이미 current인 Raw Transcript를 선택하면 **idempotent**(새 record 없음)다. 근접
+동시 중복은 기존 current로 수렴한다.
+
+**Deterministic Identity (Confirmed, R-6):** selection identity는 intake·선택 Raw Transcript·sequence에서 결정적으로
+파생된다(`raw-transcript-selection:<sha256(intake, raw_transcript, sequence)>`). 어떤 identity에도 wall-clock·
+randomness가 관여하지 않는다.
+
+**Readiness (Confirmed, R-7):** readiness는 현재 persist된 사실에서 **파생**되며(자체 persist하지 않음) `not_ready`
+(current 없음)·`ready`(정확히 하나의 유효한 current Raw Transcript 선택)·`error`(persist된 current 선택이 비일관 —
+예: 그 Raw Transcript가 더 이상 intake의 admitted 후보가 아님) 중 하나다. readiness는 원본 파일 물리 존재·ASR/provider
+가용성·model 정확도·confidence·human review에 **의존하지 않는다**.
+
+**No Automatic Staleness (Confirmed, R-8):** 이후 admission은 current 선택을 조용히 무효화·대체하지 않는다. 따라서 새
+admission이 current 선택을 stale로 만들지 않으며, 오직 비일관 persist된 선택만 `error`가 된다.
+
+**Explicit Rejection (Confirmed, R-9):** malformed intake·Raw Transcript identity, unknown intake·Raw Transcript,
+**다른** intake에 속한 Raw Transcript는 모두 명시적으로 거부된다.
+
+**Failure Atomicity (Confirmed, R-10):** append는 하나의 atomic transaction이다. 어떤 실패에서도 부분 선택 상태를
+남기지 않으며 transcript·provider result·Source Media·intake를 변경하지 않는다. human `reason`은 선택적이다.
+
+**Downstream Authority (Confirmed, R-11):** downstream Correction은 intake당 정확히 하나의 current Raw Transcript를
+본다. selection은 ASR 품질을 비교하거나 Raw Transcript 내용을 바꾸거나 Correction을 실행하지 않는다.
+
+**No Content Mutation (Confirmed, R-12):** selection은 Raw Transcript 내용을 결코 바꾸지 않는다. 비선택 transcript도
+삭제·변경되지 않는다. 기존 Provider Transcript Admission·Raw Transcript identity·§4.8 corrected 현재 선택은 변경되지
+않는다.
+
+**Deferred (이후 milestone, R-13):** transcript correction·correction 후보·문법/구두점 교정·structural transcript
+validation·human review·자동 transcript scoring·ASR confidence ranking·model/provider ranking·자동 best-transcript
+선택·transcript merging/ensemble·word-level alignment·diarization·subtitle/export/rendering 변경·queue·retry·
+progress·cloud ASR·추가 local ASR adapter·provider registry·일반 workflow status engine. placeholder는 도입하지 않는다.
+
+**Canonical Invariants (Confirmed):** (1) 후보는 intake의 admitted Raw Transcript이며 결코 자동 ranking되지 않는다.
+(2) selection은 항상 명시적이고 admission은 변경되지 않는다. (3) history는 append-only이며 current는 최고 sequence다.
+(4) 전환은 이전 record를 보존한다. (5) 동일 선택 반복은 idempotent다. (6) identity는 결정적(intake·transcript·
+sequence)이다. (7) intake당 current는 최대 하나다. (8) readiness는 유효한 current 선택에서만 파생된다. (9) 이후
+admission은 current를 조용히 대체하지 않는다. (10) malformed·unknown·unrelated·dangling은 명시적으로 거부된다.
+(11) 실패는 부분 상태를 남기지 않고 상위 record를 변경하지 않는다. (12) transcript 내용은 변경되지 않는다.
+(13) deferred 개념의 placeholder는 없다.
 
 ## Related Documents
 
