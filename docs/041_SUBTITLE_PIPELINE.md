@@ -16,6 +16,7 @@
   - `031_ARCHITECTURE.md`
   - `040_TRANSCRIPT_PIPELINE.md`
   - `../patches/PATCH-0001-l0-and-prd-stabilization.md`
+  - `../patches/PATCH-0029-effective-transcript-sourced-subtitle-candidate-contract.md`
 - Referenced By:
   - `043` Review Pipeline
   - `044` Export Pipeline
@@ -125,6 +126,12 @@ Transcript Validation을 우회하거나 구조적으로 유효하지 않은 Cor
 - **Does Not Produce:** Corrected Transcript 변경, Final Subtitle, 사용자 Review Decision, 외부 자막 Artifact.
 
 Candidate 생성은 AI 또는 처리 규칙의 도움을 받을 수 있다. Candidate는 Review와 Validation 이전의 제안이며, Corrected Transcript Unit과 Subtitle Unit의 일대일 대응을 가정하지 않는다.
+
+> **계약 세대 주석 (PATCH-0029):** 이 절의 "Corrected Transcript의 내용과 시간 근거를 바탕으로"라는 입력 전제와
+> 그 첫 구현(released `subtitle_candidates` 계열, readiness/legacy selection/review lineage 기반)은 **legacy
+> subtitle candidate 계약 세대**에 속하며 해당 세대의 역사적 record에 대해 계속 유효하다. Effective Transcript
+> (Raw 또는 Corrected)에서 생성되는 Subtitle Candidate는 §15의 **effective-transcript-sourced 계약**을 따른다.
+> 이 주석은 기존 계약 문언을 삭제하지 않고 세대를 구분한다.
 
 ### 4.3 Reading Representation
 
@@ -399,6 +406,86 @@ Corrected Transcript에서 사용할 수 있는 Subtitle Candidate 또는 Subtit
 - Artifact 손실이 Final Subtitle, 사용자 결정 또는 provenance 손실을 의미하지 않아야 한다.
 - 외부 파일 형식이 Subtitle Unit과 Final Subtitle의 개념 책임을 재정의하지 않아야 한다.
 - Subtitle Pipeline의 Validation을 우회하거나 구조적으로 유효하지 않은 Subtitle revision을 정상 Artifact로 취급하지 않아야 한다.
+
+## 15. Effective-Transcript-Sourced Subtitle Candidate (First Slice)
+
+이 절은 `PATCH-0029`(GOAL-013 Architect Decision)로 승인된 Architect 결정(E1…E14)을 기록한다. GOAL-012의
+**Effective Transcript Consumption Boundary**(040 §21)를 소비하는 subtitle candidate 생성의 규범 계약이다.
+구현·스키마·마이그레이션은 이 절에 포함되지 않으며 GOAL-013 구현 milestone이 별도로 수행한다.
+
+**Contract Generation Boundary (Confirmed, E1):** effective transcript에서 생성되는 Subtitle Candidate는
+**새로운 additive versioned persisted 표현**을 사용한다(유력한 persistence 계열:
+`subtitle_effective_candidates` / `subtitle_effective_candidate_cues` /
+`subtitle_effective_candidate_cue_segments` — 구현 goal이 저장소 관례에 맞는 최종 이름을 선택한다). 이 표현은
+effective-transcript-sourced pipeline의 **canonical** 표현이며 임시 adapter나 shadow table이 아니다. released
+legacy 표현(v12 `subtitle_candidates` 계열)은 legacy pipeline에 대해서만 canonical로 남는다. **하나의 계약 세대
+안에는 경쟁하는 canonical 표현이 존재하지 않는다** — 두 표현의 공존은 의도된 versioned 아키텍처 경계이며, 모든
+역사적 세대를 통틀어 물리적 표현이 하나여야 한다는 이전 문언은 이 결정으로 대체된다.
+
+**Legacy Preservation (Confirmed, E2):** 기존 legacy candidate record는 released 계약 아래 유효한 역사적
+record로 남는다. 재작성·backfill·GOAL-012 source로의 재해석·조작된 binding/source-kind 부여·진실한 역사적 증거
+없는 이전·삭제·조용한 supersession은 금지된다. 두 표현은 계약 세대로 영구히 구분 가능하다.
+
+**Semantic Reuse (Confirmed, E3):** `SubtitleCandidate`/`SubtitleCue` 재사용은 **도메인 의미와 invariant의
+재사용**이다: 생성된 자막 제안으로서의 Candidate identity, 순서 있는 Cue 집합, Cue timing/text invariant,
+결정적 Cue 순서, source segment lineage, Candidate/Cue 불변성, 생성 provenance, Cue 구조 검증. released
+persistence 컬럼 전체나 legacy provenance 요구는 상속되지 않는다: legacy readiness·legacy current-selection·
+applicability evaluation·TranscriptReviewDecision·ReviewItem·CandidateReference·validation identity와 필수
+ProcessingRun/UnitExecution identity는 진실하게 존재하지 않는 한 새 표현에 포함되지 않으며, 옛 스키마를 닮기
+위해 조작하는 것을 금지한다.
+
+**Supported Sources (Confirmed, E4):** 지원 source kind는 GOAL-011/012가 확립한 정확히 두 가지다:
+`raw_transcript`와 `corrected_transcript_revision`. Candidate는 source kind·정확한 immutable source identity·
+`TranscriptSourceIntake` identity·Raw parent identity·Effective Transcript Consumption Binding identity·소비된
+순서 있는 snapshot identity 또는 fingerprint를 보존한다. Corrected source의 교체 segment lineage는 effective
+input이 제공하는 범위에서 Raw segment lineage까지 추적 가능해야 한다. **같은 내용 ≠ 같은 source ≠ 같은
+candidate** — 텍스트가 동일해도 source entity가 다르면 별개의 Candidate다.
+
+**Sole Acquisition Boundary (Confirmed, E5):** 생성은 transcript 내용을 오직 GOAL-012 소비 경계로만 획득한다.
+현재 Raw/corrected authority를 독자적으로 해석하거나, 조용히 Raw로 fallback하거나, 생성 중간에 재해석하거나,
+snapshot을 혼합하거나, provenance를 위해 생성 후 binding을 소급 구성하는 것을 금지한다. binding은 생성 전에
+존재하며 소비된 정확한 source를 고정한다. **Transcript authority ≠ effective 해석 ≠ 소비 ≠ subtitle 생성.**
+
+**Deterministic Local Provenance (Confirmed, E6):** 이 계약의 첫 canonical generator는 결정적 로컬
+generator이며 provenance는 `ProcessingRun`/`UnitExecution` 없이 표현된다: generator kind·generator version·
+알고리즘/parameter version·consumption binding identity·결정적 generation key. 가짜 실행 lifecycle record는
+금지된다. 실행 기반 generator는 이후 별도의 versioned 계약으로 도입될 수 있다. **생성 provenance ≠ 인간 교정
+provenance ≠ review authority ≠ 실행 orchestration.**
+
+**Deterministic Identity (Confirmed, E7):** 미래 Candidate identity는 결정적이고 **source-sensitive**해야
+한다. 최소한 consumer/generator 계약·intake identity·consumption binding identity·source kind·정확한 source
+identity·generator version·알고리즘/parameter version을 반영한다. timestamp·mutable current selection·content
+fingerprint 단독·물리 경로·출력 파일명·latest row·auto-increment sequence 단독에 의한 identity는 금지된다.
+Cue identity는 immutable Candidate 안에서 결정적이며 삽입 시점에 의존하지 않는다. 정확한 hash 구성은 GOAL-013
+구현에 위임된다.
+
+**Replay (Confirmed, E8):** 동일한 정확한 source binding + 동일 generator version + 동일 parameter + 동일 요청
+의미 → 동일 Candidate 재사용. Raw → Corrected → 동일 Raw 복귀 → 원래 Raw-source Candidate 재사용. 내용이
+동일해도 source entity가 다르면 별개 Candidate다. 이는 구현이 유예되어 있어도 계약 요구사항이다.
+
+**Concurrency (Confirmed, E9):** 근접 동시 동일 생성 요청은 중복 canonical Candidate 없이 수렴해야 한다.
+서로 다른 요청은 내용이 같다는 이유만으로 병합되지 않는다. locking/uniqueness 구체 기제는 구현 소유다.
+
+**Atomicity (Confirmed, E10):** Candidate·순서 있는 Cue 집합·Cue-source segment lineage·생성 provenance는
+atomic하게 commit된다. 부분 저장된 Candidate가 유효한 것으로 보일 수 없다.
+
+**Currentness ≠ Integrity (Confirmed, E11):** Candidate는 authority 변경 후에도 역사적인 정확한 source
+binding을 유지한다. stale해지는 것은 Candidate를 변경·삭제·손상 처리·자동 재생성하지 않으며 자동 Raw fallback을
+일으키지 않고 provenance를 재작성하지 않는다. **Candidate 무결성 ≠ source currentness ≠ review 적용 가능성 ≠
+final selection 적격성.**
+
+**Human Authority Separation (Confirmed, E12):** 생성은 Human Decision·review record·수락·거부·선택을 만들지
+않으며 review/authority/validation/실행 identity를 조작하지 않는다.
+
+**Deferred Downstream Integration (Confirmed, E13):** 새 표현은 legacy 단계(subtitle review 준비·review
+record·Human Decision·candidate 수락/거부·final subtitle selection·SRT export·물리 materialization)에 자동
+진입하지 않는다. GOAL-013 이후 effective-source Candidate가 아직 review·선택·export 불가능한 상태로 존재하는
+것은 유효하다. 각 downstream 연결은 별도로 범위가 정해진 GOAL로 도입된다. **Candidate 존재 ≠ review 준비 ≠
+review authority ≠ Human Decision ≠ final selection ≠ export 적격성.**
+
+**Additive Evolution (Confirmed, E14):** 구현은 strictly additive여야 한다(예상 스키마 v39, 전체 마이그레이션
+ritual). legacy 컬럼 변경·역사적 backfill·이중 기록(dual-write)은 금지된다. 새 표현의 미래 repository
+validation은 무결성 전용이며(stale은 손상이 아님) GOAL-012 §21의 검증 원칙을 따른다.
 
 ## Related Documents
 

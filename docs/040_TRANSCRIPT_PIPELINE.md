@@ -29,6 +29,7 @@
   - `../patches/PATCH-0026-first-corrected-transcript-revision.md`
   - `../patches/PATCH-0027-current-corrected-revision-selection.md`
   - `../patches/PATCH-0028-effective-transcript-consumption-boundary.md`
+  - `../patches/PATCH-0029-effective-transcript-sourced-subtitle-candidate-contract.md`
 
 ## Purpose
 
@@ -1075,6 +1076,14 @@ ProcessingRun·DomainResult·Artifact·물리 파일은 만들지 않는다(결�
 **Deferred (이후 milestone, S3-14):** downstream 전환(validation/subtitle/review/export/분석)·자동 staleness 대응
 (재처리·재생성·무효화·삭제)·추가 consumer kind·multi-source/병합 소비·content 기반 중복 제거·물리 materialization.
 placeholder는 도입하지 않는다.
+
+**Approved Downstream Consumer — Subtitle Generation (Confirmed, S3-15, PATCH-0029):** subtitle candidate
+생성은 이 소비 경계의 **승인된 downstream 소비자**다(`041 §15`). 생성 전에 consumption binding이 존재해야 하며
+binding이 소비된 정확한 immutable source를 고정한다. subtitle 생성은 transcript authority를 독자적으로 해석하지
+않고, source fallback이나 작업 중간 재해석을 수행하지 않으며, 정확한 source identity와 순서 있는 snapshot을
+subtitle provenance로 이어받는다. subtitle 표현·스키마의 세부는 이 문서가 아니라 `041 §15`가 소유한다. 이
+승인은 S3-14의 deferred 원칙과 모순되지 않는다 — 실제 통합은 여전히 별도로 범위가 정해진 milestone에서
+수행된다.
 
 **Canonical Invariants (Confirmed):** (1) 현재 authority ≠ 소비된 source ≠ historical lineage ≠ currentness ≠
 무결성. (2) 모든 해석은 §20 resolver를 통하며 소비자는 resolver 논리를 복제하지 않는다. (3) 소비는 하나의
