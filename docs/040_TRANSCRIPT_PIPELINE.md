@@ -26,6 +26,7 @@
   - `../patches/PATCH-0023-current-raw-transcript-selection-and-readiness.md`
   - `../patches/PATCH-0024-first-transcript-correction-candidate-admission.md`
   - `../patches/PATCH-0025-first-human-authority-decision-on-correction-candidate.md`
+  - `../patches/PATCH-0026-first-corrected-transcript-revision.md`
 
 ## Purpose
 
@@ -842,6 +843,87 @@ revision 선택·후보 Modify·후보 merge/ensemble·ranking/recommended 선�
 content는 conflict로 거부된다. (10) Accepted만 이후 revision 대상이다. (11) 실패는 부분 상태를 남기지 않는다. (12) 결정은
 아무것도 적용·revision·decision 생성하지 않는다. (13) canonical CorrectionCandidate를 재사용하며 두 번째 계층이 없다.
 (14) deferred 개념의 placeholder는 없다.
+
+## 19. First Corrected Transcript Revision — One-Candidate Explicit Application (First Slice)
+
+이 절은 `PATCH-0026`(GOAL-010)으로 승인된 Architect/Product 결정(V-1…V-14)을 기록한다. §4.4 Correction의 첫 적용
+실현이다. **현재 Accepted**(§18)인 하나의 Correction Candidate(§17)를 그 authoritative source Raw Transcript에
+**명시적으로 적용**하여 하나의 **immutable canonical `CorrectedTranscriptRevision`**(기존 v5 record)을 만든다.
+오직 한 질문에 답한다: "현재 accepted된 하나의 교정 후보를 명시적으로 적용하면 어떤 immutable corrected revision이
+생기는가?" — 어느 revision이 current인지·여러 후보를 어떻게 합치는지·겹침을 어떻게 해소하는지에는 답하지 않는다.
+**revision은 current로 선택되지 않으며**(GOAL-011), transcript 변경·자동 correction·subtitle 변경은 없다.
+
+**Reuse (Confirmed, V-1):** canonical `CorrectedTranscriptRevision`(v5)을 **변경 없이 재사용**한다 — complete
+snapshot(순서 있는 segment 참조; 비변경 source segment는 identity 유지, 교정 segment는 `replaces_segment_id`를 가진
+새 revision-scoped `TranscriptSegment`), `parent_raw_transcript_id`, `correction_candidate_ids`. patch/delta 표현이나
+두 번째 transcript 표현을 도입하지 않는다. 기존 transaction-free insert helper를 재사용하며(PATCH-0021/24 패턴)
+RUNNING execution을 요구하는 기존 service는 사용하지 않는다(가짜 실행 금지). 추가되는 것은 additive **Corrected
+Revision Generation** binding record(v36)뿐이다.
+
+**Explicit Application (Confirmed, V-2):** 수락은 권한 부여이고 생성은 적용이다 — 별개의 authority 경계다. Accept만으로
+revision이 생기지 않으며(`Accepted ≠ Applied ≠ Current`) 생성은 정확히 **하나의** 후보를 지명하는 명시적 요청이다.
+apply-all/best/latest·암묵적 후보 발견·multiple-candidate merge·ranking·overlap 해소는 없다.
+
+**Eligibility (Confirmed, V-3):** 생성은 후보의 **현재** Human Authority(§18 파생)가 Accepted일 때만 허용된다.
+Undecided·Rejected는 부적격이며, 이후 Reject 뒤의 과거 수락은 불충분하다.
+
+**Applicability (Confirmed, V-4):** 후보는 자신의 lineage(§17)에 구조적으로 적용 가능해야 한다: 후보의 Raw
+Transcript가 intake의 current 선택이고, target segment가 그 transcript에 속하며, persist된 segment text가 후보의
+source-text snapshot과 일치해야 한다. staleness는 application 수준 부적격이지 저장소 손상이 아니며 fuzzy matching·
+자동 rebase·retarget은 없다.
+
+**Deterministic Application (Confirmed, V-5):** 적용은 순수 결정적 변환이다: 후보 소유 segment의 text만 후보의
+proposed text로 **정확히** 대체하고(정규화·trim·구두점 재작성 없음) timing·순서·timeline 연결·speaker 메타데이터를
+보존하며 비변경 segment는 모두 그대로 참조한다. text 교정만 지원한다 — timing 교정·segment 삭제/분할/병합은 없다
+(admit된 모든 후보 kind는 단일 segment text 대체이며 빈 대체는 §17이 이미 거부).
+
+**Provenance Separation (Confirmed, V-6):** 교정 text의 출처는 후보/결정 lineage(human)이고 provider provenance는
+source segment에 남는다. 어느 쪽도 덮어쓰지 않으며 교정 segment에 provider confidence를 날조하지 않는다. canonical
+`DomainResultReference`(kind `corrected_transcript_revision`, upstream = Raw Transcript의 domain result)가 §6.2
+correction provenance를 보존한다.
+
+**Deterministic Identity (Confirmed, V-7):** 모든 identity는 anchor `(candidate, authorizing_accepted_decision)`에서
+결정적으로 파생된다(SHA-256): revision(`corrected-revision:<digest>`)·generation record·domain result·외부 적용
+실행 마커(내부 RUNNING execution·가짜 Processing Run 없음)·replacement segment. wall-clock·randomness는 관여하지 않는다.
+
+**Authorizing Decision (Confirmed, V-8):** revision은 생성 시점에 소비한 **특정 authorizing Accepted Decision**을
+참조한다(candidate_id만으로는 불충분 — authority는 append-only로 변할 수 있다). append-only authority에서 서로 다른
+Accepted Decision(Reject 후 Accept#2)은 서로 다른 authority 사실이므로 **서로 다른 revision**을 만든다(immutable
+record는 새 provenance를 획득할 수 없다). entity identity와 content identity는 구분되며 별도 content
+fingerprint(순서/text/timing)가 동일 content의 공존을 기록한다.
+
+**Replay (Confirmed, V-9):** 동일 anchor의 재요청은 기존 revision을 **재사용**한다 — restart 후·CLI 재실행·근접 동시
+중복(persistence collision으로 수렴)에서도 안정적이다. 재사용은 새 생성으로 보고되지 않는다.
+
+**Conflict (Confirmed, V-10):** 같은 anchor에서 다른 content가 나오는 재요청은 명시적 immutable identity conflict로
+거부된다 — 덮어쓰기·삭제·조용한 재사용은 없다.
+
+**Historical Validity (Confirmed, V-11):** `Accept → Generate → Reject`는 합법이다: revision은 persist·immutable·
+queryable로 남고 authorizing Accepted Decision 참조를 유지하며, 새 Reject는 **새로운** 생성만 차단한다. 저장소 검증은
+후보의 현재 authority가 아니라 **특정 authorizing decision**(후보에 속한 Accept여야 함)을 검사한다 — historical
+revision은 결코 손상이 아니다.
+
+**Coexistence & Non-selection (Confirmed, V-12):** 독립적으로 적용된 후보들의 revision은 공존할 수 있다(one-revision-
+per-transcript/segment 강제 없음). revision 존재와 revision 선택은 다른 사실이다 — 이 slice는 존재만 기록하며 current/
+active/selected 표시를 만들지 않는다. 미래 chaining은 기존 `parent_revision_id` field가 이미 모델링하며 여기서
+구현하지 않는다.
+
+**Atomicity & Boundaries (Confirmed, V-13):** 생성은 하나의 atomic transaction이다(replacement segment + revision +
+membership + candidate 참조 + domain result + generation binding — 전부 또는 전무). revision은 도메인 record이며
+물리 파일이 아니다(materialization·경로 identity 없음). 후보·결정·Raw Transcript·current 선택은 변경되지 않는다.
+
+**Deferred (이후 milestone, V-14):** Current Corrected Revision Selection(GOAL-011)·multiple-candidate 적용/merge/
+구성·overlap 해소·revision-on-revision chaining·후보 ranking·자동 correction·LLM/문법/구두점 엔진·언어적 validation·
+mutable 편집·segment 삭제/분할/병합·timing 교정·subtitle 재생성·export 변경. placeholder는 도입하지 않는다.
+
+**Canonical Invariants (Confirmed):** (1) canonical CorrectedTranscriptRevision을 재사용하며 두 번째 표현이 없다.
+(2) 생성은 명시적이고 수락만으로 revision이 생기지 않는다. (3) revision당 정확히 하나의 후보가 적용된다. (4) 현재
+Accepted authority가 필수다(Undecided/Rejected 부적격). (5) 후보 lineage에 대한 구조적 적용 가능성이 필수이며
+staleness는 손상이 아니다. (6) 적용은 결정적이고 정확하며 비변경 내용·timing을 보존한다. (7) identity는
+anchor(candidate, authorizing decision)에서 결정적으로 파생된다. (8) revision은 특정 authorizing Accepted Decision을
+참조한다. (9) 동일 anchor 재요청은 재사용하고 다른 content는 conflict다. (10) 이후 Reject는 historical revision을
+무효화하지 않는다. (11) revision들은 공존하며 current 선택은 존재하지 않는다. (12) 생성은 atomic이고 상위 record를
+변경하지 않는다. (13) revision은 물리 파일이 아니다. (14) deferred 개념의 placeholder는 없다.
 
 ## Related Documents
 
