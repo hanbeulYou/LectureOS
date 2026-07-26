@@ -25,6 +25,7 @@
   - `../patches/PATCH-0022-first-local-asr-execution-adapter.md`
   - `../patches/PATCH-0023-current-raw-transcript-selection-and-readiness.md`
   - `../patches/PATCH-0024-first-transcript-correction-candidate-admission.md`
+  - `../patches/PATCH-0025-first-human-authority-decision-on-correction-candidate.md`
 
 ## Purpose
 
@@ -775,6 +776,72 @@ snapshot은 persist된 segment text와 일치해야 한다. (5) Raw Transcript t
 (9) segment당 여러 distinct 후보가 공존한다. (10) 전환 후 historical 후보는 보존되며 not-applicable로 표시된다.
 (11) 실패는 부분 상태를 남기지 않는다. (12) admission은 아무것도 적용·수락·ranking·review하지 않는다. (13) 기존
 CorrectionCandidate를 재사용한다. (14) deferred 개념의 placeholder는 없다.
+
+## 18. First Human Authority Decision on a Correction Candidate (First Slice)
+
+이 절은 `PATCH-0025`(GOAL-009)로 승인된 Architect/Product 결정(H-1…H-14)을 기록한다. §17의 admitted Correction
+Candidate에 대한 첫 **Human Authority** 결정 계층이다. 오직 한 질문에 답한다: "사람이 이 교정 후보를 명시적으로
+accept 또는 reject했는가?" — 교정을 어떻게 적용할지·revision을 어떻게 만들지·누가 승인 워크플로를 운영할지에는
+답하지 않는다. 이 결정은 **authority 기록일 뿐**이며 아무것도 적용하지 않고 corrected revision을 만들지 않으며 후보나
+Raw Transcript를 변경하지 않는다. canonical `CorrectionCandidate`(v5)와 Review 도메인의 `DecisionKind`/
+`HumanActorReference` value type을 재사용하며 두 번째 candidate·review 계층을 도입하지 않는다.
+
+**Reuse (Confirmed, H-1):** 기존 `TranscriptReviewDecision`(§4.6/§4.7)은 ReviewPreparation·ReviewItem·
+CandidateReference·`source_revision_id`(corrected revision)·RUNNING unit execution을 요구하고 Modify를 포함하므로
+이 pre-revision 후보 결정에 재사용할 수 없다. 기존 `review.models.ReviewDecision`은 CandidateReferenceId +
+ReviewItemId를 참조하므로 §17 후보를 직접 참조하려면 wrapper(두 번째 candidate 계층)가 필요해 부적합하다. 따라서
+smallest additive aggregate를 도입하되 `DecisionKind`(accept/reject)·`HumanActorReference`와 §16의 append-only
+supersession 패턴을 재사용한다.
+
+**States (Confirmed, H-2):** 세 상태만 존재한다 — **Undecided**(결정 record 없음; **부재로 파생**, 저장하지 않음),
+**Accepted**, **Rejected**. 다른 상태는 없으며 **Modify는 deferred**다.
+
+**Authority (Confirmed, H-3):** Human Authority만 결정을 만든다(LLM·rule·ASR·자동화 불가). 하나의 결정은 정확히
+하나의 admitted `CorrectionCandidate`를 참조하며 모든 lineage는 후보를 통해 파생된다 — 중복 lineage를 저장하지 않는다.
+
+**Immutability (Confirmed, H-4):** 결정은 후보·Raw Transcript·segment·current 선택을 **결코 변경하지 않으며**
+corrected revision·candidate decision·적용을 만들지 않는다.
+
+**Append-only History (Confirmed, H-5):** history는 **append-only**(INSERT만; UPDATE·DELETE 없음)다. 각 authority
+변경은 per-candidate `sequence`를 가진 새 immutable record이며 `previous_decision_id`로 이전 current를 supersede한다.
+
+**Derived Current Authority (Confirmed, H-6):** **current** authority는 최고 `sequence` record이며 항상 persist된
+상태에서 **파생**되고 중복 저장되지 않는다. history 재구성은 persist된 row에만 의존한다.
+
+**Deterministic Identity (Confirmed, H-7):** identity는 `(correction_candidate_id, kind, sequence)`에서 결정적으로
+파생된다(SHA-256). wall-clock·UUID·randomness·경로·process id에 의존하지 않는다.
+
+**Decision Matrix (Confirmed, H-8):** None→Accept/Reject: Insert(sequence 0); Accept→Accept / Reject→Reject:
+**Reuse**(authority가 이미 그 kind); Accept→Reject / Reject→Accept: **Append**(sequence+1).
+
+**Replay & Conflict (Confirmed, H-9):** replay는 idempotent다(현재 kind 재제출 시 재사용, 새 record 없음). 같은
+anchor를 **다른 provenance(content)**로 재제출하면 **conflict**이며 덮어쓰지 않고 거부된다. 근접 동시 중복은 수렴한다.
+
+**Provenance (Confirmed, H-10):** 각 결정은 결정적 provenance를 보존한다: 결정한 `HumanActorReference`(reviewer),
+후보, 판단 kind, history 내 위치(`sequence`/`previous`). fake execution·synthetic Processing Run·RUNNING state는
+없다.
+
+**Eligibility (Confirmed, H-11):** current authority가 **Accepted**인 후보만 이후 corrected-revision 생성 대상이 된다.
+Rejected·Undecided는 결코 대상이 아니다. 이 eligibility는 여기서 **확립**될 뿐 구현되지 않는다 — GOAL-010은 이 authority
+의미를 재설계하지 않고 소비한다.
+
+**Staleness vs Integrity (Confirmed, H-12):** 결정은 결코 저장소 손상이 되지 않는다. 역사적으로 non-applicable해질 수
+있으나 그것은 query/applicability 의미이지 integrity가 아니다. 저장소 검증은 integrity만 확인한다.
+
+**Failure Atomicity (Confirmed, H-13):** 모든 결정 연산은 하나의 atomic transaction이다. 어떤 실패에서도 부분 authority
+상태를 남기지 않으며 상위 record를 변경하지 않는다.
+
+**Deferred (이후 milestone, H-14):** accepted 결정의 **적용**·corrected transcript revision 생성·current corrected
+revision 선택·후보 Modify·후보 merge/ensemble·ranking/recommended 선택·자동 correction·LLM/rule/grammar/구두점/사전
+엔진·transcript 변경·subtitle/export/rendering 변경·review UI. placeholder는 도입하지 않는다.
+
+**Canonical Invariants (Confirmed):** (1) 오직 한 질문(accept/reject 여부)에 답한다. (2) 세 상태만 존재하고 Undecided는
+부재로 파생된다(Modify 없음). (3) Human Authority만 결정을 만든다. (4) 하나의 결정은 하나의 admitted 후보를 참조한다.
+(5) 결정은 후보·Raw Transcript·선택을 변경하지 않는다. (6) history는 append-only이고 current는 최고 sequence로
+파생된다. (7) identity는 결정적(candidate·kind·sequence)이다. (8) 동일 kind 재제출은 idempotent다. (9) 같은 anchor·다른
+content는 conflict로 거부된다. (10) Accepted만 이후 revision 대상이다. (11) 실패는 부분 상태를 남기지 않는다. (12) 결정은
+아무것도 적용·revision·decision 생성하지 않는다. (13) canonical CorrectionCandidate를 재사용하며 두 번째 계층이 없다.
+(14) deferred 개념의 placeholder는 없다.
 
 ## Related Documents
 
