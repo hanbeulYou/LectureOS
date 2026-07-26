@@ -27,6 +27,7 @@
   - `../patches/PATCH-0024-first-transcript-correction-candidate-admission.md`
   - `../patches/PATCH-0025-first-human-authority-decision-on-correction-candidate.md`
   - `../patches/PATCH-0026-first-corrected-transcript-revision.md`
+  - `../patches/PATCH-0027-current-corrected-revision-selection.md`
 
 ## Purpose
 
@@ -924,6 +925,80 @@ anchor(candidate, authorizing decision)에서 결정적으로 파생된다. (8) 
 참조한다. (9) 동일 anchor 재요청은 재사용하고 다른 content는 conflict다. (10) 이후 Reject는 historical revision을
 무효화하지 않는다. (11) revision들은 공존하며 current 선택은 존재하지 않는다. (12) 생성은 atomic이고 상위 record를
 변경하지 않는다. (13) revision은 물리 파일이 아니다. (14) deferred 개념의 placeholder는 없다.
+
+## 20. Current Corrected Revision Selection and Effective Transcript Resolution (First Slice)
+
+이 절은 `PATCH-0027`(GOAL-011)로 승인된 Architect/Product 결정(S2-1…S2-14)을 기록한다. §19의 immutable Corrected
+Revision들에 대한 첫 **명시적 append-only 선택 authority**다. 오직 한 질문(과 그 역)에 답한다: "주어진 intake
+문맥에서 현재 선택된 Corrected Revision은 무엇인가?" / "사용자가 명시적으로 아무 revision도 선택하지 않고 Raw
+Transcript로 fallback했는가?" — revision 병합·편집·추천·자막 재생성·export에는 답하지 않는다. 네 가지 구분을
+보존한다: **Revision 존재 ≠ Revision 선택 ≠ Revision 적용 가능성 ≠ effective transcript 해석.**
+
+**Reuse (Confirmed, S2-1):** 기존 v9 `TranscriptCurrentSelection`(§4.8 기계)은 ApplicabilityEvaluation·
+TranscriptReviewDecision·ReviewItem·CandidateReference·RUNNING execution을 요구하고 명시적 Raw fallback을 표현할 수
+없으므로 §13–§19 slice 체인에 재사용할 수 없다(가짜 review/실행 기계 금지). §16/§18의 append-only authority idiom
+(sequence + previous, 파생 current, 결정적 identity)·`HumanActorReference`·intake 문맥·§19 generation lineage를
+재사용하며 새로 추가되는 것은 additive `corrected_revision_selections`(v37)와 resolver뿐이다.
+
+**Owner & Context (Confirmed, S2-2):** 선택은 **intake 문맥**(`TranscriptSourceIntakeId`)이 소유한다 — §16 Raw
+선택과 같은 안정적 문맥이다. revision의 문맥은 자신의 immutable lineage(generation → candidate admission →
+intake)에서 파생되므로 무관한 문맥의 revision이 한 history에서 경쟁할 수 없고, CLI는 revision에서 문맥을 파생한다.
+선택 identity는 mutable pointer·label·경로에 anchor되지 않으며 상류 Raw 선택 변경 후에도 history는 재구성된다.
+
+**Explicit Authority (Confirmed, S2-3):** currentness는 **명시적**이다. 최신 생성·유일성·후보 Accepted·생성 성공·
+검증 통과만으로 revision이 current가 되지 않는다(자동 promotion 금지). 두 가지 authority 행동만 존재한다:
+**Corrected Revision 선택**과 **Raw Transcript Fallback 선택**.
+
+**Raw Fallback (Confirmed, S2-4):** Raw fallback은 명시적 authority 사실이며 가짜 revision이 아니다(kind enum +
+NULL revision; CHECK로 강제). fallback은 아무것도 삭제하지 않는다 — revision·후보·결정·history 모두 보존된다.
+**선택 history 부재**(기록된 적 없음)와 **명시적 Raw fallback**은 같은 effective 상태를 파생하지만 역사적으로
+구분되는 사실이다.
+
+**Append-only & Derived Current (Confirmed, S2-5):** history는 INSERT-only다(intake별 `sequence` +
+`previous_selection_id`). current 선택은 최고 sequence record로 **파생**되며 mutable `is_current` flag·current
+pointer·timestamp 순서는 존재하지 않는다.
+
+**Deterministic Identity (Confirmed, S2-6):** identity는 `(intake, kind, revision-or-none, sequence)`의 SHA-256에서
+파생된다. wall-clock·UUID·randomness·row id는 관여하지 않는다. reviewer·rationale은 provenance이며 identity가 아니다.
+
+**Replay Matrix (Confirmed, S2-7):** 동일 semantic 대상 재요청은 **reused**(새 row 없음; rationale만 달라도 append하지
+않음); 다른 대상은 **append**(첫 authority는 recorded, 이후는 changed — 대체된 상태를 보고). 근접 동시 동일 요청은
+persistence collision으로 수렴하고, 서로 다른 동시 요청은 명시적 conflict로 재시도를 요구한다(타임스탬프로 해소 금지).
+
+**Write-time Eligibility (Confirmed, S2-8):** **새** 선택은 지금 적격이어야 한다(`--force` 없음): revision이 §19
+generation binding과 함께 존재하고, parent Raw Transcript가 intake의 current Raw 선택이며, 후보의 현재 §18 authority가
+**Accepted**여야 한다. 현재 Rejected인 후보의 revision은 역사적으로 유효하지만 새로 선택될 수 없다.
+
+**Selection ≠ Applicability (Confirmed, S2-9):** 선택은 "authority가 무엇을 골랐는가", applicability는 "그 선택을
+지금 쓸 수 있는가"다. 이후 후보 Reject 또는 Raw 선택 전환은 선택된 revision을 **inapplicable**하게 만들 뿐
+(`candidate_not_accepted` / `parent_raw_transcript_not_current`) — history를 변경·자동 해제·자동 fallback·재선택하지
+않으며 손상으로 취급하지 않는다. inapplicable한 선택을 선택 없음으로 숨기지 않는다.
+
+**Effective Resolution (Confirmed, S2-10):** 결정적 resolver는 명시적 구조화 결과를 반환한다: raw(no history) /
+raw(explicit fallback) / corrected(selected+applicable) / **selected-but-inapplicable(이유 포함)**. inapplicable한
+선택에 대해 조용히 Raw로 fallback하지 않는다(authority 충돌을 숨기지 않음). nullable로 상태를 감추지 않는다.
+
+**Downstream Boundary (Confirmed, S2-11):** resolver는 이후 validation·subtitle·review·export 소비자를 위한 안정적
+query 계약이다. 이 slice에서는 **어떤 기존 소비자도 전환하지 않는다** — pipeline 전반의 암묵적 행동 변화 금지.
+
+**Atomicity (Confirmed, S2-12):** 각 선택 append는 supersession 검증을 포함한 하나의 atomic transaction이다. 실패는
+저장소를 변경하지 않는다. cascade 삭제로 선택 history가 사라질 수 없다.
+
+**No Supersession of Revisions (Confirmed, S2-13):** Revision B 선택은 이전 선택 *authority*만 supersede한다 —
+Revision A 엔티티는 rejected/superseded/inactive로 표시되지 않으며 계속 공존한다.
+
+**Deferred (이후 milestone, S2-14):** downstream 통합(validation/subtitle/review/export의 resolver 전환)·revision
+생성/ranking/추천·자동 선택/fallback·multi-candidate revision·revision chaining·mutable annotation·workflow/발행/승인
+status·review UI. placeholder는 도입하지 않는다.
+
+**Canonical Invariants (Confirmed):** (1) Revision 존재 ≠ 선택 ≠ 적용 가능성 ≠ effective 해석. (2) currentness는
+명시적이며 자동 promotion이 없다. (3) Raw fallback은 명시적 authority이고 가짜 revision이 아니며 history 부재와
+구분된다. (4) history는 append-only이고 current는 최고 sequence로 파생된다. (5) identity는 결정적(intake·kind·
+revision·sequence)이다. (6) 동일 대상 재요청은 reused, 다른 대상은 append다. (7) 새 선택은 write-time 적격성
+(현재 Raw parent + 현재 Accepted 후보)을 요구한다. (8) 이후 Reject·Raw 전환은 history를 변경하지 않고 inapplicable만
+만든다. (9) resolver는 inapplicable 선택을 명시적으로 보고하며 조용한 fallback이 없다. (10) 선택은 revision·후보·
+결정·Raw Transcript·Raw 선택을 변경하지 않는다. (11) 비선택 revision은 supersede되지 않는다. (12) append는 atomic이다.
+(13) 이 slice는 downstream 소비자를 전환하지 않는다. (14) deferred 개념의 placeholder는 없다.
 
 ## Related Documents
 
