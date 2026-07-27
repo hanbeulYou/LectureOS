@@ -20,7 +20,7 @@ V44_TABLES = {
 
 _ADDITION_BLOCKS = tuple(
     (level, getattr(sqlite_lifecycle, f"_V{level}_ADDITION_STATEMENTS"))
-    for level in range(2, 45)
+    for level in range(2, 46)
 )
 
 
@@ -59,8 +59,9 @@ class SQLiteSchemaVersionFortyFourTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
 
-    def test_schema_version_is_forty_four(self) -> None:
-        self.assertEqual(SQLITE_SCHEMA_VERSION, 44)
+    def test_v44_remains_a_supported_version(self) -> None:
+        self.assertIn(44, sqlite_lifecycle._SUPPORTED_SCHEMA_VERSIONS)
+        self.assertLessEqual(44, SQLITE_SCHEMA_VERSION)
 
     def test_fresh_database_initializes_with_v44_tables(self) -> None:
         connection = initialize_sqlite_database(self.database_path)
@@ -87,7 +88,8 @@ class SQLiteSchemaVersionFortyFourTests(unittest.TestCase):
             connection.close()
 
     def test_v44_no_op_migration_is_allowed(self) -> None:
-        initialize_sqlite_database(self.database_path).close()
+        create_legacy_database(self.database_path, 43)
+        migrate_sqlite_database(self.database_path, 44)
         migrate_sqlite_database(self.database_path, 44)
         connection = open_sqlite_database(self.database_path)
         try:
@@ -106,7 +108,7 @@ class SQLiteSchemaVersionFortyFourTests(unittest.TestCase):
     def test_unsupported_target_is_rejected(self) -> None:
         initialize_sqlite_database(self.database_path).close()
         with self.assertRaises(PersistenceError):
-            migrate_sqlite_database(self.database_path, 45)
+            migrate_sqlite_database(self.database_path, 46)
 
     def test_repository_rejects_pre_v44_schema(self) -> None:
         create_legacy_database(self.database_path, 43)

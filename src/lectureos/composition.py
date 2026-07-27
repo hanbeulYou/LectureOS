@@ -73,6 +73,9 @@ from lectureos.application.effective_subtitle_generation import (
 from lectureos.application.effective_subtitle_final_selection import (
     EffectiveSubtitleFinalSelectionService,
 )
+from lectureos.application.effective_srt_delivery import (
+    EffectiveSrtDeliveryService,
+)
 from lectureos.application.effective_srt_materialization import (
     EffectiveSrtMaterializationService,
 )
@@ -208,6 +211,8 @@ from lectureos.persistence import (
     SQLiteEffectiveSubtitleCandidateRepository,
     SQLiteEffectiveSubtitleFinalSelectionCommandPersistence,
     SQLiteEffectiveSubtitleFinalSelectionRepository,
+    SQLiteEffectiveSrtDeliveryCommandPersistence,
+    SQLiteEffectiveSrtDeliveryRepository,
     SQLiteEffectiveSrtMaterializationCommandPersistence,
     SQLiteEffectiveSrtMaterializationRepository,
     SQLiteEffectiveSubtitleSrtArtifactCommandPersistence,
@@ -852,6 +857,39 @@ def compose_sqlite_effective_srt_materialization_service(
     writer = LocalEffectiveSrtFileWriter(storage_root)
     return EffectiveSrtMaterializationService(
         artifacts, materializations, persistence, writer
+    )
+
+
+def compose_sqlite_effective_srt_delivery_service(
+    connection: sqlite3.Connection,
+    storage_root: str,
+    delivery_root: str,
+) -> EffectiveSrtDeliveryService:
+    """Build explicit delivery on one caller connection, one approved Storage Root (source), and
+    one approved Delivery Root (destination) (GOAL-019). Record-first: the immutable intent is
+    durable before any destination write, the immutable terminal outcome after; only the
+    `subtitle_effective_srt_delivery_*` tables and files beneath the approved Delivery Root are
+    touched. Delivery never publishes, never creates a URL, and never mutates Artifact or
+    Materialization records.
+    """
+
+    from lectureos.infrastructure.local_effective_srt_delivery_writer import (
+        LocalEffectiveSrtDeliveryWriter,
+    )
+
+    artifacts = compose_sqlite_effective_subtitle_srt_artifact_service(connection)
+    materializations = SQLiteEffectiveSrtMaterializationRepository(connection)
+    deliveries = SQLiteEffectiveSrtDeliveryRepository(connection)
+    persistence = SQLiteEffectiveSrtDeliveryCommandPersistence(connection)
+    source_reader = LocalEffectiveSrtDeliveryWriter(storage_root)
+    destination_writer = LocalEffectiveSrtDeliveryWriter(delivery_root)
+    return EffectiveSrtDeliveryService(
+        artifacts,
+        materializations,
+        deliveries,
+        persistence,
+        source_reader,
+        destination_writer,
     )
 
 

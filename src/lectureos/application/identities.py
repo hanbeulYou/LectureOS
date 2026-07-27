@@ -243,3 +243,8 @@ class EffectiveSubtitleSrtArtifactId(OpaqueIdentity):
 @dataclass(frozen=True, slots=True)
 class EffectiveSrtMaterializationId(OpaqueIdentity):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class EffectiveSrtDeliveryId(OpaqueIdentity):
+    pass

@@ -76,6 +76,8 @@ _INSPECTED_TABLES = (
     "subtitle_effective_srt_artifacts",
     "subtitle_effective_srt_materializations",
     "subtitle_effective_srt_materialization_outcomes",
+    "subtitle_effective_srt_delivery_intents",
+    "subtitle_effective_srt_delivery_outcomes",
 )
 _IDENTITY_TABLES = (
     "domain_result_references",
@@ -100,6 +102,7 @@ _IDENTITY_TABLES = (
     "subtitle_effective_final_selections",
     "subtitle_effective_srt_artifacts",
     "subtitle_effective_srt_materializations",
+    "subtitle_effective_srt_delivery_intents",
 )
 _APPROVING_KINDS = ("accept", "modify")
 
@@ -2320,6 +2323,185 @@ def _check_effective_srt_materializations(
     return diagnostics
 
 
+def _check_effective_srt_deliveries(
+    connection: sqlite3.Connection,
+) -> list[Diagnostic]:
+    """Integrity of delivery records (GOAL-019). Deliberately NOT flagged: PENDING intents,
+    FAILED outcomes, missing or diverged source/destination files, and stale/superseded
+    artifacts — filesystem state and authority currentness are never repository corruption.
+    This check never reads the filesystem."""
+
+    if not _table_exists(connection, "subtitle_effective_srt_delivery_intents"):
+        return []
+    diagnostics: list[Diagnostic] = []
+
+    def _flag(code: str, identity: str, message: str,
+              table: str = "subtitle_effective_srt_delivery_intents") -> None:
+        diagnostics.append(
+            Diagnostic(
+                code=code,
+                severity=Severity.ERROR,
+                location=f"{table}:{identity}",
+                message=message,
+            )
+        )
+
+    if _table_exists(connection, "subtitle_effective_srt_materializations"):
+        for (identity,) in connection.execute(
+            """
+            SELECT d.identity
+            FROM subtitle_effective_srt_delivery_intents d
+            LEFT JOIN subtitle_effective_srt_materializations m
+                   ON m.identity = d.materialization_id
+            WHERE m.identity IS NULL
+            ORDER BY d.identity
+            """
+        ).fetchall():
+            _flag("EFFECTIVE_SRT_DELIVERY_DANGLING_MATERIALIZATION", identity,
+                  "delivery references a missing effective SRT materialization")
+        # The stored artifact lineage must agree with the source materialization's lineage.
+        for (identity,) in connection.execute(
+            """
+            SELECT d.identity
+            FROM subtitle_effective_srt_delivery_intents d
+            JOIN subtitle_effective_srt_materializations m
+              ON m.identity = d.materialization_id
+            WHERE d.artifact_id <> m.artifact_id
+            ORDER BY d.identity
+            """
+        ).fetchall():
+            _flag("EFFECTIVE_SRT_DELIVERY_ARTIFACT_LINEAGE_MISMATCH", identity,
+                  "delivery artifact lineage disagrees with its source materialization")
+
+    if _table_exists(connection, "subtitle_effective_srt_artifacts"):
+        # The expected payload fingerprint must equal the immutable artifact's fingerprint.
+        for (identity,) in connection.execute(
+            """
+            SELECT d.identity
+            FROM subtitle_effective_srt_delivery_intents d
+            JOIN subtitle_effective_srt_artifacts a ON a.identity = d.artifact_id
+            WHERE d.expected_payload_fingerprint <> a.content_fingerprint
+            ORDER BY d.identity
+            """
+        ).fetchall():
+            _flag("EFFECTIVE_SRT_DELIVERY_FINGERPRINT_MISMATCH", identity,
+                  "delivery expected payload fingerprint disagrees with its artifact")
+
+    for identity, materialization, artifact, location, fingerprint, sequence, overwrite \
+            in connection.execute(
+        """
+        SELECT identity, materialization_id, artifact_id, relative_location,
+               expected_payload_fingerprint, sequence, overwrite
+        FROM subtitle_effective_srt_delivery_intents
+        ORDER BY identity
+        """
+    ).fetchall():
+        if (
+            not location.strip()
+            or location.startswith("/")
+            or ".." in location.split("/")
+        ):
+            _flag("EFFECTIVE_SRT_DELIVERY_UNSAFE_LOCATION", identity,
+                  "delivery destination location is not a contained relative path")
+        expected = "subtitle-effective-srt-delivery:" + hashlib.sha256(
+            json.dumps(
+                {
+                    "contract": "subtitle_effective_srt_delivery",
+                    "contract_version": 1,
+                    "materialization": materialization,
+                    "artifact": artifact,
+                    "delivery_kind": "local_copy",
+                    "relative_location": location,
+                    "expected_payload_fingerprint": fingerprint,
+                    "sequence": sequence,
+                    "overwrite": bool(overwrite),
+                },
+                ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        if identity != expected:
+            _flag("EFFECTIVE_SRT_DELIVERY_IDENTITY_MISMATCH", identity,
+                  "delivery identity does not re-derive from its stored payload")
+
+    for materialization, location in connection.execute(
+        """
+        SELECT materialization_id, relative_location
+        FROM subtitle_effective_srt_delivery_intents
+        GROUP BY materialization_id, relative_location
+        HAVING COUNT(*) <> MAX(sequence) + 1 OR MIN(sequence) <> 0
+            OR COUNT(DISTINCT sequence) <> COUNT(*)
+        ORDER BY materialization_id, relative_location
+        """
+    ).fetchall():
+        _flag("EFFECTIVE_SRT_DELIVERY_SEQUENCE_NONCONTIGUOUS",
+              f"{materialization}:{location}",
+              "a (materialization, destination) pair's delivery sequences are not contiguous")
+
+    for (identity,) in connection.execute(
+        """
+        SELECT d.identity
+        FROM subtitle_effective_srt_delivery_intents d
+        LEFT JOIN subtitle_effective_srt_delivery_intents p
+               ON p.identity = d.previous_delivery_id
+        WHERE d.previous_delivery_id IS NOT NULL
+          AND (p.identity IS NULL
+               OR p.materialization_id <> d.materialization_id
+               OR p.relative_location <> d.relative_location
+               OR p.sequence <> d.sequence - 1
+               OR d.previous_delivery_id = d.identity)
+        ORDER BY d.identity
+        """
+    ).fetchall():
+        _flag("EFFECTIVE_SRT_DELIVERY_BROKEN_SUPERSESSION", identity,
+              "a non-initial delivery does not supersede its pair's immediately prior attempt")
+
+    if _table_exists(connection, "subtitle_effective_srt_delivery_outcomes"):
+        for (identity,) in connection.execute(
+            """
+            SELECT o.delivery_id
+            FROM subtitle_effective_srt_delivery_outcomes o
+            LEFT JOIN subtitle_effective_srt_delivery_intents d
+                   ON d.identity = o.delivery_id
+            WHERE d.identity IS NULL
+            ORDER BY o.delivery_id
+            """
+        ).fetchall():
+            _flag("EFFECTIVE_SRT_DELIVERY_ORPHAN_OUTCOME", identity,
+                  "delivery outcome references a missing intent",
+                  table="subtitle_effective_srt_delivery_outcomes")
+        for (identity,) in connection.execute(
+            """
+            SELECT delivery_id
+            FROM subtitle_effective_srt_delivery_outcomes
+            WHERE state = 'failed'
+              AND failure_category NOT IN
+                  ('destination_exists_different', 'destination_unsafe',
+                   'destination_missing', 'write_failed', 'verification_failed')
+            ORDER BY delivery_id
+            """
+        ).fetchall():
+            _flag("EFFECTIVE_SRT_DELIVERY_UNSUPPORTED_FAILURE_CATEGORY", identity,
+                  "failed delivery outcome uses an unsupported failure category",
+                  table="subtitle_effective_srt_delivery_outcomes")
+        # A DELIVERED outcome must record exactly the bytes the intent promised.
+        for (identity,) in connection.execute(
+            """
+            SELECT o.delivery_id
+            FROM subtitle_effective_srt_delivery_outcomes o
+            JOIN subtitle_effective_srt_delivery_intents d
+              ON d.identity = o.delivery_id
+            WHERE o.state = 'delivered'
+              AND o.delivered_payload_fingerprint <> d.expected_payload_fingerprint
+            ORDER BY o.delivery_id
+            """
+        ).fetchall():
+            _flag("EFFECTIVE_SRT_DELIVERY_DELIVERED_FINGERPRINT_MISMATCH", identity,
+                  "delivered outcome fingerprint disagrees with the intent's expected payload",
+                  table="subtitle_effective_srt_delivery_outcomes")
+
+    return diagnostics
+
+
 def _check_raw_transcript_segments(connection: sqlite3.Connection) -> list[Diagnostic]:
     if not _table_exists(connection, "raw_transcript_segments"):
         return []
@@ -2425,6 +2607,7 @@ def validate_repository(connection: sqlite3.Connection) -> ValidationReport:
     diagnostics += _check_effective_subtitle_final_selections(connection)
     diagnostics += _check_effective_subtitle_srt_artifacts(connection)
     diagnostics += _check_effective_srt_materializations(connection)
+    diagnostics += _check_effective_srt_deliveries(connection)
     diagnostics += _check_raw_transcript_segments(connection)
     diagnostics += _check_malformed_identities(connection)
 
