@@ -138,6 +138,12 @@ and derives `health` (`healthy` / `warnings` / `errors`) and `ok` (no errors).
 | `EFFECTIVE_REVIEW_SUBJECT_KEY_MISMATCH` | error | a review subject's preparation key does not re-derive from its contract and candidate |
 | `EFFECTIVE_REVIEW_SUBJECT_IDENTITY_MISMATCH` | error | a review subject's identity does not re-derive from its stored payload |
 | `EFFECTIVE_REVIEW_SUBJECT_GRAPH_FINGERPRINT_MISMATCH` | error | a review subject's graph fingerprint does not match the bound candidate graph (absence of a Human Decision, reviewer, selection, or export is deliberately never flagged) |
+| `EFFECTIVE_REVIEW_DECISION_DANGLING_SUBJECT` | error | a review decision references a missing effective review subject |
+| `EFFECTIVE_REVIEW_DECISION_UNSUPPORTED_KIND` | error | a review decision records a kind outside accept/reject/modify |
+| `EFFECTIVE_REVIEW_DECISION_IDENTITY_MISMATCH` | error | a review decision's identity does not re-derive from its subject, kind, and sequence |
+| `EFFECTIVE_REVIEW_DECISION_FINGERPRINT_MISMATCH` | error | a review decision's content fingerprint does not match its stored payload |
+| `EFFECTIVE_REVIEW_DECISION_SEQUENCE_NONCONTIGUOUS` | error | a subject's decision sequences are not a contiguous unique `0..n-1` sequence |
+| `EFFECTIVE_REVIEW_DECISION_BROKEN_SUPERSESSION` | error | a non-initial decision does not supersede its subject's immediately prior decision (reject/modify kinds, superseded decisions, and stale subjects are deliberately never flagged) |
 | `MALFORMED_IDENTITY` | error | one or more rows have an empty or blank identity |
 
 ## Scope

@@ -2505,3 +2505,44 @@ prepare/replay/corrected/round-trip/same-content/stale-history/invalid-graph sce
 2341-test suite passes. Human Decisions, reviewer assignment, decision applicability, final-selection
 eligibility, export enforcement, and additional preparation contract versions remain later,
 separately-gated milestones and are out of scope.
+
+## Effective-Source Subtitle Human Decisions (First Slice, GOAL-015)
+
+- Blueprint: GOAL-009 Human Authority idiom over `docs/041_SUBTITLE_PIPELINE.md §15` review subjects; no new
+  Blueprint PATCH required
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema **v41** (one append-only table
+  `subtitle_effective_review_decisions`)
+- Commit: `feat: add effective subtitle human decisions`
+- Immediate next milestone: final subtitle selection eligibility over accepted effective-source subjects, or
+  the modified-subtitle authoring path implied by Modify — product-gated, deferred
+
+This milestone introduces Human Authority for the effective-transcript subtitle contract generation
+(GOAL-015), reusing the released GOAL-009 idiom exactly: an explicit command by a truthful
+`HumanActorReference` records one immutable Accept/Reject/Modify judgment (the closed canonical
+`DecisionKind` vocabulary) about one exact `EffectiveSubtitleReviewSubject`. Identity is
+`(subject, kind, sequence)`; reviewer and rationale are provenance verified through the content
+fingerprint. A request whose kind matches the current authority is **reused** idempotently (GOAL-009's
+released repeated-intent rule — authority is a state, not a ledger; the (subject, kind, sequence) slot plus
+fingerprint verification is the command identity, so no separate command-id exists); a changed judgment
+**appends** with `previous_decision_id` supersession. The current decision is derived as the highest
+sequence — never a latest-row heuristic, never a mutable flag. Near-concurrent identical commands converge
+on the collision with payload verification; divergent payloads are explicit conflicts.
+
+A decision records authority only: Accept creates no final selection or export eligibility, Reject deletes
+and mutates nothing, Modify edits nothing (the modified-subtitle authoring path is a later goal). The
+subject's candidate graph is re-verified against its immutable fingerprint anchor before any new authority; a
+broken graph refuses with nothing persisted. **Recorded stale-subject policy:** explicit historical decisions
+over structurally valid but source-stale subjects are allowed with derived staleness. Applicability is
+derived, never stored, and separate from kind and integrity: `applicable` / `superseded` /
+`stale_due_to_candidate_source` / `unresolvable` — reject and modify can be current and applicable. Every
+released version v1..v40 chains single-step to v41 preserving all rows (GOAL-013/014 and legacy rows
+unchanged; zero-row asserted). Read-only validation gains six integrity-only `EFFECTIVE_REVIEW_DECISION_*`
+checks (dangling subject, unsupported kind, identity/fingerprint re-derivation, sequence contiguity, broken
+supersession) — reject/modify/superseded/stale are deliberately never corruption (tested healthy). One CLI
+(`lectureos.effective_decision_cli` with `decide`/`show`/`history`/`current`/`status`, no `--force`, no
+fabricated workflow states) and a deterministic demo (`lectureos.effective_decision_demo`) with a byte-stable
+golden prove the accept/replay/repeated-intent/reject/modify/supersession/stale-history/same-content/
+invalid-graph scenarios. The complete 2385-test suite passes. Final-selection eligibility, export
+enforcement, modified-subtitle authoring, annotations, reviewer assignment/authorization, and additional
+decision contract versions remain later, separately-gated milestones and are out of scope.
