@@ -118,6 +118,10 @@ from .effective_subtitle_candidate import (
     SQLiteEffectiveSubtitleCandidateCommandPersistence,
     SQLiteEffectiveSubtitleCandidateRepository,
 )
+from .effective_subtitle_review_subject import (
+    SQLiteEffectiveSubtitleReviewSubjectCommandPersistence,
+    SQLiteEffectiveSubtitleReviewSubjectRepository,
+)
 from .effective_transcript_consumption import (
     SQLiteEffectiveTranscriptConsumptionCommandPersistence,
     SQLiteEffectiveTranscriptConsumptionRepository,
@@ -225,6 +229,8 @@ __all__ = [
     "SQLiteCorrectedRevisionSelectionRepository",
     "SQLiteEffectiveSubtitleCandidateCommandPersistence",
     "SQLiteEffectiveSubtitleCandidateRepository",
+    "SQLiteEffectiveSubtitleReviewSubjectCommandPersistence",
+    "SQLiteEffectiveSubtitleReviewSubjectRepository",
     "SQLiteEffectiveTranscriptConsumptionCommandPersistence",
     "SQLiteEffectiveTranscriptConsumptionRepository",
     "SQLiteSubtitleFinalSubtitleCommandPersistence",

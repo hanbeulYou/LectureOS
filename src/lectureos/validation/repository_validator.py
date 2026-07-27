@@ -70,6 +70,7 @@ _INSPECTED_TABLES = (
     "subtitle_effective_candidates",
     "subtitle_effective_candidate_cues",
     "subtitle_effective_candidate_cue_segments",
+    "subtitle_effective_review_subjects",
 )
 _IDENTITY_TABLES = (
     "domain_result_references",
@@ -89,6 +90,7 @@ _IDENTITY_TABLES = (
     "effective_transcript_consumptions",
     "subtitle_effective_candidates",
     "subtitle_effective_candidate_cues",
+    "subtitle_effective_review_subjects",
 )
 _APPROVING_KINDS = ("accept", "modify")
 
@@ -1634,6 +1636,178 @@ def _check_effective_subtitle_candidates(
     return diagnostics
 
 
+
+def _effective_candidate_graph_fingerprint(
+    connection: sqlite3.Connection, candidate_row: tuple
+) -> str:
+    """Recompute the canonical GOAL-014 candidate-graph fingerprint for one stored candidate."""
+
+    (identity, intake, binding, source_kind, corrected_revision_id, parent_raw,
+     snapshot_fingerprint, generator_kind, generator_version, parameters_version,
+     cue_count) = candidate_row
+    source = corrected_revision_id if source_kind == "corrected_transcript_revision" else parent_raw
+    cues = []
+    for cue_identity, ordinal, text, start, end in connection.execute(
+        """
+        SELECT identity, ordinal, text, start, end
+        FROM subtitle_effective_candidate_cues
+        WHERE candidate_id = ?
+        ORDER BY ordinal
+        """,
+        (identity,),
+    ).fetchall():
+        segments = [
+            row[0]
+            for row in connection.execute(
+                """
+                SELECT transcript_segment_id
+                FROM subtitle_effective_candidate_cue_segments
+                WHERE cue_id = ?
+                ORDER BY ordinal
+                """,
+                (cue_identity,),
+            ).fetchall()
+        ]
+        cues.append(
+            {"identity": cue_identity, "ordinal": ordinal, "text": text,
+             "start": start, "end": end, "source_segments": segments}
+        )
+    payload = json.dumps(
+        {
+            "candidate": {
+                "identity": identity,
+                "intake": intake,
+                "consumption_binding": binding,
+                "source_kind": source_kind,
+                "source": source,
+                "parent_raw_transcript": parent_raw,
+                "snapshot_fingerprint": snapshot_fingerprint,
+                "generator_kind": generator_kind,
+                "generator_version": generator_version,
+                "generation_parameters_version": parameters_version,
+                "cue_count": cue_count,
+            },
+            "cues": cues,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _check_effective_subtitle_review_subjects(
+    connection: sqlite3.Connection,
+) -> list[Diagnostic]:
+    """Integrity of review-preparation subjects only (GOAL-014). Deliberately NOT flagged: a
+    subject whose candidate source is stale, a subject with no Human Decision, no reviewer, no
+    final selection, and no export — those are currentness/authority facts, never corruption."""
+
+    if not _table_exists(connection, "subtitle_effective_review_subjects"):
+        return []
+    diagnostics: list[Diagnostic] = []
+
+    def _flag(code: str, identity: str, message: str) -> None:
+        diagnostics.append(
+            Diagnostic(
+                code=code,
+                severity=Severity.ERROR,
+                location=f"subtitle_effective_review_subjects:{identity}",
+                message=message,
+            )
+        )
+
+    if _table_exists(connection, "subtitle_effective_candidates"):
+        for (identity,) in connection.execute(
+            """
+            SELECT s.identity
+            FROM subtitle_effective_review_subjects s
+            LEFT JOIN subtitle_effective_candidates c ON c.identity = s.candidate_id
+            WHERE c.identity IS NULL
+            ORDER BY s.identity
+            """
+        ).fetchall():
+            _flag("EFFECTIVE_REVIEW_SUBJECT_DANGLING_CANDIDATE", identity,
+                  "review subject references a missing effective subtitle candidate")
+
+    for identity, kind, version in connection.execute(
+        """
+        SELECT identity, preparation_kind, preparation_version
+        FROM subtitle_effective_review_subjects
+        WHERE preparation_kind <> 'effective_subtitle_review_preparation'
+           OR preparation_version <> 1
+        ORDER BY identity
+        """
+    ).fetchall():
+        _flag("EFFECTIVE_REVIEW_SUBJECT_UNSUPPORTED_PREPARATION", identity,
+              f"unsupported review preparation contract: {kind} v{version}")
+
+    for (candidate_id,) in connection.execute(
+        """
+        SELECT candidate_id
+        FROM subtitle_effective_review_subjects
+        GROUP BY candidate_id, preparation_kind, preparation_version
+        HAVING COUNT(*) > 1
+        ORDER BY candidate_id
+        """
+    ).fetchall():
+        _flag("EFFECTIVE_REVIEW_SUBJECT_DUPLICATE_PREPARATION", candidate_id,
+              "more than one review subject exists for one candidate and preparation contract")
+
+    # Deterministic re-derivation: preparation key, subject identity, and — where the candidate
+    # graph is present — the graph fingerprint itself.
+    rows = connection.execute(
+        """
+        SELECT identity, candidate_id, candidate_graph_fingerprint,
+               preparation_kind, preparation_version, preparation_key
+        FROM subtitle_effective_review_subjects
+        ORDER BY identity
+        """
+    ).fetchall()
+    graph_available = _table_exists(connection, "subtitle_effective_candidates") and _table_exists(
+        connection, "subtitle_effective_candidate_cues"
+    )
+    for identity, candidate_id, fingerprint, kind, version, key in rows:
+        expected_key = f"{kind}:v{version}:{candidate_id}"
+        if key != expected_key:
+            _flag("EFFECTIVE_REVIEW_SUBJECT_KEY_MISMATCH", identity,
+                  "review subject preparation key does not re-derive from its contract and candidate")
+        expected_identity = "subtitle-effective-review-subject:" + hashlib.sha256(
+            json.dumps(
+                {
+                    "preparation_kind": kind,
+                    "preparation_version": version,
+                    "candidate": candidate_id,
+                    "candidate_graph_fingerprint": fingerprint,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        if identity != expected_identity:
+            _flag("EFFECTIVE_REVIEW_SUBJECT_IDENTITY_MISMATCH", identity,
+                  "review subject identity does not re-derive from its stored payload")
+        if graph_available:
+            candidate_row = connection.execute(
+                """
+                SELECT identity, transcript_source_intake_id, consumption_binding_id,
+                       source_kind, corrected_revision_id, parent_raw_transcript_id,
+                       source_snapshot_fingerprint, generator_kind, generator_version,
+                       generation_parameters_version, cue_count
+                FROM subtitle_effective_candidates WHERE identity = ?
+                """,
+                (candidate_id,),
+            ).fetchone()
+            if candidate_row is not None:
+                recomputed = _effective_candidate_graph_fingerprint(connection, candidate_row)
+                if recomputed != fingerprint:
+                    _flag("EFFECTIVE_REVIEW_SUBJECT_GRAPH_FINGERPRINT_MISMATCH", identity,
+                          "review subject graph fingerprint does not match the bound candidate graph")
+
+    return diagnostics
+
+
 def _check_raw_transcript_segments(connection: sqlite3.Connection) -> list[Diagnostic]:
     if not _table_exists(connection, "raw_transcript_segments"):
         return []
@@ -1734,6 +1908,7 @@ def validate_repository(connection: sqlite3.Connection) -> ValidationReport:
     diagnostics += _check_corrected_revision_selection(connection)
     diagnostics += _check_effective_transcript_consumption(connection)
     diagnostics += _check_effective_subtitle_candidates(connection)
+    diagnostics += _check_effective_subtitle_review_subjects(connection)
     diagnostics += _check_raw_transcript_segments(connection)
     diagnostics += _check_malformed_identities(connection)
 

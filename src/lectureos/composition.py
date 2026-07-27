@@ -70,6 +70,9 @@ from lectureos.application.corrected_revision_generation import (
 from lectureos.application.effective_subtitle_generation import (
     EffectiveSubtitleGenerationService,
 )
+from lectureos.application.effective_subtitle_review_preparation import (
+    EffectiveSubtitleReviewPreparationService,
+)
 from lectureos.application.effective_transcript_consumption import (
     EffectiveTranscriptConsumptionService,
     EffectiveTranscriptInputService,
@@ -191,6 +194,8 @@ from lectureos.persistence import (
     SQLiteDomainResultReferenceRepository,
     SQLiteEffectiveSubtitleCandidateCommandPersistence,
     SQLiteEffectiveSubtitleCandidateRepository,
+    SQLiteEffectiveSubtitleReviewSubjectCommandPersistence,
+    SQLiteEffectiveSubtitleReviewSubjectRepository,
     SQLiteEffectiveTranscriptConsumptionCommandPersistence,
     SQLiteEffectiveTranscriptConsumptionRepository,
     SQLiteExecutionCommandPersistence,
@@ -729,6 +734,23 @@ def compose_sqlite_effective_subtitle_generation_service(
     candidates = SQLiteEffectiveSubtitleCandidateRepository(connection)
     persistence = SQLiteEffectiveSubtitleCandidateCommandPersistence(connection)
     return EffectiveSubtitleGenerationService(consumption, candidates, persistence)
+
+
+def compose_sqlite_effective_subtitle_review_preparation_service(
+    connection: sqlite3.Connection,
+) -> EffectiveSubtitleReviewPreparationService:
+    """Build effective-source subtitle review preparation on one caller connection (GOAL-014).
+
+    Preparation binds one exact immutable candidate graph as an immutable review subject —
+    read-only over candidates, cues, bindings, and every authority record; only
+    `subtitle_effective_review_subjects` is written. No Human Decision, reviewer, or legacy
+    review record is created.
+    """
+
+    generation = compose_sqlite_effective_subtitle_generation_service(connection)
+    subjects = SQLiteEffectiveSubtitleReviewSubjectRepository(connection)
+    persistence = SQLiteEffectiveSubtitleReviewSubjectCommandPersistence(connection)
+    return EffectiveSubtitleReviewPreparationService(generation, subjects, persistence)
 
 
 DEFAULT_EDIT_CANDIDATE_CONTEXT_WINDOW_SECONDS = 15.0
