@@ -29,7 +29,7 @@ LectureOS는 긴 한국어 강의의 후반작업에서 생기는 반복 작업�
 ### ✅ Implemented (구현 완료 · 테스트됨)
 
 - **실행 · lineage** — 처리 실행(run), 유닛 실행, `DomainResult` provenance를 SQLite에 durable하게 저장(스키마
-  **v44**, 이전 모든 버전에서 additive 단일 단계 마이그레이션).
+  **v45**, 이전 모든 버전에서 additive 단일 단계 마이그레이션).
 - **미디어 임포트(Media Import)** — 로컬 파일을 **content-addressed** canonical Source Media 기록으로 등록
   (스트리밍 SHA-256 → `sha256:<digest>`, 경로는 identity가 아님, 동일 내용 idempotent). 파일 identity와
   provenance만 기록하며 디코딩·transcode·probe·재생·transcription은 하지 않습니다. `lectureos.media_import_cli`.
@@ -110,6 +110,11 @@ LectureOS는 긴 한국어 강의의 후반작업에서 생기는 반복 작업�
   durable하고 실패는 정직한 FAILED outcome으로 기록되며, 기본은 no-overwrite(명시적 `--overwrite`만 교체),
   replay는 파일을 다시 쓰지 않습니다. artifact identity는 경로에 의존하지 않고 파일 삭제는 record를 변경하지
   않습니다. `lectureos.effective_materialize_cli`.
+- **Effective SRT 명시적 Delivery** — 성공한 materialization의 정확한 bytes를 승인된 Delivery Root 아래로
+  명시적으로 복사합니다(GOAL-019, released record-first 규율·hardened writer 재사용). source bytes는 intent
+  이전에 artifact fingerprint로 검증되고 DELIVERED는 목적지 재검증 후에만 기록되며, 실패는 안정된 category의
+  정직한 FAILED outcome입니다. dangling PENDING은 명시적 `reconcile`(관찰만)로 닫힙니다. delivery ≠
+  publication — URL·공개·수신 확인은 없습니다. `lectureos.effective_deliver_cli`.
 - **인식문 파이프라인** — 원본 인식문 + provider 결과, 교정 생성·적용, 검수 준비, 사람의 검수 결정, applicability,
   current selection, ready state.
 - **자막 파이프라인** — 인테이크, 후보 생성, reading/time 표현, 구조 검증, 검수 준비, 사람의 검수 결정, 결정 적용,
@@ -657,6 +662,39 @@ PYTHONPATH=src python3 -m lectureos.effective_materialize_cli list --artifact su
 [`examples/effective-materialize/`](examples/effective-materialize/README.md), 계약은
 `implementation/108_EFFECTIVE_SRT_MATERIALIZATION.md`를 참고하세요.
 
+## Explicit Effective SRT Delivery
+
+effective transcript 계약 세대의 명시적 delivery 경계입니다(GOAL-019). **Artifact ≠ Materialization ≠
+Delivery ≠ Publication.** **`--force`는 없습니다:**
+
+```bash
+# 파생 적격성 (persist되지 않음)
+PYTHONPATH=src python3 -m lectureos.effective_deliver_cli eligibility --materialization subtitle-effective-srt-materialization:<digest> --storage-root /path/to/out --database /path/to/lectureos.sqlite3
+
+# 명시적 delivery (기본 no-overwrite; 동일 요청 replay는 rewrite 없이 reused)
+PYTHONPATH=src python3 -m lectureos.effective_deliver_cli deliver --materialization subtitle-effective-srt-materialization:<digest> --storage-root /path/to/out --delivery-root /path/to/deliver --database /path/to/lectureos.sqlite3
+
+# record 상세 / 파생 상태 + source·destination 파일 일치 여부 / append-only history / 명시적 reconcile
+PYTHONPATH=src python3 -m lectureos.effective_deliver_cli show --delivery subtitle-effective-srt-delivery:<digest> --storage-root /path/to/out --delivery-root /path/to/deliver --database /path/to/lectureos.sqlite3
+PYTHONPATH=src python3 -m lectureos.effective_deliver_cli status --delivery subtitle-effective-srt-delivery:<digest> --storage-root /path/to/out --delivery-root /path/to/deliver --database /path/to/lectureos.sqlite3
+PYTHONPATH=src python3 -m lectureos.effective_deliver_cli list --materialization subtitle-effective-srt-materialization:<digest> --storage-root /path/to/out --delivery-root /path/to/deliver --database /path/to/lectureos.sqlite3
+PYTHONPATH=src python3 -m lectureos.effective_deliver_cli reconcile --delivery subtitle-effective-srt-delivery:<digest> --storage-root /path/to/out --delivery-root /path/to/deliver --database /path/to/lectureos.sqlite3
+```
+
+- released record-first 규율: source bytes는 intent 이전에 artifact fingerprint로 검증(결함 시 아무것도
+  persist되지 않음), immutable intent가 목적지 쓰기 전에 durable, DELIVERED는 목적지 bytes 재검증 후에만
+  기록, 실패는 안정된 category(`destination_exists_different`·`destination_unsafe`·`destination_missing`·
+  `write_failed`·`verification_failed`)의 정직한 FAILED outcome.
+- delivery identity는 (계약, materialization, artifact, delivery kind, 목적지 location, expected
+  fingerprint, sequence, overwrite 정책)에서 파생되며 절대 root·시각은 참여하지 않습니다. 동시 동일 요청은
+  durable intent slot으로 수렴하고 divergent 충돌은 명시적 conflict입니다.
+- superseded/stale artifact의 성공한 materialization도 배달 가능(역사적 운용성)하며, 배달 파일 삭제는 record를
+  변경하지 않고 손상도 아닙니다. dangling PENDING은 명시적 `reconcile`(관찰만, 쓰기 없음)로 닫힙니다.
+
+결정적 데모: `PYTHONPATH=src python3 -m lectureos.effective_deliver_demo`. 동작 예제는
+[`examples/effective-deliver/`](examples/effective-deliver/README.md), 계약은
+`implementation/109_EFFECTIVE_SRT_DELIVERY.md`를 참고하세요.
+
 ## Repository Validation (저장소 검증)
 
 저장소가 내부적으로 일관적인지 **읽기 전용**으로 검증합니다(저장소를 수정하지 않습니다). identity, 참조,
@@ -704,7 +742,7 @@ golden 출력이 포함됩니다. export된 JSON은 서술적입니다 — 실�
 LectureOS/
 ├── src/lectureos/
 │   ├── application/        # 순수 domain + application 서비스(모델·불변식·오케스트레이션)
-│   ├── persistence/        # insert-only SQLite 저장소 + additive 스키마(v44)
+│   ├── persistence/        # insert-only SQLite 저장소 + additive 스키마(v45)
 │   ├── infrastructure/     # 로컬 파일시스템 writer(temp-file + 원자적 배치)
 │   ├── execution/          # 처리 실행, 유닛 실행, DomainResult lineage
 │   ├── providers/          # 선택적 provider 어댑터(예: OpenAI) — MVP에는 불필요
@@ -725,6 +763,7 @@ LectureOS/
 │   ├── effective_selection_cli.py # Effective Subtitle Final Selection CLI
 │   ├── effective_srt_cli.py # Effective Subtitle SRT Artifact CLI
 │   ├── effective_materialize_cli.py # Effective SRT 물리 Materialization CLI
+│   ├── effective_deliver_cli.py # Effective SRT 명시적 Delivery CLI
 │   ├── edit_export_cli.py  # 실행 가능한 Edit Export CLI
 │   ├── edit_export_demo.py # 실행 가능한 mock end-to-end 데모(미디어·네트워크 불필요)
 │   └── *_acceptance.py     # 인프로세스 end-to-end 인수 실행기
@@ -756,7 +795,7 @@ LectureOS/
 ## Development Status (개발 상태)
 
 - **Blueprint:** **PATCH-0020**까지 안정(`docs/`, `patches/`).
-- **구현:** edit-export MVP 완료; SQLite 스키마 **v44**; 전체 스위트 green(1800개 이상).
+- **구현:** edit-export MVP 완료; SQLite 스키마 **v45**; 전체 스위트 green(1800개 이상).
 - **거버넌스:** Blueprint 우선 — 제품 의미를 바꾸려면 PATCH를 먼저 쓰고 나서 구현합니다.
   `AGENTS.md`와 `implementation/050_IMPLEMENTATION_WORKFLOW.md` 참고.
 

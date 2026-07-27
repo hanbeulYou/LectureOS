@@ -169,6 +169,16 @@ and derives `health` (`healthy` / `warnings` / `errors`) and `ok` (no errors).
 | `EFFECTIVE_SRT_MATERIALIZATION_SEQUENCE_NONCONTIGUOUS` | error | a (artifact, location) pair's materialization sequences are not contiguous |
 | `EFFECTIVE_SRT_MATERIALIZATION_BROKEN_SUPERSESSION` | error | a non-initial materialization does not supersede its pair's immediately prior act |
 | `EFFECTIVE_SRT_MATERIALIZATION_ORPHAN_OUTCOME` | error | a materialization outcome references a missing intent (PENDING intents, FAILED outcomes, and missing or diverged physical files are deliberately never flagged) |
+| `EFFECTIVE_SRT_DELIVERY_DANGLING_MATERIALIZATION` | error | a delivery references a missing effective SRT materialization |
+| `EFFECTIVE_SRT_DELIVERY_ARTIFACT_LINEAGE_MISMATCH` | error | a delivery's artifact lineage disagrees with its source materialization |
+| `EFFECTIVE_SRT_DELIVERY_FINGERPRINT_MISMATCH` | error | a delivery's expected payload fingerprint disagrees with its artifact |
+| `EFFECTIVE_SRT_DELIVERY_UNSAFE_LOCATION` | error | a delivery destination location is not a contained relative path |
+| `EFFECTIVE_SRT_DELIVERY_IDENTITY_MISMATCH` | error | a delivery's identity does not re-derive from its stored payload |
+| `EFFECTIVE_SRT_DELIVERY_SEQUENCE_NONCONTIGUOUS` | error | a (materialization, destination) pair's delivery sequences are not contiguous |
+| `EFFECTIVE_SRT_DELIVERY_BROKEN_SUPERSESSION` | error | a non-initial delivery does not supersede its pair's immediately prior attempt |
+| `EFFECTIVE_SRT_DELIVERY_ORPHAN_OUTCOME` | error | a delivery outcome references a missing intent |
+| `EFFECTIVE_SRT_DELIVERY_UNSUPPORTED_FAILURE_CATEGORY` | error | a failed delivery outcome uses an unsupported failure category |
+| `EFFECTIVE_SRT_DELIVERY_DELIVERED_FINGERPRINT_MISMATCH` | error | a delivered outcome's fingerprint disagrees with the intent's expected payload (PENDING intents, FAILED outcomes, and missing or diverged source/destination files are deliberately never flagged) |
 | `MALFORMED_IDENTITY` | error | one or more rows have an empty or blank identity |
 
 ## Scope

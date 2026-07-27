@@ -2672,3 +2672,47 @@ contiguity, broken supersession, orphan outcome). One CLI (`lectureos.effective_
 (`lectureos.effective_materialize_demo`) with a byte-stable golden prove the ten GOAL-018 scenarios. The
 complete 2506-test suite passes. Delivery, publication, URL generation, and archive management remain
 later, separately-gated milestones and are out of scope.
+
+## Explicit Effective SRT Delivery (First Slice, GOAL-019)
+
+- Blueprint: the released record-first side-effect discipline (044 §17 / PATCH-0007) and the hardened
+  released local writer, applied as an outbound delivery boundary over GOAL-018 materializations; no new
+  Blueprint PATCH required
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema **v45** (two insert-only tables
+  `subtitle_effective_srt_delivery_intents` / `subtitle_effective_srt_delivery_outcomes`)
+- Commit: `feat: add effective subtitle delivery`
+- Immediate next milestone: outbound movement of the finished `.srt` is now explicit and auditable —
+  subsequent goals may add publication/acknowledgement semantics as separately-gated contracts, or return
+  to broader system capabilities (e.g. the Lecture Intelligence pipeline)
+
+This milestone implements the explicit delivery boundary of the effective-transcript subtitle contract
+generation (GOAL-019): one explicit request records that one exact successful physical Materialization's
+bytes were copied to one exact destination beneath an explicitly supplied approved Delivery Root, through
+one delivery mechanism (`local_copy`, contract `subtitle_effective_srt_delivery` v1), with one honest
+terminal outcome. **Artifact ≠ Materialization ≠ Delivery ≠ Publication.** Delivery never regenerates SRT
+content and never mutates Artifact or Materialization records; success never implies publication, a URL,
+public availability, or recipient acknowledgement — none exist in this contract.
+
+Eligibility is derived, never persisted: MATERIALIZED state, structurally valid artifact lineage, and a
+source file whose bytes verify against the artifact's content fingerprint; superseded/stale artifacts
+remain deliverable (historical operability). Source-side defects block **before** any intent is persisted;
+the immutable intent is durable before the destination write; DELIVERED is recorded only after
+re-verifying the destination bytes; destination-side failures are honest FAILED outcomes with stable
+categories; a crash residue is an honest dangling PENDING closed only by explicit reconciliation
+(observation only — matching → DELIVERED, missing/different → honest FAILED; never a write, never during
+repository validation). Identity is deterministic over (contract, materialization, artifact, delivery
+kind, destination location, expected fingerprint, per-pair sequence, overwrite policy); append-only
+contiguous sequences with validated supersession; near-concurrent identical requests converge through the
+durable intent slot and divergent collisions raise an explicit conflict. Exact replay reuses without
+rewriting; default no-overwrite preserves different destination bytes as FAILED history; explicit
+overwrite appends a NEW attempt; deleted destinations never mutate history and re-deliver as the next
+attempt. The GOAL-018 hardened writer is reused with one additive observational `path_of` (aliasing
+rejection, distinct path reporting) — no safety property weakened. Every released version v1..v44 chains
+single-step to v45 preserving all rows; legacy tables are untouched. Read-only validation gains ten
+integrity-only `EFFECTIVE_SRT_DELIVERY_*` checks; PENDING/FAILED/missing-file states are never corruption.
+One CLI (`lectureos.effective_deliver_cli` with `eligibility`/`deliver`/`show`/`status`/`list`/
+`reconcile`; FAILED outcomes exit 1 as honest records) and a deterministic demo
+(`lectureos.effective_deliver_demo`) with a byte-stable golden prove the fourteen GOAL-019 scenarios
+(56 focused new tests). The complete 2562-test suite passes. Publication, URLs, network transfer, and
+recipient acknowledgement remain later, separately-gated milestones and are out of scope.
