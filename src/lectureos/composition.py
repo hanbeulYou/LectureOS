@@ -73,6 +73,9 @@ from lectureos.application.effective_subtitle_generation import (
 from lectureos.application.effective_subtitle_final_selection import (
     EffectiveSubtitleFinalSelectionService,
 )
+from lectureos.application.effective_srt_materialization import (
+    EffectiveSrtMaterializationService,
+)
 from lectureos.application.effective_subtitle_srt_artifact import (
     EffectiveSubtitleSrtArtifactService,
 )
@@ -205,6 +208,8 @@ from lectureos.persistence import (
     SQLiteEffectiveSubtitleCandidateRepository,
     SQLiteEffectiveSubtitleFinalSelectionCommandPersistence,
     SQLiteEffectiveSubtitleFinalSelectionRepository,
+    SQLiteEffectiveSrtMaterializationCommandPersistence,
+    SQLiteEffectiveSrtMaterializationRepository,
     SQLiteEffectiveSubtitleSrtArtifactCommandPersistence,
     SQLiteEffectiveSubtitleSrtArtifactRepository,
     SQLiteEffectiveSubtitleReviewDecisionCommandPersistence,
@@ -824,6 +829,29 @@ def compose_sqlite_effective_subtitle_srt_artifact_service(
     persistence = SQLiteEffectiveSubtitleSrtArtifactCommandPersistence(connection)
     return EffectiveSubtitleSrtArtifactService(
         selections, generation, artifacts, persistence
+    )
+
+
+def compose_sqlite_effective_srt_materialization_service(
+    connection: sqlite3.Connection,
+    storage_root: str,
+) -> EffectiveSrtMaterializationService:
+    """Build physical SRT materialization on one caller connection + one approved Storage Root
+    (GOAL-018). Record-first: the immutable intent is durable before any write, the immutable
+    terminal outcome after; only the `subtitle_effective_srt_materialization*` tables and files
+    beneath the approved root are touched. Artifact identity never depends on any path.
+    """
+
+    from lectureos.infrastructure.local_effective_srt_file_writer import (
+        LocalEffectiveSrtFileWriter,
+    )
+
+    artifacts = compose_sqlite_effective_subtitle_srt_artifact_service(connection)
+    materializations = SQLiteEffectiveSrtMaterializationRepository(connection)
+    persistence = SQLiteEffectiveSrtMaterializationCommandPersistence(connection)
+    writer = LocalEffectiveSrtFileWriter(storage_root)
+    return EffectiveSrtMaterializationService(
+        artifacts, materializations, persistence, writer
     )
 
 

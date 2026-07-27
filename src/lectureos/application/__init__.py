@@ -347,6 +347,13 @@ from .effective_subtitle_srt_artifact import (
     derive_srt_artifact_identity,
     serialize_effective_cues,
 )
+from .effective_srt_materialization import (
+    EffectiveSrtMaterialization,
+    EffectiveSrtMaterializationError,
+    EffectiveSrtMaterializationService,
+    MaterializationState as EffectiveMaterializationState,
+    derive_materialization_identity,
+)
 from .effective_transcript_consumption import (
     MANIFEST_CONSUMER_KIND,
     SUBTITLE_GENERATION_CONSUMER_KIND,
@@ -811,6 +818,11 @@ __all__ = [
     "derive_corrected_selection_identity",
     "require_canonical_corrected_revision_id",
     "MANIFEST_CONSUMER_KIND",
+    "EffectiveSrtMaterialization",
+    "EffectiveSrtMaterializationError",
+    "EffectiveSrtMaterializationService",
+    "EffectiveMaterializationState",
+    "derive_materialization_identity",
     "EffectiveSubtitleSrtArtifact",
     "EffectiveSubtitleSrtArtifactError",
     "EffectiveSubtitleSrtArtifactService",

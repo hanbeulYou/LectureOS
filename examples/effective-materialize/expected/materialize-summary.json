@@ -1,0 +1,14 @@
+{
+  "artifact_a_id": "subtitle-effective-srt-artifact:cbf0fbd13124146405e65fc351d9767b618a14a7676f2d77a46d045d19922589",
+  "artifact_b_id": "subtitle-effective-srt-artifact:42d8f15861181aeaf61690f8d1a28dfccecf0e1799d49c33a89823ff2d711fb4",
+  "intake_id": "transcript-source-intake:sha256:7be6a9582ff6c7bd4e66c052dc634a38b88909402f2fb330d663000d7f2079a5",
+  "materialization_count_a": 5,
+  "materialization_first_id": "subtitle-effective-srt-materialization:a4149780a612196b864f779b38203c969d8a5437d923551ae8e9c4e5101cf2ed",
+  "materialization_overwrite_id": "subtitle-effective-srt-materialization:7c2b475e7e29cafa8d28dc4a67d44e9b1d70d50a25eafc06c56121b23ecda244",
+  "materialized_files": [
+    "history/a.srt",
+    "manual/lecture.srt",
+    "subtitle-effective-srt-artifact:42d8f15861181aeaf61690f8d1a28dfccecf0e1799d49c33a89823ff2d711fb4.srt",
+    "subtitle-effective-srt-artifact:cbf0fbd13124146405e65fc351d9767b618a14a7676f2d77a46d045d19922589.srt"
+  ]
+}

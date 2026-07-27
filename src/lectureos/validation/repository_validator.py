@@ -74,6 +74,8 @@ _INSPECTED_TABLES = (
     "subtitle_effective_review_decisions",
     "subtitle_effective_final_selections",
     "subtitle_effective_srt_artifacts",
+    "subtitle_effective_srt_materializations",
+    "subtitle_effective_srt_materialization_outcomes",
 )
 _IDENTITY_TABLES = (
     "domain_result_references",
@@ -97,6 +99,7 @@ _IDENTITY_TABLES = (
     "subtitle_effective_review_decisions",
     "subtitle_effective_final_selections",
     "subtitle_effective_srt_artifacts",
+    "subtitle_effective_srt_materializations",
 )
 _APPROVING_KINDS = ("accept", "modify")
 
@@ -2202,6 +2205,121 @@ def _check_effective_subtitle_srt_artifacts(
     return diagnostics
 
 
+
+def _check_effective_srt_materializations(
+    connection: sqlite3.Connection,
+) -> list[Diagnostic]:
+    """Integrity of materialization records (GOAL-018). Deliberately NOT flagged: PENDING intents,
+    FAILED outcomes, missing or diverged physical files, and stale/superseded artifacts —
+    filesystem state and authority currentness are never repository corruption."""
+
+    if not _table_exists(connection, "subtitle_effective_srt_materializations"):
+        return []
+    diagnostics: list[Diagnostic] = []
+
+    def _flag(code: str, identity: str, message: str,
+              table: str = "subtitle_effective_srt_materializations") -> None:
+        diagnostics.append(
+            Diagnostic(
+                code=code,
+                severity=Severity.ERROR,
+                location=f"{table}:{identity}",
+                message=message,
+            )
+        )
+
+    if _table_exists(connection, "subtitle_effective_srt_artifacts"):
+        for (identity,) in connection.execute(
+            """
+            SELECT m.identity
+            FROM subtitle_effective_srt_materializations m
+            LEFT JOIN subtitle_effective_srt_artifacts a ON a.identity = m.artifact_id
+            WHERE a.identity IS NULL
+            ORDER BY m.identity
+            """
+        ).fetchall():
+            _flag("EFFECTIVE_SRT_MATERIALIZATION_DANGLING_ARTIFACT", identity,
+                  "materialization references a missing effective SRT artifact")
+        # The recorded payload fingerprint must equal the immutable artifact's fingerprint.
+        for (identity,) in connection.execute(
+            """
+            SELECT m.identity
+            FROM subtitle_effective_srt_materializations m
+            JOIN subtitle_effective_srt_artifacts a ON a.identity = m.artifact_id
+            WHERE m.payload_fingerprint <> a.content_fingerprint
+            ORDER BY m.identity
+            """
+        ).fetchall():
+            _flag("EFFECTIVE_SRT_MATERIALIZATION_FINGERPRINT_MISMATCH", identity,
+                  "materialization payload fingerprint disagrees with its artifact")
+
+    for identity, artifact, location, sequence in connection.execute(
+        """
+        SELECT identity, artifact_id, relative_location, sequence
+        FROM subtitle_effective_srt_materializations
+        ORDER BY identity
+        """
+    ).fetchall():
+        expected = "subtitle-effective-srt-materialization:" + hashlib.sha256(
+            json.dumps(
+                {"artifact": artifact, "relative_location": location, "sequence": sequence},
+                ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        if identity != expected:
+            _flag("EFFECTIVE_SRT_MATERIALIZATION_IDENTITY_MISMATCH", identity,
+                  "materialization identity does not re-derive from its stored payload")
+
+    for artifact, location in connection.execute(
+        """
+        SELECT artifact_id, relative_location
+        FROM subtitle_effective_srt_materializations
+        GROUP BY artifact_id, relative_location
+        HAVING COUNT(*) <> MAX(sequence) + 1 OR MIN(sequence) <> 0
+            OR COUNT(DISTINCT sequence) <> COUNT(*)
+        ORDER BY artifact_id, relative_location
+        """
+    ).fetchall():
+        _flag("EFFECTIVE_SRT_MATERIALIZATION_SEQUENCE_NONCONTIGUOUS",
+              f"{artifact}:{location}",
+              "a (artifact, location) pair's materialization sequences are not contiguous")
+
+    for (identity,) in connection.execute(
+        """
+        SELECT m.identity
+        FROM subtitle_effective_srt_materializations m
+        LEFT JOIN subtitle_effective_srt_materializations p
+               ON p.identity = m.previous_materialization_id
+        WHERE m.previous_materialization_id IS NOT NULL
+          AND (p.identity IS NULL
+               OR p.artifact_id <> m.artifact_id
+               OR p.relative_location <> m.relative_location
+               OR p.sequence <> m.sequence - 1
+               OR m.previous_materialization_id = m.identity)
+        ORDER BY m.identity
+        """
+    ).fetchall():
+        _flag("EFFECTIVE_SRT_MATERIALIZATION_BROKEN_SUPERSESSION", identity,
+              "a non-initial materialization does not supersede its pair's immediately prior act")
+
+    if _table_exists(connection, "subtitle_effective_srt_materialization_outcomes"):
+        for (identity,) in connection.execute(
+            """
+            SELECT o.materialization_id
+            FROM subtitle_effective_srt_materialization_outcomes o
+            LEFT JOIN subtitle_effective_srt_materializations m
+                   ON m.identity = o.materialization_id
+            WHERE m.identity IS NULL
+            ORDER BY o.materialization_id
+            """
+        ).fetchall():
+            _flag("EFFECTIVE_SRT_MATERIALIZATION_ORPHAN_OUTCOME", identity,
+                  "materialization outcome references a missing intent",
+                  table="subtitle_effective_srt_materialization_outcomes")
+
+    return diagnostics
+
+
 def _check_raw_transcript_segments(connection: sqlite3.Connection) -> list[Diagnostic]:
     if not _table_exists(connection, "raw_transcript_segments"):
         return []
@@ -2306,6 +2424,7 @@ def validate_repository(connection: sqlite3.Connection) -> ValidationReport:
     diagnostics += _check_effective_subtitle_review_decisions(connection)
     diagnostics += _check_effective_subtitle_final_selections(connection)
     diagnostics += _check_effective_subtitle_srt_artifacts(connection)
+    diagnostics += _check_effective_srt_materializations(connection)
     diagnostics += _check_raw_transcript_segments(connection)
     diagnostics += _check_malformed_identities(connection)
 
