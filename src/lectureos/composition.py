@@ -73,6 +73,9 @@ from lectureos.application.effective_subtitle_generation import (
 from lectureos.application.effective_subtitle_final_selection import (
     EffectiveSubtitleFinalSelectionService,
 )
+from lectureos.application.effective_subtitle_srt_artifact import (
+    EffectiveSubtitleSrtArtifactService,
+)
 from lectureos.application.effective_subtitle_review_decision import (
     EffectiveSubtitleReviewDecisionService,
 )
@@ -202,6 +205,8 @@ from lectureos.persistence import (
     SQLiteEffectiveSubtitleCandidateRepository,
     SQLiteEffectiveSubtitleFinalSelectionCommandPersistence,
     SQLiteEffectiveSubtitleFinalSelectionRepository,
+    SQLiteEffectiveSubtitleSrtArtifactCommandPersistence,
+    SQLiteEffectiveSubtitleSrtArtifactRepository,
     SQLiteEffectiveSubtitleReviewDecisionCommandPersistence,
     SQLiteEffectiveSubtitleReviewDecisionRepository,
     SQLiteEffectiveSubtitleReviewSubjectCommandPersistence,
@@ -799,6 +804,26 @@ def compose_sqlite_effective_subtitle_final_selection_service(
     persistence = SQLiteEffectiveSubtitleFinalSelectionCommandPersistence(connection)
     return EffectiveSubtitleFinalSelectionService(
         preparation, decisions, selections, persistence
+    )
+
+
+def compose_sqlite_effective_subtitle_srt_artifact_service(
+    connection: sqlite3.Connection,
+) -> EffectiveSubtitleSrtArtifactService:
+    """Build logical SRT artifact generation on one caller connection (GOAL-017).
+
+    Derived export eligibility (current applicable Final Selection required), the released
+    canonical SRT serializer, and immutable logical artifacts — read-only over every upstream
+    record; only `subtitle_effective_srt_artifacts` is written. No file, path, materialization,
+    or legacy export record is created.
+    """
+
+    selections = compose_sqlite_effective_subtitle_final_selection_service(connection)
+    generation = compose_sqlite_effective_subtitle_generation_service(connection)
+    artifacts = SQLiteEffectiveSubtitleSrtArtifactRepository(connection)
+    persistence = SQLiteEffectiveSubtitleSrtArtifactCommandPersistence(connection)
+    return EffectiveSubtitleSrtArtifactService(
+        selections, generation, artifacts, persistence
     )
 
 

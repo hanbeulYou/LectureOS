@@ -7,8 +7,8 @@ from pathlib import Path
 
 from .errors import PersistenceError, UnsupportedSchemaVersionError
 
-SQLITE_SCHEMA_VERSION = 42
-_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42)
+SQLITE_SCHEMA_VERSION = 43
+_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43)
 
 _V1_TABLE_STATEMENTS = (
     """CREATE TABLE schema_metadata (
@@ -1468,6 +1468,29 @@ _V42_ADDITION_STATEMENTS = (
 )""",
 )
 
+_V43_ADDITION_STATEMENTS = (
+    """CREATE TABLE subtitle_effective_srt_artifacts (
+    identity TEXT PRIMARY KEY,
+    transcript_source_intake_id TEXT NOT NULL,
+    final_selection_id TEXT NOT NULL,
+    candidate_id TEXT NOT NULL,
+    serializer_kind TEXT NOT NULL CHECK (length(trim(serializer_kind)) > 0),
+    serializer_version INTEGER NOT NULL CHECK (serializer_version >= 1),
+    serialization_parameters_version INTEGER NOT NULL
+        CHECK (serialization_parameters_version >= 1),
+    cue_count INTEGER NOT NULL CHECK (cue_count >= 1),
+    content_fingerprint TEXT NOT NULL CHECK (length(content_fingerprint) = 64),
+    srt_content TEXT NOT NULL CHECK (length(srt_content) > 0),
+    UNIQUE (final_selection_id, serializer_kind, serializer_version,
+            serialization_parameters_version),
+    FOREIGN KEY (transcript_source_intake_id)
+        REFERENCES transcript_source_intakes(identity),
+    FOREIGN KEY (final_selection_id)
+        REFERENCES subtitle_effective_final_selections(identity),
+    FOREIGN KEY (candidate_id) REFERENCES subtitle_effective_candidates(identity)
+)""",
+)
+
 _V9_ADDITION_STATEMENTS = (
     """CREATE TABLE transcript_current_selections (
     identity TEXT PRIMARY KEY,
@@ -2659,6 +2682,22 @@ _V42_EXPECTED_COLUMNS = {
     ),
 }
 
+_V43_EXPECTED_COLUMNS = {
+    **_V42_EXPECTED_COLUMNS,
+    "subtitle_effective_srt_artifacts": (
+        ("identity", "TEXT", 0, 1),
+        ("transcript_source_intake_id", "TEXT", 1, 0),
+        ("final_selection_id", "TEXT", 1, 0),
+        ("candidate_id", "TEXT", 1, 0),
+        ("serializer_kind", "TEXT", 1, 0),
+        ("serializer_version", "INTEGER", 1, 0),
+        ("serialization_parameters_version", "INTEGER", 1, 0),
+        ("cue_count", "INTEGER", 1, 0),
+        ("content_fingerprint", "TEXT", 1, 0),
+        ("srt_content", "TEXT", 1, 0),
+    ),
+}
+
 def initialize_sqlite_database(database_path: str | Path) -> sqlite3.Connection:
     """Create the latest schema for a new path; validate existing databases."""
 
@@ -2697,7 +2736,7 @@ def migrate_sqlite_database(
 ) -> None:
     """Explicitly perform one approved migration step or validate a no-op target."""
 
-    if target_version not in (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42):
+    if target_version not in (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43):
         raise PersistenceError(f"unsupported SQLite migration target: {target_version}")
     path = _validate_database_path(database_path)
     if not path.is_file():
@@ -2830,6 +2869,9 @@ def migrate_sqlite_database(
         if current_version == 41 and target_version == 42:
             _migrate_v41_to_v42(connection)
             return
+        if current_version == 42 and target_version == 43:
+            _migrate_v42_to_v43(connection)
+            return
         raise PersistenceError(
             f"unsupported SQLite migration: {current_version} to {target_version}"
         )
@@ -2919,6 +2961,7 @@ def _initialize_latest_schema(connection: sqlite3.Connection) -> None:
             *_V40_ADDITION_STATEMENTS,
             *_V41_ADDITION_STATEMENTS,
             *_V42_ADDITION_STATEMENTS,
+            *_V43_ADDITION_STATEMENTS,
         ):
             connection.execute(statement)
         connection.execute(
@@ -3583,6 +3626,24 @@ def _migrate_v36_to_v37(connection: sqlite3.Connection) -> None:
         raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
 
 
+def _migrate_v42_to_v43(connection: sqlite3.Connection) -> None:
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        for statement in _V43_ADDITION_STATEMENTS:
+            connection.execute(statement)
+        connection.execute(
+            "UPDATE schema_metadata SET version = 43 WHERE singleton = 1"
+        )
+        _validate_initialized_connection(connection)
+        _commit(connection)
+    except PersistenceError:
+        _rollback(connection)
+        raise
+    except sqlite3.Error as error:
+        _rollback(connection)
+        raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
+
+
 def _migrate_v41_to_v42(connection: sqlite3.Connection) -> None:
     try:
         connection.execute("BEGIN IMMEDIATE")
@@ -3747,6 +3808,7 @@ def _validate_schema_shape(connection: sqlite3.Connection, version: int) -> None
         40: _V40_EXPECTED_COLUMNS,
         41: _V41_EXPECTED_COLUMNS,
         42: _V42_EXPECTED_COLUMNS,
+        43: _V43_EXPECTED_COLUMNS,
     }[version]
     for table, expected in expected_columns.items():
         actual = tuple(

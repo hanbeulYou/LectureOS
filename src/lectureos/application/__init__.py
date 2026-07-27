@@ -338,6 +338,15 @@ from .effective_subtitle_final_selection import (
     SelectionEligibility,
     derive_final_selection_identity,
 )
+from .effective_subtitle_srt_artifact import (
+    EffectiveSubtitleSrtArtifact,
+    EffectiveSubtitleSrtArtifactError,
+    EffectiveSubtitleSrtArtifactService,
+    FinalSelectionNotExportableError,
+    SrtArtifactConflictError,
+    derive_srt_artifact_identity,
+    serialize_effective_cues,
+)
 from .effective_transcript_consumption import (
     MANIFEST_CONSUMER_KIND,
     SUBTITLE_GENERATION_CONSUMER_KIND,
@@ -802,6 +811,13 @@ __all__ = [
     "derive_corrected_selection_identity",
     "require_canonical_corrected_revision_id",
     "MANIFEST_CONSUMER_KIND",
+    "EffectiveSubtitleSrtArtifact",
+    "EffectiveSubtitleSrtArtifactError",
+    "EffectiveSubtitleSrtArtifactService",
+    "FinalSelectionNotExportableError",
+    "SrtArtifactConflictError",
+    "derive_srt_artifact_identity",
+    "serialize_effective_cues",
     "EffectiveSubtitleFinalSelection",
     "EffectiveSubtitleFinalSelectionError",
     "EffectiveSubtitleFinalSelectionService",

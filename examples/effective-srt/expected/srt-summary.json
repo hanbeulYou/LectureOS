@@ -1,0 +1,9 @@
+{
+  "artifact_a_id": "subtitle-effective-srt-artifact:cbf0fbd13124146405e65fc351d9767b618a14a7676f2d77a46d045d19922589",
+  "artifact_b_id": "subtitle-effective-srt-artifact:42d8f15861181aeaf61690f8d1a28dfccecf0e1799d49c33a89823ff2d711fb4",
+  "artifact_count": 2,
+  "intake_id": "transcript-source-intake:sha256:7be6a9582ff6c7bd4e66c052dc634a38b88909402f2fb330d663000d7f2079a5",
+  "selection_a_id": "subtitle-effective-final-selection:e5b7c27814108b971f558132768188d4b48ddb334e7431f0973033a8e86db4b2",
+  "selection_b_id": "subtitle-effective-final-selection:15856c79b160af6d9a5b952a10d71bb7dcb23bceadef0b526b732a2aafe54085",
+  "srt_content": "1\n00:00:00,000 --> 00:00:01,000\n안녕하세요 여러부\n\n2\n00:00:01,000 --> 00:00:02,000\n오늘의 강의입니다\n"
+}

@@ -73,6 +73,7 @@ _INSPECTED_TABLES = (
     "subtitle_effective_review_subjects",
     "subtitle_effective_review_decisions",
     "subtitle_effective_final_selections",
+    "subtitle_effective_srt_artifacts",
 )
 _IDENTITY_TABLES = (
     "domain_result_references",
@@ -95,6 +96,7 @@ _IDENTITY_TABLES = (
     "subtitle_effective_review_subjects",
     "subtitle_effective_review_decisions",
     "subtitle_effective_final_selections",
+    "subtitle_effective_srt_artifacts",
 )
 _APPROVING_KINDS = ("accept", "modify")
 
@@ -2069,6 +2071,137 @@ def _check_effective_subtitle_final_selections(
     return diagnostics
 
 
+
+def _check_effective_subtitle_srt_artifacts(
+    connection: sqlite3.Connection,
+) -> list[Diagnostic]:
+    """Integrity of logical SRT artifacts (GOAL-017). Deliberately NOT flagged: artifacts whose
+    final selection was later superseded or whose sources went stale, and artifacts that were
+    never physically materialized — currentness and materialization are never corruption."""
+
+    if not _table_exists(connection, "subtitle_effective_srt_artifacts"):
+        return []
+    diagnostics: list[Diagnostic] = []
+
+    def _flag(code: str, identity: str, message: str) -> None:
+        diagnostics.append(
+            Diagnostic(
+                code=code,
+                severity=Severity.ERROR,
+                location=f"subtitle_effective_srt_artifacts:{identity}",
+                message=message,
+            )
+        )
+
+    for target, column, code, message in (
+        ("transcript_source_intakes", "transcript_source_intake_id",
+         "EFFECTIVE_SRT_ARTIFACT_DANGLING_INTAKE",
+         "artifact references a missing transcript source intake"),
+        ("subtitle_effective_final_selections", "final_selection_id",
+         "EFFECTIVE_SRT_ARTIFACT_DANGLING_SELECTION",
+         "artifact references a missing final selection"),
+        ("subtitle_effective_candidates", "candidate_id",
+         "EFFECTIVE_SRT_ARTIFACT_DANGLING_CANDIDATE",
+         "artifact references a missing effective subtitle candidate"),
+    ):
+        if not _table_exists(connection, target):
+            continue
+        for (identity,) in connection.execute(
+            f"""
+            SELECT a.identity
+            FROM subtitle_effective_srt_artifacts a
+            LEFT JOIN {target} r ON a.{column} = r.identity
+            WHERE r.identity IS NULL
+            ORDER BY a.identity
+            """
+        ).fetchall():
+            _flag(code, identity, message)
+
+    if _table_exists(connection, "subtitle_effective_final_selections"):
+        for (identity,) in connection.execute(
+            """
+            SELECT a.identity
+            FROM subtitle_effective_srt_artifacts a
+            JOIN subtitle_effective_final_selections s ON s.identity = a.final_selection_id
+            WHERE s.candidate_id <> a.candidate_id
+               OR s.transcript_source_intake_id <> a.transcript_source_intake_id
+            ORDER BY a.identity
+            """
+        ).fetchall():
+            _flag("EFFECTIVE_SRT_ARTIFACT_LINEAGE_MISMATCH", identity,
+                  "artifact lineage (selection/candidate/intake) disagrees")
+
+    for identity, kind, version, params in connection.execute(
+        """
+        SELECT identity, serializer_kind, serializer_version,
+               serialization_parameters_version
+        FROM subtitle_effective_srt_artifacts
+        WHERE serializer_kind <> 'canonical_srt'
+           OR serializer_version <> 1 OR serialization_parameters_version <> 1
+        ORDER BY identity
+        """
+    ).fetchall():
+        _flag("EFFECTIVE_SRT_ARTIFACT_UNSUPPORTED_SERIALIZER", identity,
+              f"unsupported SRT serializer contract: {kind} v{version} params v{params}")
+
+    # Deterministic re-derivation: content fingerprint, identity, cue count, and the payload
+    # itself (byte-identical reserialization of the bound immutable cue graph).
+    cue_tables = _table_exists(connection, "subtitle_effective_candidate_cues")
+    for (identity, selection, candidate, fingerprint, cue_count,
+         srt_content) in connection.execute(
+        """
+        SELECT identity, final_selection_id, candidate_id, content_fingerprint,
+               cue_count, srt_content
+        FROM subtitle_effective_srt_artifacts
+        ORDER BY identity
+        """
+    ).fetchall():
+        expected_fingerprint = hashlib.sha256(srt_content.encode("utf-8")).hexdigest()
+        if fingerprint != expected_fingerprint:
+            _flag("EFFECTIVE_SRT_ARTIFACT_FINGERPRINT_MISMATCH", identity,
+                  "artifact content fingerprint does not match its stored payload")
+        expected_identity = "subtitle-effective-srt-artifact:" + hashlib.sha256(
+            json.dumps(
+                {"contract_kind": "effective_subtitle_srt_artifact",
+                 "contract_version": 1, "final_selection": selection,
+                 "candidate": candidate, "serializer_kind": "canonical_srt",
+                 "serializer_version": 1, "serialization_parameters_version": 1,
+                 "content_fingerprint": fingerprint},
+                ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        if identity != expected_identity:
+            _flag("EFFECTIVE_SRT_ARTIFACT_IDENTITY_MISMATCH", identity,
+                  "artifact identity does not re-derive from its stored payload")
+        if cue_tables:
+            rows = connection.execute(
+                """
+                SELECT ordinal, start, end, text
+                FROM subtitle_effective_candidate_cues
+                WHERE candidate_id = ?
+                ORDER BY ordinal
+                """,
+                (candidate,),
+            ).fetchall()
+            if len(rows) != cue_count:
+                _flag("EFFECTIVE_SRT_ARTIFACT_CUE_COUNT_MISMATCH", identity,
+                      "artifact cue count does not match the bound candidate graph")
+            else:
+                try:
+                    from lectureos.application.srt_payload import serialize_srt_cues
+
+                    reserialized = serialize_srt_cues(
+                        (start, end, text) for _ordinal, start, end, text in rows
+                    )
+                except Exception:
+                    reserialized = None
+                if reserialized is not None and reserialized != srt_content:
+                    _flag("EFFECTIVE_SRT_ARTIFACT_RESERIALIZATION_MISMATCH", identity,
+                          "stored SRT payload does not reserialize from the bound candidate graph")
+
+    return diagnostics
+
+
 def _check_raw_transcript_segments(connection: sqlite3.Connection) -> list[Diagnostic]:
     if not _table_exists(connection, "raw_transcript_segments"):
         return []
@@ -2172,6 +2305,7 @@ def validate_repository(connection: sqlite3.Connection) -> ValidationReport:
     diagnostics += _check_effective_subtitle_review_subjects(connection)
     diagnostics += _check_effective_subtitle_review_decisions(connection)
     diagnostics += _check_effective_subtitle_final_selections(connection)
+    diagnostics += _check_effective_subtitle_srt_artifacts(connection)
     diagnostics += _check_raw_transcript_segments(connection)
     diagnostics += _check_malformed_identities(connection)
 

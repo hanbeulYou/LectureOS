@@ -17,7 +17,7 @@ V38_TABLES = {"effective_transcript_consumptions"}
 
 _ADDITION_BLOCKS = tuple(
     (level, getattr(sqlite_lifecycle, f"_V{level}_ADDITION_STATEMENTS"))
-    for level in range(2, 42)
+    for level in range(2, 43)
 )
 
 
@@ -105,7 +105,7 @@ class SQLiteSchemaVersionThirtyEightTests(unittest.TestCase):
     def test_unsupported_target_is_rejected(self) -> None:
         initialize_sqlite_database(self.database_path).close()
         with self.assertRaises(PersistenceError):
-            migrate_sqlite_database(self.database_path, 43)
+            migrate_sqlite_database(self.database_path, 44)
 
     def test_repository_rejects_pre_v38_schema(self) -> None:
         create_legacy_database(self.database_path, 37)
