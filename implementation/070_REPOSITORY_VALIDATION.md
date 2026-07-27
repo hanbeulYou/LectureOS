@@ -154,6 +154,15 @@ and derives `health` (`healthy` / `warnings` / `errors`) and `ok` (no errors).
 | `EFFECTIVE_FINAL_SELECTION_FINGERPRINT_MISMATCH` | error | a final selection's content fingerprint does not match its stored payload |
 | `EFFECTIVE_FINAL_SELECTION_SEQUENCE_NONCONTIGUOUS` | error | an intake's final-selection sequences are not a contiguous unique `0..n-1` sequence |
 | `EFFECTIVE_FINAL_SELECTION_BROKEN_SUPERSESSION` | error | a non-initial selection does not supersede its scope's immediately prior selection (superseded selections, stale sources, later-superseded supporting decisions, and the absence of any export are deliberately never flagged) |
+| `EFFECTIVE_SRT_ARTIFACT_DANGLING_INTAKE` | error | an SRT artifact references a missing transcript source intake |
+| `EFFECTIVE_SRT_ARTIFACT_DANGLING_SELECTION` | error | an SRT artifact references a missing final selection |
+| `EFFECTIVE_SRT_ARTIFACT_DANGLING_CANDIDATE` | error | an SRT artifact references a missing effective subtitle candidate |
+| `EFFECTIVE_SRT_ARTIFACT_LINEAGE_MISMATCH` | error | an SRT artifact's selection/candidate/intake lineage disagrees |
+| `EFFECTIVE_SRT_ARTIFACT_UNSUPPORTED_SERIALIZER` | error | an SRT artifact records an unsupported serializer contract |
+| `EFFECTIVE_SRT_ARTIFACT_IDENTITY_MISMATCH` | error | an SRT artifact's identity does not re-derive from its stored payload |
+| `EFFECTIVE_SRT_ARTIFACT_FINGERPRINT_MISMATCH` | error | an SRT artifact's content fingerprint does not match its stored payload |
+| `EFFECTIVE_SRT_ARTIFACT_CUE_COUNT_MISMATCH` | error | an SRT artifact's cue count does not match the bound candidate graph |
+| `EFFECTIVE_SRT_ARTIFACT_RESERIALIZATION_MISMATCH` | error | a stored SRT payload does not reserialize byte-identically from the bound candidate graph (superseded/stale artifacts and missing physical materialization are deliberately never flagged) |
 | `MALFORMED_IDENTITY` | error | one or more rows have an empty or blank identity |
 
 ## Scope

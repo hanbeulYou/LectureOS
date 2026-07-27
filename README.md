@@ -29,7 +29,7 @@ LectureOS는 긴 한국어 강의의 후반작업에서 생기는 반복 작업�
 ### ✅ Implemented (구현 완료 · 테스트됨)
 
 - **실행 · lineage** — 처리 실행(run), 유닛 실행, `DomainResult` provenance를 SQLite에 durable하게 저장(스키마
-  **v42**, 이전 모든 버전에서 additive 단일 단계 마이그레이션).
+  **v43**, 이전 모든 버전에서 additive 단일 단계 마이그레이션).
 - **미디어 임포트(Media Import)** — 로컬 파일을 **content-addressed** canonical Source Media 기록으로 등록
   (스트리밍 SHA-256 → `sha256:<digest>`, 경로는 identity가 아님, 동일 내용 idempotent). 파일 identity와
   provenance만 기록하며 디코딩·transcode·probe·재생·transcription은 하지 않습니다. `lectureos.media_import_cli`.
@@ -100,6 +100,11 @@ LectureOS는 긴 한국어 강의의 후반작업에서 생기는 반복 작업�
   정확한 candidate·review subject·지원 Accept decision·selector lineage를 고정하고, current selection과
   applicability는 파생됩니다. Accept ≠ 선택 ≠ export — export 적격성은 부여되지 않습니다.
   `lectureos.effective_selection_cli`.
+- **Effective Subtitle SRT Artifact** — 현재 적용 가능한 Final Selection에서 released canonical SRT
+  serializer로 바이트 결정적 논리 artifact를 생성합니다(GOAL-017). artifact는 정확한 selection/candidate
+  lineage와 content fingerprint를 고정한 불변 record이며 파일·경로·URL·materialization을 의미하지 않습니다
+  (물리 materialization은 이후 Goal). superseded/stale selection은 새 artifact를 만들 수 없고 currentness는
+  파생됩니다. `lectureos.effective_srt_cli`.
 - **인식문 파이프라인** — 원본 인식문 + provider 결과, 교정 생성·적용, 검수 준비, 사람의 검수 결정, applicability,
   current selection, ready state.
 - **자막 파이프라인** — 인테이크, 후보 생성, reading/time 표현, 구조 검증, 검수 준비, 사람의 검수 결정, 결정 적용,
@@ -591,6 +596,35 @@ PYTHONPATH=src python3 -m lectureos.effective_selection_cli status --selection s
 [`examples/effective-selection/`](examples/effective-selection/README.md), 계약은
 `implementation/106_EFFECTIVE_SUBTITLE_FINAL_SELECTION.md`를 참고하세요.
 
+## Effective Subtitle SRT Artifact
+
+effective transcript 계약 세대의 논리적 SRT export입니다(GOAL-017). **Final Selection ≠ Artifact ≠ 물리
+파일.** **identity를 받습니다(경로 아님). `--force`는 없습니다:**
+
+```bash
+# 파생 export eligibility / 명시적 생성(동일 selection+serializer 재요청은 idempotent reused)
+PYTHONPATH=src python3 -m lectureos.effective_srt_cli eligibility --selection subtitle-effective-final-selection:<digest> --database /path/to/lectureos.sqlite3
+PYTHONPATH=src python3 -m lectureos.effective_srt_cli generate --selection subtitle-effective-final-selection:<digest> --database /path/to/lectureos.sqlite3
+
+# artifact 상세 / 정확한 SRT payload / intake 목록 / 파생 currentness
+PYTHONPATH=src python3 -m lectureos.effective_srt_cli show --artifact subtitle-effective-srt-artifact:<digest> --database /path/to/lectureos.sqlite3
+PYTHONPATH=src python3 -m lectureos.effective_srt_cli content --artifact subtitle-effective-srt-artifact:<digest> --database /path/to/lectureos.sqlite3
+PYTHONPATH=src python3 -m lectureos.effective_srt_cli list --intake transcript-source-intake:sha256:<digest> --database /path/to/lectureos.sqlite3
+PYTHONPATH=src python3 -m lectureos.effective_srt_cli status --artifact subtitle-effective-srt-artifact:<digest> --database /path/to/lectureos.sqlite3
+```
+
+- eligibility는 파생입니다: 현재 적용 가능한 Final Selection만 새 artifact를 생성할 수 있습니다
+  (selection_not_found/selection_not_current/selection_not_applicable 차단 사유 명시).
+- 직렬화는 released canonical serializer(`canonical_srt` v1)를 그대로 재사용합니다: 1부터 번호, ordinal 순서,
+  `HH:MM:SS,mmm`(ROUND_HALF_UP), LF·블록 간 빈 줄·trailing LF, 텍스트 정확 보존.
+- identity는 (계약, 정확한 selection, candidate, serializer 계약, content fingerprint)에서 파생되며 content
+  fingerprint 단독은 identity가 아닙니다 — 내용이 같아도 selection이 다르면 별개 artifact입니다. 기존
+  artifact는 authority 변경 후에도 불변이며 currentness만 파생됩니다.
+
+결정적 데모: `PYTHONPATH=src python3 -m lectureos.effective_srt_demo`. 동작 예제는
+[`examples/effective-srt/`](examples/effective-srt/README.md), 계약은
+`implementation/107_EFFECTIVE_SUBTITLE_SRT_ARTIFACT.md`를 참고하세요.
+
 ## Repository Validation (저장소 검증)
 
 저장소가 내부적으로 일관적인지 **읽기 전용**으로 검증합니다(저장소를 수정하지 않습니다). identity, 참조,
@@ -638,7 +672,7 @@ golden 출력이 포함됩니다. export된 JSON은 서술적입니다 — 실�
 LectureOS/
 ├── src/lectureos/
 │   ├── application/        # 순수 domain + application 서비스(모델·불변식·오케스트레이션)
-│   ├── persistence/        # insert-only SQLite 저장소 + additive 스키마(v42)
+│   ├── persistence/        # insert-only SQLite 저장소 + additive 스키마(v43)
 │   ├── infrastructure/     # 로컬 파일시스템 writer(temp-file + 원자적 배치)
 │   ├── execution/          # 처리 실행, 유닛 실행, DomainResult lineage
 │   ├── providers/          # 선택적 provider 어댑터(예: OpenAI) — MVP에는 불필요
@@ -657,6 +691,7 @@ LectureOS/
 │   ├── effective_review_cli.py # Effective-Source Subtitle Review 준비 CLI
 │   ├── effective_decision_cli.py # Effective-Source Subtitle Human Decision CLI
 │   ├── effective_selection_cli.py # Effective Subtitle Final Selection CLI
+│   ├── effective_srt_cli.py # Effective Subtitle SRT Artifact CLI
 │   ├── edit_export_cli.py  # 실행 가능한 Edit Export CLI
 │   ├── edit_export_demo.py # 실행 가능한 mock end-to-end 데모(미디어·네트워크 불필요)
 │   └── *_acceptance.py     # 인프로세스 end-to-end 인수 실행기
@@ -688,7 +723,7 @@ LectureOS/
 ## Development Status (개발 상태)
 
 - **Blueprint:** **PATCH-0020**까지 안정(`docs/`, `patches/`).
-- **구현:** edit-export MVP 완료; SQLite 스키마 **v42**; 전체 스위트 green(1800개 이상).
+- **구현:** edit-export MVP 완료; SQLite 스키마 **v43**; 전체 스위트 green(1800개 이상).
 - **거버넌스:** Blueprint 우선 — 제품 의미를 바꾸려면 PATCH를 먼저 쓰고 나서 구현합니다.
   `AGENTS.md`와 `implementation/050_IMPLEMENTATION_WORKFLOW.md` 참고.
 

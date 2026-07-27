@@ -2590,3 +2590,47 @@ golden prove the eligibility/replay/blocking/new-lineage/supersession/stale-hist
 invalid-graph/downstream-isolation scenarios. The complete 2428-test suite passes. SRT export and
 enforcement, physical materialization, the modified-subtitle authoring path, and additional selection
 contract versions remain later, separately-gated milestones and are out of scope.
+
+## Effective Subtitle SRT Artifact Generation (First Slice, GOAL-017)
+
+- Blueprint: released canonical SRT serialization (`application/srt_payload`, reused verbatim) + GOAL-016
+  selection authority; no new Blueprint PATCH required
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema **v43** (one insert-only table
+  `subtitle_effective_srt_artifacts`)
+- Commit: `feat: add effective subtitle SRT artifact generation`
+- Immediate next milestone: physical SRT materialization for effective artifacts (paths, files, overwrite
+  policy — reusing the legacy materialization precedent) — product-gated, deferred
+
+This milestone implements the logical export boundary of the effective-transcript subtitle contract
+generation (GOAL-017), completing the chain **consumption → generation → review → decision → selection →
+logical export**. **Final Selection ≠ Artifact ≠ physical file.** Export eligibility is derived and never
+persisted: only the current, applicable Final Selection of a scope may generate a new artifact
+(`selection_not_found`/`selection_not_current`/`selection_not_applicable` blocking reasons); superseded or
+stale selections are refused with nothing persisted, while existing artifacts remain immutable history whose
+currentness is derived through the GOAL-016 applicability chain (`current`/`superseded_by_final_selection`/
+`supporting_decision_superseded`/`stale_due_to_candidate_source`/`unresolvable`).
+
+Serialization reuses the released pure primitives byte-for-byte (`canonical_srt` v1: numbering from 1 in
+ordinal order, `HH:MM:SS,mmm` with ROUND_HALF_UP, LF endings, one blank line between blocks, single trailing
+LF, exact text preservation, collapsed-duration and negative-time rejection, untimed cues refused). The
+artifact binds, by truthful FKs, the exact final selection, candidate, and intake scope, stores the exact
+canonical payload (TEXT — never a path, filename, URL, or materialized flag), and is identified
+deterministically by (contract, exact selection, candidate, serializer contract, content fingerprint) —
+content fingerprint alone is never identity, so byte-identical payloads under different selections stay
+distinct. The replay anchor `UNIQUE(final_selection_id, serializer contract)` yields one canonical artifact
+per selection; identical replay reuses; collisions converge only on complete payload equality, else an
+explicit conflict; persistence is one atomic insert with full rollback.
+
+Every released version v1..v42 chains single-step to v43 preserving all rows (GOAL-013…016 and legacy rows
+unchanged; zero-row asserted for legacy export/materialization tables; no .srt file is ever written).
+Read-only validation gains nine integrity-only `EFFECTIVE_SRT_ARTIFACT_*` checks (danglings, lineage
+mismatch, unsupported serializer, identity/fingerprint re-derivation, cue-count mismatch, and byte-identical
+reserialization from the bound cue graph via the shared pure serializer) — superseded/stale artifacts and
+missing materialization are deliberately never corruption (tested healthy). One CLI
+(`lectureos.effective_srt_cli` with `eligibility`/`generate`/`show`/`content`/`list`/`status`, no
+`--force`, explicit materialization/path "not part of this contract") and a deterministic demo
+(`lectureos.effective_srt_demo`) with a byte-stable golden (including the exact SRT payload) prove the
+export/replay/superseded-block/distinct-artifact/same-content/invalid-graph/physical-isolation scenarios.
+The complete 2468-test suite passes. Physical materialization, delivery, export-enforcement workflows,
+and additional serializer versions remain later, separately-gated milestones and are out of scope.
