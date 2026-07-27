@@ -75,7 +75,7 @@ class RepositoryValidatorTests(unittest.TestCase):
         self.assertTrue(report.ok)
         self.assertEqual(report.error_count, 0)
         self.assertEqual(report.warning_count, 0)
-        self.assertEqual(report.schema_version, 41)
+        self.assertEqual(report.schema_version, 42)
         self.assertGreater(report.objects_checked, 0)
 
     def test_validator_does_not_mutate_the_database(self) -> None:
@@ -2020,6 +2020,138 @@ class EffectiveSubtitleReviewDecisionValidationTests(unittest.TestCase):
         finally:
             connection.close()
         self.assertIn("EFFECTIVE_REVIEW_DECISION_UNSUPPORTED_KIND", self._codes(path))
+
+
+class EffectiveSubtitleFinalSelectionValidationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        from lectureos.application.provider_transcript_admission import (
+            build_provider_transcript_document,
+        )
+        from lectureos.composition import (
+            compose_sqlite_current_raw_transcript_selection_service,
+            compose_sqlite_effective_subtitle_final_selection_service,
+            compose_sqlite_effective_subtitle_generation_service,
+            compose_sqlite_effective_subtitle_review_decision_service,
+            compose_sqlite_effective_subtitle_review_preparation_service,
+            compose_sqlite_media_import_service,
+            compose_sqlite_provider_transcript_admission_service,
+            compose_sqlite_transcript_source_intake_service,
+        )
+
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.base = Path(self.tempdir.name)
+        self.healthy = self.base / "final-selection.db"
+        connection = initialize_sqlite_database(self.healthy)
+        source = self.base / "s.bin"
+        source.write_bytes(b"final-selection-validation \x00\x01")
+        media_id = compose_sqlite_media_import_service(connection).import_media(str(source)).record.identity.value
+        intake = compose_sqlite_transcript_source_intake_service(connection).admit(media_id).intake.identity.value
+        raw = compose_sqlite_provider_transcript_admission_service(connection).admit(
+            intake_id=intake,
+            document=build_provider_transcript_document(
+                {"provider": "fake", "model": "tiny", "language": "ko", "provider_result_ref": "A",
+                 "segments": [{"start": 0.0, "end": 2.0, "text": "원본"}]}
+            ),
+        ).admission
+        compose_sqlite_current_raw_transcript_selection_service(connection).select(
+            intake, raw.raw_transcript_id.value
+        )
+        candidate = compose_sqlite_effective_subtitle_generation_service(connection).generate(
+            intake_id=intake
+        ).candidate.identity.value
+        subject = compose_sqlite_effective_subtitle_review_preparation_service(connection).prepare_review(
+            candidate_id=candidate
+        ).subject.identity.value
+        decisions = compose_sqlite_effective_subtitle_review_decision_service(connection)
+        decisions.decide(review_subject_id=subject, kind="accept", reviewer="reviewer:kim")
+        selection = compose_sqlite_effective_subtitle_final_selection_service(connection)
+        selection.select_final(review_subject_id=subject, selector="selector:park")
+        # Healthy staleness: the supporting Accept is later superseded — never corruption.
+        decisions.decide(review_subject_id=subject, kind="reject", reviewer="reviewer:kim")
+        connection.close()
+
+    def tearDown(self) -> None:
+        self.tempdir.cleanup()
+
+    def _corrupt(self, name: str, mutate) -> Path:
+        target = self.base / name
+        shutil.copyfile(self.healthy, target)
+        connection = sqlite3.connect(target)
+        try:
+            connection.execute("PRAGMA foreign_keys = OFF")
+            connection.execute("BEGIN")
+            mutate(connection)
+            connection.execute("COMMIT")
+        finally:
+            connection.close()
+        return target
+
+    def _codes(self, database: Path) -> set[str]:
+        return {d.code for d in validate_database(str(database)).diagnostics}
+
+    def test_healthy_selection_with_superseded_support_is_clean(self) -> None:
+        report = validate_database(str(self.healthy))
+        self.assertTrue(report.ok)
+        self.assertEqual(report.health, RepositoryHealth.HEALTHY)
+
+    def test_dangling_references_detected(self) -> None:
+        broken = self._corrupt(
+            "subject.db",
+            lambda c: c.execute(
+                "UPDATE subtitle_effective_final_selections "
+                "SET review_subject_id = 'subtitle-effective-review-subject:" + "0" * 64 + "'"
+            ),
+        )
+        self.assertIn("EFFECTIVE_FINAL_SELECTION_DANGLING_SUBJECT", self._codes(broken))
+        broken = self._corrupt(
+            "decision.db",
+            lambda c: c.execute(
+                "UPDATE subtitle_effective_final_selections "
+                "SET supporting_decision_id = 'subtitle-effective-review-decision:" + "0" * 64 + "'"
+            ),
+        )
+        self.assertIn("EFFECTIVE_FINAL_SELECTION_DANGLING_DECISION", self._codes(broken))
+
+    def test_non_accept_supporting_decision_detected(self) -> None:
+        # Point the selection at the (real) later reject decision — lineage joins the same
+        # subject, but the supporting kind is not accept.
+        broken = self._corrupt(
+            "kind.db",
+            lambda c: c.execute(
+                "UPDATE subtitle_effective_final_selections "
+                "SET supporting_decision_id = ("
+                "  SELECT identity FROM subtitle_effective_review_decisions "
+                "  WHERE kind = 'reject' LIMIT 1)"
+            ),
+        )
+        self.assertIn("EFFECTIVE_FINAL_SELECTION_DECISION_NOT_ACCEPT", self._codes(broken))
+
+    def test_identity_and_fingerprint_mismatch_detected(self) -> None:
+        broken = self._corrupt(
+            "identity.db",
+            lambda c: c.execute(
+                "UPDATE subtitle_effective_final_selections "
+                "SET identity = 'subtitle-effective-final-selection:" + "0" * 64 + "'"
+            ),
+        )
+        self.assertIn("EFFECTIVE_FINAL_SELECTION_IDENTITY_MISMATCH", self._codes(broken))
+        broken = self._corrupt(
+            "selector.db",
+            lambda c: c.execute(
+                "UPDATE subtitle_effective_final_selections SET selector = 'selector:evil'"
+            ),
+        )
+        self.assertIn("EFFECTIVE_FINAL_SELECTION_FINGERPRINT_MISMATCH", self._codes(broken))
+
+    def test_sequence_and_supersession_detected(self) -> None:
+        broken = self._corrupt(
+            "gap.db",
+            lambda c: c.execute(
+                "UPDATE subtitle_effective_final_selections SET sequence = 5, "
+                "previous_selection_id = 'subtitle-effective-final-selection:ghost'"
+            ),
+        )
+        self.assertIn("EFFECTIVE_FINAL_SELECTION_SEQUENCE_NONCONTIGUOUS", self._codes(broken))
 
 
 if __name__ == "__main__":

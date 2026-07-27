@@ -70,6 +70,9 @@ from lectureos.application.corrected_revision_generation import (
 from lectureos.application.effective_subtitle_generation import (
     EffectiveSubtitleGenerationService,
 )
+from lectureos.application.effective_subtitle_final_selection import (
+    EffectiveSubtitleFinalSelectionService,
+)
 from lectureos.application.effective_subtitle_review_decision import (
     EffectiveSubtitleReviewDecisionService,
 )
@@ -197,6 +200,8 @@ from lectureos.persistence import (
     SQLiteDomainResultReferenceRepository,
     SQLiteEffectiveSubtitleCandidateCommandPersistence,
     SQLiteEffectiveSubtitleCandidateRepository,
+    SQLiteEffectiveSubtitleFinalSelectionCommandPersistence,
+    SQLiteEffectiveSubtitleFinalSelectionRepository,
     SQLiteEffectiveSubtitleReviewDecisionCommandPersistence,
     SQLiteEffectiveSubtitleReviewDecisionRepository,
     SQLiteEffectiveSubtitleReviewSubjectCommandPersistence,
@@ -774,6 +779,26 @@ def compose_sqlite_effective_subtitle_review_decision_service(
     persistence = SQLiteEffectiveSubtitleReviewDecisionCommandPersistence(connection)
     return EffectiveSubtitleReviewDecisionService(
         preparation, generation, decisions, persistence
+    )
+
+
+def compose_sqlite_effective_subtitle_final_selection_service(
+    connection: sqlite3.Connection,
+) -> EffectiveSubtitleFinalSelectionService:
+    """Build Final Subtitle Selection Authority on one caller connection (GOAL-016).
+
+    The GOAL-011 selection idiom over GOAL-014/015 authority lineage: derived eligibility
+    (current applicable Accept required), explicit append-only selections with derived current
+    and derived applicability — read-only over every upstream record; only
+    `subtitle_effective_final_selections` is written. No export or legacy record is created.
+    """
+
+    preparation = compose_sqlite_effective_subtitle_review_preparation_service(connection)
+    decisions = compose_sqlite_effective_subtitle_review_decision_service(connection)
+    selections = SQLiteEffectiveSubtitleFinalSelectionRepository(connection)
+    persistence = SQLiteEffectiveSubtitleFinalSelectionCommandPersistence(connection)
+    return EffectiveSubtitleFinalSelectionService(
+        preparation, decisions, selections, persistence
     )
 
 

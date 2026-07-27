@@ -329,6 +329,15 @@ from .effective_subtitle_review_decision import (
     EffectiveSubtitleReviewDecisionService,
     derive_decision_identity as derive_effective_review_decision_identity,
 )
+from .effective_subtitle_final_selection import (
+    EffectiveSubtitleFinalSelection,
+    EffectiveSubtitleFinalSelectionError,
+    EffectiveSubtitleFinalSelectionService,
+    FinalSelectionConflictError,
+    ReviewSubjectNotEligibleError,
+    SelectionEligibility,
+    derive_final_selection_identity,
+)
 from .effective_transcript_consumption import (
     MANIFEST_CONSUMER_KIND,
     SUBTITLE_GENERATION_CONSUMER_KIND,
@@ -793,6 +802,13 @@ __all__ = [
     "derive_corrected_selection_identity",
     "require_canonical_corrected_revision_id",
     "MANIFEST_CONSUMER_KIND",
+    "EffectiveSubtitleFinalSelection",
+    "EffectiveSubtitleFinalSelectionError",
+    "EffectiveSubtitleFinalSelectionService",
+    "FinalSelectionConflictError",
+    "ReviewSubjectNotEligibleError",
+    "SelectionEligibility",
+    "derive_final_selection_identity",
     "EffectiveDecisionApplicability",
     "DecisionSubjectIntegrityError",
     "EffectiveSubtitleReviewDecision",

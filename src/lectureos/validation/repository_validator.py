@@ -72,6 +72,7 @@ _INSPECTED_TABLES = (
     "subtitle_effective_candidate_cue_segments",
     "subtitle_effective_review_subjects",
     "subtitle_effective_review_decisions",
+    "subtitle_effective_final_selections",
 )
 _IDENTITY_TABLES = (
     "domain_result_references",
@@ -93,6 +94,7 @@ _IDENTITY_TABLES = (
     "subtitle_effective_candidate_cues",
     "subtitle_effective_review_subjects",
     "subtitle_effective_review_decisions",
+    "subtitle_effective_final_selections",
 )
 _APPROVING_KINDS = ("accept", "modify")
 
@@ -1918,6 +1920,155 @@ def _check_effective_subtitle_review_decisions(
     return diagnostics
 
 
+
+def _check_effective_subtitle_final_selections(
+    connection: sqlite3.Connection,
+) -> list[Diagnostic]:
+    """Integrity of final-selection authority history (GOAL-016). Deliberately NOT flagged:
+    superseded selections, stale candidate sources or subjects, supporting decisions later
+    superseded, and the absence of any export or artifact — authority, currentness, and
+    applicability facts are never corruption."""
+
+    if not _table_exists(connection, "subtitle_effective_final_selections"):
+        return []
+    diagnostics: list[Diagnostic] = []
+
+    def _flag(code: str, identity: str, message: str) -> None:
+        diagnostics.append(
+            Diagnostic(
+                code=code,
+                severity=Severity.ERROR,
+                location=f"subtitle_effective_final_selections:{identity}",
+                message=message,
+            )
+        )
+
+    for target, column, code, message in (
+        ("transcript_source_intakes", "transcript_source_intake_id",
+         "EFFECTIVE_FINAL_SELECTION_DANGLING_INTAKE",
+         "final selection references a missing transcript source intake"),
+        ("subtitle_effective_candidates", "candidate_id",
+         "EFFECTIVE_FINAL_SELECTION_DANGLING_CANDIDATE",
+         "final selection references a missing effective subtitle candidate"),
+        ("subtitle_effective_review_subjects", "review_subject_id",
+         "EFFECTIVE_FINAL_SELECTION_DANGLING_SUBJECT",
+         "final selection references a missing effective review subject"),
+        ("subtitle_effective_review_decisions", "supporting_decision_id",
+         "EFFECTIVE_FINAL_SELECTION_DANGLING_DECISION",
+         "final selection references a missing supporting decision"),
+    ):
+        if not _table_exists(connection, target):
+            continue
+        for (identity,) in connection.execute(
+            f"""
+            SELECT s.identity
+            FROM subtitle_effective_final_selections s
+            LEFT JOIN {target} r ON s.{column} = r.identity
+            WHERE r.identity IS NULL
+            ORDER BY s.identity
+            """
+        ).fetchall():
+            _flag(code, identity, message)
+
+    # Immutable lineage agreement: the selected candidate must be the subject's candidate, the
+    # supporting decision must belong to the subject, and the scope must be the candidate's
+    # intake. These facts were true at selection time and every record is immutable.
+    if _table_exists(connection, "subtitle_effective_review_subjects") and _table_exists(
+        connection, "subtitle_effective_candidates"
+    ) and _table_exists(connection, "subtitle_effective_review_decisions"):
+        for (identity,) in connection.execute(
+            """
+            SELECT s.identity
+            FROM subtitle_effective_final_selections s
+            JOIN subtitle_effective_review_subjects rs ON rs.identity = s.review_subject_id
+            JOIN subtitle_effective_candidates c ON c.identity = s.candidate_id
+            JOIN subtitle_effective_review_decisions d ON d.identity = s.supporting_decision_id
+            WHERE rs.candidate_id <> s.candidate_id
+               OR d.review_subject_id <> s.review_subject_id
+               OR c.transcript_source_intake_id <> s.transcript_source_intake_id
+            ORDER BY s.identity
+            """
+        ).fetchall():
+            _flag("EFFECTIVE_FINAL_SELECTION_LINEAGE_MISMATCH", identity,
+                  "final selection lineage (candidate/subject/decision/scope) disagrees")
+        for (identity,) in connection.execute(
+            """
+            SELECT s.identity
+            FROM subtitle_effective_final_selections s
+            JOIN subtitle_effective_review_decisions d ON d.identity = s.supporting_decision_id
+            WHERE d.kind <> 'accept'
+            ORDER BY s.identity
+            """
+        ).fetchall():
+            _flag("EFFECTIVE_FINAL_SELECTION_DECISION_NOT_ACCEPT", identity,
+                  "final selection's supporting decision is not an accept")
+
+    # Deterministic re-derivation of identity and content fingerprint.
+    for (identity, intake, candidate, subject, decision, selector, sequence,
+         fingerprint, rationale) in connection.execute(
+        """
+        SELECT identity, transcript_source_intake_id, candidate_id, review_subject_id,
+               supporting_decision_id, selector, sequence, content_fingerprint, rationale
+        FROM subtitle_effective_final_selections
+        ORDER BY identity
+        """
+    ).fetchall():
+        expected_identity = "subtitle-effective-final-selection:" + hashlib.sha256(
+            json.dumps(
+                {"contract_kind": "effective_subtitle_final_selection",
+                 "contract_version": 1, "intake": intake, "candidate": candidate,
+                 "review_subject": subject, "supporting_decision": decision,
+                 "sequence": sequence},
+                ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        if identity != expected_identity:
+            _flag("EFFECTIVE_FINAL_SELECTION_IDENTITY_MISMATCH", identity,
+                  "final selection identity does not re-derive from its stored payload")
+        expected_fingerprint = hashlib.sha256(
+            json.dumps(
+                {"intake": intake, "candidate": candidate, "review_subject": subject,
+                 "supporting_decision": decision, "sequence": sequence,
+                 "selector": selector, "rationale": rationale},
+                ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        if fingerprint != expected_fingerprint:
+            _flag("EFFECTIVE_FINAL_SELECTION_FINGERPRINT_MISMATCH", identity,
+                  "final selection content fingerprint does not match its stored payload")
+
+    for (intake,) in connection.execute(
+        """
+        SELECT transcript_source_intake_id
+        FROM subtitle_effective_final_selections
+        GROUP BY transcript_source_intake_id
+        HAVING COUNT(*) <> MAX(sequence) + 1 OR MIN(sequence) <> 0
+            OR COUNT(DISTINCT sequence) <> COUNT(*)
+        ORDER BY transcript_source_intake_id
+        """
+    ).fetchall():
+        _flag("EFFECTIVE_FINAL_SELECTION_SEQUENCE_NONCONTIGUOUS", intake,
+              "an intake's final-selection sequences are not a contiguous unique 0..n-1 sequence")
+
+    for (identity,) in connection.execute(
+        """
+        SELECT s.identity
+        FROM subtitle_effective_final_selections s
+        LEFT JOIN subtitle_effective_final_selections p ON p.identity = s.previous_selection_id
+        WHERE s.previous_selection_id IS NOT NULL
+          AND (p.identity IS NULL
+               OR p.transcript_source_intake_id <> s.transcript_source_intake_id
+               OR p.sequence <> s.sequence - 1
+               OR s.previous_selection_id = s.identity)
+        ORDER BY s.identity
+        """
+    ).fetchall():
+        _flag("EFFECTIVE_FINAL_SELECTION_BROKEN_SUPERSESSION", identity,
+              "a non-initial selection does not supersede its scope's immediately prior selection")
+
+    return diagnostics
+
+
 def _check_raw_transcript_segments(connection: sqlite3.Connection) -> list[Diagnostic]:
     if not _table_exists(connection, "raw_transcript_segments"):
         return []
@@ -2020,6 +2171,7 @@ def validate_repository(connection: sqlite3.Connection) -> ValidationReport:
     diagnostics += _check_effective_subtitle_candidates(connection)
     diagnostics += _check_effective_subtitle_review_subjects(connection)
     diagnostics += _check_effective_subtitle_review_decisions(connection)
+    diagnostics += _check_effective_subtitle_final_selections(connection)
     diagnostics += _check_raw_transcript_segments(connection)
     diagnostics += _check_malformed_identities(connection)
 
