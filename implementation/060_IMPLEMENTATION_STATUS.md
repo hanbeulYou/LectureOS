@@ -2634,3 +2634,41 @@ missing materialization are deliberately never corruption (tested healthy). One 
 export/replay/superseded-block/distinct-artifact/same-content/invalid-graph/physical-isolation scenarios.
 The complete 2468-test suite passes. Physical materialization, delivery, export-enforcement workflows,
 and additional serializer versions remain later, separately-gated milestones and are out of scope.
+
+## Effective SRT Physical Materialization (First Slice, GOAL-018)
+
+- Blueprint: the released record-first materialization discipline (044 §17 / PATCH-0007) and the hardened
+  released local writer, applied to GOAL-017 logical artifacts; no new Blueprint PATCH required
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema **v44** (two insert-only tables
+  `subtitle_effective_srt_materializations` / `subtitle_effective_srt_materialization_outcomes`)
+- Commit: `feat: add effective subtitle physical materialization`
+- Immediate next milestone: the effective-source pipeline is complete through a user-visible `.srt` file —
+  subsequent goals should move beyond subtitle generation itself (delivery/publication workflows or broader
+  system capabilities)
+
+This milestone implements the physical materialization boundary of the effective-transcript subtitle
+contract generation (GOAL-018), completing the pipeline end-to-end: **effective transcript → candidate →
+review subject → Human Decision → final selection → logical SRT artifact → physical `.srt` file**.
+**Artifact ≠ Materialization ≠ delivery.** The released record-first discipline is reused truthfully: the
+immutable intent (PENDING) is durable before any file write, the immutable terminal outcome
+(MATERIALIZED | FAILED) after; state is always derived; a dangling PENDING (crash residue) is completed —
+never duplicated — by the next explicit request; collisions, containment escapes, and I/O failures are
+honest FAILED outcomes. The hardened released writer is reused unchanged (approved absolute root, symlink
+rejection, containment, atomic temp-file discipline, identical-bytes idempotence, different-bytes refusal),
+extended additively with one explicit ``replace`` used solely for an explicit ``overwrite=True`` request.
+
+Identity is deterministic — `(artifact, relative location, per-pair sequence)`; the relative location is
+write provenance, never artifact identity; the recorded payload fingerprint always equals the immutable
+artifact's fingerprint (validated). Replay reuses without rewriting when the latest act is MATERIALIZED and
+the file still holds the exact canonical bytes (UTF-8, LF, no BOM); an existing different file refuses by
+default; explicit overwrite and post-deletion re-realization append new sequence events; deleted or
+diverged physical files never mutate any record and are never corruption (tested healthy). Every released
+version v1..v43 chains single-step to v44 preserving all rows; legacy materialization is untouched
+(zero-row asserted). Read-only validation gains six integrity-only `EFFECTIVE_SRT_MATERIALIZATION_*`
+checks (dangling artifact, payload-fingerprint disagreement, identity re-derivation, per-pair sequence
+contiguity, broken supersession, orphan outcome). One CLI (`lectureos.effective_materialize_cli` with
+`materialize`/`show`/`status`/`list`; FAILED outcomes exit 1 as honest records) and a deterministic demo
+(`lectureos.effective_materialize_demo`) with a byte-stable golden prove the ten GOAL-018 scenarios. The
+complete 2506-test suite passes. Delivery, publication, URL generation, and archive management remain
+later, separately-gated milestones and are out of scope.

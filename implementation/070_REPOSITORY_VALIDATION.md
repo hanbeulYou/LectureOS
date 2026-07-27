@@ -163,6 +163,12 @@ and derives `health` (`healthy` / `warnings` / `errors`) and `ok` (no errors).
 | `EFFECTIVE_SRT_ARTIFACT_FINGERPRINT_MISMATCH` | error | an SRT artifact's content fingerprint does not match its stored payload |
 | `EFFECTIVE_SRT_ARTIFACT_CUE_COUNT_MISMATCH` | error | an SRT artifact's cue count does not match the bound candidate graph |
 | `EFFECTIVE_SRT_ARTIFACT_RESERIALIZATION_MISMATCH` | error | a stored SRT payload does not reserialize byte-identically from the bound candidate graph (superseded/stale artifacts and missing physical materialization are deliberately never flagged) |
+| `EFFECTIVE_SRT_MATERIALIZATION_DANGLING_ARTIFACT` | error | a materialization references a missing effective SRT artifact |
+| `EFFECTIVE_SRT_MATERIALIZATION_FINGERPRINT_MISMATCH` | error | a materialization's payload fingerprint disagrees with its artifact |
+| `EFFECTIVE_SRT_MATERIALIZATION_IDENTITY_MISMATCH` | error | a materialization's identity does not re-derive from its stored payload |
+| `EFFECTIVE_SRT_MATERIALIZATION_SEQUENCE_NONCONTIGUOUS` | error | a (artifact, location) pair's materialization sequences are not contiguous |
+| `EFFECTIVE_SRT_MATERIALIZATION_BROKEN_SUPERSESSION` | error | a non-initial materialization does not supersede its pair's immediately prior act |
+| `EFFECTIVE_SRT_MATERIALIZATION_ORPHAN_OUTCOME` | error | a materialization outcome references a missing intent (PENDING intents, FAILED outcomes, and missing or diverged physical files are deliberately never flagged) |
 | `MALFORMED_IDENTITY` | error | one or more rows have an empty or blank identity |
 
 ## Scope
