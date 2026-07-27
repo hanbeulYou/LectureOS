@@ -75,7 +75,7 @@ class RepositoryValidatorTests(unittest.TestCase):
         self.assertTrue(report.ok)
         self.assertEqual(report.error_count, 0)
         self.assertEqual(report.warning_count, 0)
-        self.assertEqual(report.schema_version, 40)
+        self.assertEqual(report.schema_version, 41)
         self.assertGreater(report.objects_checked, 0)
 
     def test_validator_does_not_mutate_the_database(self) -> None:
@@ -1872,6 +1872,154 @@ class EffectiveSubtitleReviewSubjectValidationTests(unittest.TestCase):
         self.assertIn(
             "EFFECTIVE_REVIEW_SUBJECT_GRAPH_FINGERPRINT_MISMATCH", self._codes(broken)
         )
+
+
+class EffectiveSubtitleReviewDecisionValidationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        from lectureos.application.provider_transcript_admission import (
+            build_provider_transcript_document,
+        )
+        from lectureos.composition import (
+            compose_sqlite_current_raw_transcript_selection_service,
+            compose_sqlite_effective_subtitle_generation_service,
+            compose_sqlite_effective_subtitle_review_decision_service,
+            compose_sqlite_effective_subtitle_review_preparation_service,
+            compose_sqlite_media_import_service,
+            compose_sqlite_provider_transcript_admission_service,
+            compose_sqlite_transcript_source_intake_service,
+        )
+
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.base = Path(self.tempdir.name)
+        self.healthy = self.base / "review-decision.db"
+        connection = initialize_sqlite_database(self.healthy)
+        source = self.base / "s.bin"
+        source.write_bytes(b"review-decision-validation \x00\x01")
+        media_id = compose_sqlite_media_import_service(connection).import_media(str(source)).record.identity.value
+        intake = compose_sqlite_transcript_source_intake_service(connection).admit(media_id).intake.identity.value
+        raw = compose_sqlite_provider_transcript_admission_service(connection).admit(
+            intake_id=intake,
+            document=build_provider_transcript_document(
+                {"provider": "fake", "model": "tiny", "language": "ko", "provider_result_ref": "A",
+                 "segments": [{"start": 0.0, "end": 2.0, "text": "원본"}]}
+            ),
+        ).admission
+        compose_sqlite_current_raw_transcript_selection_service(connection).select(
+            intake, raw.raw_transcript_id.value
+        )
+        candidate = compose_sqlite_effective_subtitle_generation_service(connection).generate(
+            intake_id=intake
+        ).candidate.identity.value
+        subject = compose_sqlite_effective_subtitle_review_preparation_service(connection).prepare_review(
+            candidate_id=candidate
+        ).subject.identity.value
+        decisions = compose_sqlite_effective_subtitle_review_decision_service(connection)
+        # Healthy history: reject superseded by accept — reject/modify/superseded are never corruption.
+        decisions.decide(review_subject_id=subject, kind="reject", reviewer="reviewer:kim")
+        decisions.decide(review_subject_id=subject, kind="accept", reviewer="reviewer:kim")
+        connection.close()
+
+    def tearDown(self) -> None:
+        self.tempdir.cleanup()
+
+    def _corrupt(self, name: str, mutate) -> Path:
+        target = self.base / name
+        shutil.copyfile(self.healthy, target)
+        connection = sqlite3.connect(target)
+        try:
+            connection.execute("PRAGMA foreign_keys = OFF")
+            connection.execute("BEGIN")
+            mutate(connection)
+            connection.execute("COMMIT")
+        finally:
+            connection.close()
+        return target
+
+    def _codes(self, database: Path) -> set[str]:
+        return {d.code for d in validate_database(str(database)).diagnostics}
+
+    def test_healthy_superseded_history_is_clean(self) -> None:
+        report = validate_database(str(self.healthy))
+        self.assertTrue(report.ok)
+        self.assertEqual(report.health, RepositoryHealth.HEALTHY)
+
+    def test_dangling_subject_detected(self) -> None:
+        broken = self._corrupt(
+            "dangling.db",
+            lambda c: c.execute(
+                "UPDATE subtitle_effective_review_decisions "
+                "SET review_subject_id = 'subtitle-effective-review-subject:" + "0" * 64 + "'"
+            ),
+        )
+        self.assertIn("EFFECTIVE_REVIEW_DECISION_DANGLING_SUBJECT", self._codes(broken))
+
+    def test_identity_and_fingerprint_mismatch_detected(self) -> None:
+        broken = self._corrupt(
+            "identity.db",
+            lambda c: c.execute(
+                "UPDATE subtitle_effective_review_decisions "
+                "SET identity = 'subtitle-effective-review-decision:" + "0" * 64 + "' "
+                "WHERE sequence = 1"
+            ),
+        )
+        self.assertIn("EFFECTIVE_REVIEW_DECISION_IDENTITY_MISMATCH", self._codes(broken))
+        broken = self._corrupt(
+            "reviewer.db",
+            lambda c: c.execute(
+                "UPDATE subtitle_effective_review_decisions SET reviewer = 'reviewer:evil' "
+                "WHERE sequence = 0"
+            ),
+        )
+        self.assertIn("EFFECTIVE_REVIEW_DECISION_FINGERPRINT_MISMATCH", self._codes(broken))
+
+    def test_sequence_gap_detected(self) -> None:
+        broken = self._corrupt(
+            "gap.db",
+            lambda c: c.execute(
+                "UPDATE subtitle_effective_review_decisions SET sequence = 5 WHERE sequence = 1"
+            ),
+        )
+        self.assertIn("EFFECTIVE_REVIEW_DECISION_SEQUENCE_NONCONTIGUOUS", self._codes(broken))
+
+    def test_broken_supersession_detected(self) -> None:
+        broken = self._corrupt(
+            "supersession.db",
+            lambda c: c.execute(
+                "UPDATE subtitle_effective_review_decisions "
+                "SET previous_decision_id = 'subtitle-effective-review-decision:ghost' "
+                "WHERE sequence = 1"
+            ),
+        )
+        self.assertIn("EFFECTIVE_REVIEW_DECISION_BROKEN_SUPERSESSION", self._codes(broken))
+
+    def test_unsupported_kind_detected_on_tampered_schema(self) -> None:
+        path = self.base / "kind.db"
+        connection = sqlite3.connect(path)
+        try:
+            connection.executescript(
+                """
+                CREATE TABLE schema_metadata (singleton INTEGER PRIMARY KEY, version INTEGER NOT NULL);
+                INSERT INTO schema_metadata VALUES (1, 41);
+                CREATE TABLE subtitle_effective_review_decisions (
+                    identity TEXT PRIMARY KEY,
+                    review_subject_id TEXT,
+                    kind TEXT,
+                    reviewer TEXT,
+                    sequence INTEGER,
+                    content_fingerprint TEXT,
+                    previous_decision_id TEXT,
+                    rationale TEXT
+                );
+                INSERT INTO subtitle_effective_review_decisions VALUES
+                    ('subtitle-effective-review-decision:x',
+                     'subtitle-effective-review-subject:s', 'approve', 'reviewer:kim', 0,
+                     'f', NULL, NULL);
+                """
+            )
+            connection.commit()
+        finally:
+            connection.close()
+        self.assertIn("EFFECTIVE_REVIEW_DECISION_UNSUPPORTED_KIND", self._codes(path))
 
 
 if __name__ == "__main__":

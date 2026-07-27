@@ -1,0 +1,10 @@
+{
+  "decision_accept_id": "subtitle-effective-review-decision:738a79c3dc8bb1dda3ddffc8a722f90a3f6a447df135553e1236c94985dc0d5f",
+  "decision_count": 5,
+  "decision_d1_id": "subtitle-effective-review-decision:8b26627f09530bcbeeb329979bd2ce62cd2cddb9799fcb7bb974751e5e439fbd",
+  "decision_d3_id": "subtitle-effective-review-decision:6b31c4b877719e7c8ff14186782f5db48d55f34e28453c3eaffabe171de8cd5c",
+  "decision_reject_id": "subtitle-effective-review-decision:9fbd5519f8844c4013d28a984c09daa75a25026c9f8bee6d049728fbac85ce41",
+  "intake_id": "transcript-source-intake:sha256:7be6a9582ff6c7bd4e66c052dc634a38b88909402f2fb330d663000d7f2079a5",
+  "review_subject_r1_id": "subtitle-effective-review-subject:59fcaae7a61896e84ff34bf535eabc532f251987814435b8565d0bc7042f828f",
+  "review_subject_r2_id": "subtitle-effective-review-subject:c431ab4f48a6f1149ba2ced80f92c264ee073e795b8928d4e840ef8fc49cd8c3"
+}

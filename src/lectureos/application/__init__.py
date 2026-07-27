@@ -320,6 +320,15 @@ from .effective_subtitle_review_preparation import (
     derive_candidate_graph_fingerprint,
     derive_review_subject_identity,
 )
+from .effective_subtitle_review_decision import (
+    DecisionApplicability as EffectiveDecisionApplicability,
+    DecisionSubjectIntegrityError,
+    EffectiveSubtitleReviewDecision,
+    EffectiveSubtitleReviewDecisionConflictError,
+    EffectiveSubtitleReviewDecisionError,
+    EffectiveSubtitleReviewDecisionService,
+    derive_decision_identity as derive_effective_review_decision_identity,
+)
 from .effective_transcript_consumption import (
     MANIFEST_CONSUMER_KIND,
     SUBTITLE_GENERATION_CONSUMER_KIND,
@@ -784,6 +793,13 @@ __all__ = [
     "derive_corrected_selection_identity",
     "require_canonical_corrected_revision_id",
     "MANIFEST_CONSUMER_KIND",
+    "EffectiveDecisionApplicability",
+    "DecisionSubjectIntegrityError",
+    "EffectiveSubtitleReviewDecision",
+    "EffectiveSubtitleReviewDecisionConflictError",
+    "EffectiveSubtitleReviewDecisionError",
+    "EffectiveSubtitleReviewDecisionService",
+    "derive_effective_review_decision_identity",
     "EFFECTIVE_REVIEW_PREPARATION_KIND",
     "EFFECTIVE_REVIEW_PREPARATION_VERSION",
     "CandidateGraphIntegrityError",

@@ -71,6 +71,7 @@ _INSPECTED_TABLES = (
     "subtitle_effective_candidate_cues",
     "subtitle_effective_candidate_cue_segments",
     "subtitle_effective_review_subjects",
+    "subtitle_effective_review_decisions",
 )
 _IDENTITY_TABLES = (
     "domain_result_references",
@@ -91,6 +92,7 @@ _IDENTITY_TABLES = (
     "subtitle_effective_candidates",
     "subtitle_effective_candidate_cues",
     "subtitle_effective_review_subjects",
+    "subtitle_effective_review_decisions",
 )
 _APPROVING_KINDS = ("accept", "modify")
 
@@ -1808,6 +1810,114 @@ def _check_effective_subtitle_review_subjects(
     return diagnostics
 
 
+
+def _check_effective_subtitle_review_decisions(
+    connection: sqlite3.Connection,
+) -> list[Diagnostic]:
+    """Integrity of Human Decisions over effective review subjects (GOAL-015). Deliberately NOT
+    flagged: reject/modify kinds, superseded decisions, stale subjects or candidate sources, and
+    the absence of a final selection or export — authority, currentness, and applicability facts
+    are never corruption."""
+
+    if not _table_exists(connection, "subtitle_effective_review_decisions"):
+        return []
+    diagnostics: list[Diagnostic] = []
+
+    def _flag(code: str, identity: str, message: str) -> None:
+        diagnostics.append(
+            Diagnostic(
+                code=code,
+                severity=Severity.ERROR,
+                location=f"subtitle_effective_review_decisions:{identity}",
+                message=message,
+            )
+        )
+
+    if _table_exists(connection, "subtitle_effective_review_subjects"):
+        for (identity,) in connection.execute(
+            """
+            SELECT d.identity
+            FROM subtitle_effective_review_decisions d
+            LEFT JOIN subtitle_effective_review_subjects s ON s.identity = d.review_subject_id
+            WHERE s.identity IS NULL
+            ORDER BY d.identity
+            """
+        ).fetchall():
+            _flag("EFFECTIVE_REVIEW_DECISION_DANGLING_SUBJECT", identity,
+                  "decision references a missing effective review subject")
+
+    for identity, kind in connection.execute(
+        """
+        SELECT identity, kind FROM subtitle_effective_review_decisions
+        WHERE kind NOT IN ('accept', 'reject', 'modify')
+        ORDER BY identity
+        """
+    ).fetchall():
+        _flag("EFFECTIVE_REVIEW_DECISION_UNSUPPORTED_KIND", identity,
+              f"unsupported decision kind: {kind}")
+
+    # Deterministic re-derivation: identity and content fingerprint from the stored payload.
+    for identity, subject, kind, reviewer, sequence, fingerprint, rationale in connection.execute(
+        """
+        SELECT identity, review_subject_id, kind, reviewer, sequence,
+               content_fingerprint, rationale
+        FROM subtitle_effective_review_decisions
+        ORDER BY identity
+        """
+    ).fetchall():
+        expected_identity = "subtitle-effective-review-decision:" + hashlib.sha256(
+            json.dumps(
+                {"review_subject": subject, "kind": kind, "sequence": sequence},
+                ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        if identity != expected_identity:
+            _flag("EFFECTIVE_REVIEW_DECISION_IDENTITY_MISMATCH", identity,
+                  "decision identity does not re-derive from its subject, kind, and sequence")
+        expected_fingerprint = hashlib.sha256(
+            json.dumps(
+                {"review_subject": subject, "kind": kind, "sequence": sequence,
+                 "reviewer": reviewer, "rationale": rationale},
+                ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        if fingerprint != expected_fingerprint:
+            _flag("EFFECTIVE_REVIEW_DECISION_FINGERPRINT_MISMATCH", identity,
+                  "decision content fingerprint does not match its stored payload")
+
+    for (subject,) in connection.execute(
+        """
+        SELECT review_subject_id
+        FROM subtitle_effective_review_decisions
+        GROUP BY review_subject_id
+        HAVING COUNT(*) <> MAX(sequence) + 1 OR MIN(sequence) <> 0
+            OR COUNT(DISTINCT sequence) <> COUNT(*)
+        ORDER BY review_subject_id
+        """
+    ).fetchall():
+        _flag("EFFECTIVE_REVIEW_DECISION_SEQUENCE_NONCONTIGUOUS", subject,
+              "a subject's decision sequences are not a contiguous unique 0..n-1 sequence")
+
+    # Supersession lineage: previous exists, same subject, exactly sequence-1, never self.
+    for (identity,) in connection.execute(
+        """
+        SELECT d.identity
+        FROM subtitle_effective_review_decisions d
+        LEFT JOIN subtitle_effective_review_decisions p ON p.identity = d.previous_decision_id
+        WHERE d.previous_decision_id IS NOT NULL
+          AND (p.identity IS NULL
+               OR p.review_subject_id <> d.review_subject_id
+               OR p.sequence <> d.sequence - 1
+               OR d.previous_decision_id = d.identity)
+        ORDER BY d.identity
+        """
+    ).fetchall():
+        _flag("EFFECTIVE_REVIEW_DECISION_BROKEN_SUPERSESSION", identity,
+              "a non-initial decision does not supersede its subject's immediately prior decision")
+
+    return diagnostics
+
+
 def _check_raw_transcript_segments(connection: sqlite3.Connection) -> list[Diagnostic]:
     if not _table_exists(connection, "raw_transcript_segments"):
         return []
@@ -1909,6 +2019,7 @@ def validate_repository(connection: sqlite3.Connection) -> ValidationReport:
     diagnostics += _check_effective_transcript_consumption(connection)
     diagnostics += _check_effective_subtitle_candidates(connection)
     diagnostics += _check_effective_subtitle_review_subjects(connection)
+    diagnostics += _check_effective_subtitle_review_decisions(connection)
     diagnostics += _check_raw_transcript_segments(connection)
     diagnostics += _check_malformed_identities(connection)
 

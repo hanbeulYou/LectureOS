@@ -70,6 +70,9 @@ from lectureos.application.corrected_revision_generation import (
 from lectureos.application.effective_subtitle_generation import (
     EffectiveSubtitleGenerationService,
 )
+from lectureos.application.effective_subtitle_review_decision import (
+    EffectiveSubtitleReviewDecisionService,
+)
 from lectureos.application.effective_subtitle_review_preparation import (
     EffectiveSubtitleReviewPreparationService,
 )
@@ -194,6 +197,8 @@ from lectureos.persistence import (
     SQLiteDomainResultReferenceRepository,
     SQLiteEffectiveSubtitleCandidateCommandPersistence,
     SQLiteEffectiveSubtitleCandidateRepository,
+    SQLiteEffectiveSubtitleReviewDecisionCommandPersistence,
+    SQLiteEffectiveSubtitleReviewDecisionRepository,
     SQLiteEffectiveSubtitleReviewSubjectCommandPersistence,
     SQLiteEffectiveSubtitleReviewSubjectRepository,
     SQLiteEffectiveTranscriptConsumptionCommandPersistence,
@@ -751,6 +756,25 @@ def compose_sqlite_effective_subtitle_review_preparation_service(
     subjects = SQLiteEffectiveSubtitleReviewSubjectRepository(connection)
     persistence = SQLiteEffectiveSubtitleReviewSubjectCommandPersistence(connection)
     return EffectiveSubtitleReviewPreparationService(generation, subjects, persistence)
+
+
+def compose_sqlite_effective_subtitle_review_decision_service(
+    connection: sqlite3.Connection,
+) -> EffectiveSubtitleReviewDecisionService:
+    """Build Human Decisions over effective-source review subjects on one caller connection (GOAL-015).
+
+    The GOAL-009 authority idiom over GOAL-014 review subjects: explicit append-only decisions with
+    derived current authority and derived applicability — read-only over subjects, candidates, and
+    every upstream record; only `subtitle_effective_review_decisions` is written.
+    """
+
+    preparation = compose_sqlite_effective_subtitle_review_preparation_service(connection)
+    generation = compose_sqlite_effective_subtitle_generation_service(connection)
+    decisions = SQLiteEffectiveSubtitleReviewDecisionRepository(connection)
+    persistence = SQLiteEffectiveSubtitleReviewDecisionCommandPersistence(connection)
+    return EffectiveSubtitleReviewDecisionService(
+        preparation, generation, decisions, persistence
+    )
 
 
 DEFAULT_EDIT_CANDIDATE_CONTEXT_WINDOW_SECONDS = 15.0
