@@ -144,6 +144,16 @@ and derives `health` (`healthy` / `warnings` / `errors`) and `ok` (no errors).
 | `EFFECTIVE_REVIEW_DECISION_FINGERPRINT_MISMATCH` | error | a review decision's content fingerprint does not match its stored payload |
 | `EFFECTIVE_REVIEW_DECISION_SEQUENCE_NONCONTIGUOUS` | error | a subject's decision sequences are not a contiguous unique `0..n-1` sequence |
 | `EFFECTIVE_REVIEW_DECISION_BROKEN_SUPERSESSION` | error | a non-initial decision does not supersede its subject's immediately prior decision (reject/modify kinds, superseded decisions, and stale subjects are deliberately never flagged) |
+| `EFFECTIVE_FINAL_SELECTION_DANGLING_INTAKE` | error | a final selection references a missing transcript source intake |
+| `EFFECTIVE_FINAL_SELECTION_DANGLING_CANDIDATE` | error | a final selection references a missing effective subtitle candidate |
+| `EFFECTIVE_FINAL_SELECTION_DANGLING_SUBJECT` | error | a final selection references a missing effective review subject |
+| `EFFECTIVE_FINAL_SELECTION_DANGLING_DECISION` | error | a final selection references a missing supporting decision |
+| `EFFECTIVE_FINAL_SELECTION_LINEAGE_MISMATCH` | error | a final selection's candidate/subject/decision/scope lineage disagrees |
+| `EFFECTIVE_FINAL_SELECTION_DECISION_NOT_ACCEPT` | error | a final selection's supporting decision is not an accept |
+| `EFFECTIVE_FINAL_SELECTION_IDENTITY_MISMATCH` | error | a final selection's identity does not re-derive from its stored payload |
+| `EFFECTIVE_FINAL_SELECTION_FINGERPRINT_MISMATCH` | error | a final selection's content fingerprint does not match its stored payload |
+| `EFFECTIVE_FINAL_SELECTION_SEQUENCE_NONCONTIGUOUS` | error | an intake's final-selection sequences are not a contiguous unique `0..n-1` sequence |
+| `EFFECTIVE_FINAL_SELECTION_BROKEN_SUPERSESSION` | error | a non-initial selection does not supersede its scope's immediately prior selection (superseded selections, stale sources, later-superseded supporting decisions, and the absence of any export are deliberately never flagged) |
 | `MALFORMED_IDENTITY` | error | one or more rows have an empty or blank identity |
 
 ## Scope

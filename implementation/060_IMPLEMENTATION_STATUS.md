@@ -2546,3 +2546,47 @@ golden prove the accept/replay/repeated-intent/reject/modify/supersession/stale-
 invalid-graph scenarios. The complete 2385-test suite passes. Final-selection eligibility, export
 enforcement, modified-subtitle authoring, annotations, reviewer assignment/authorization, and additional
 decision contract versions remain later, separately-gated milestones and are out of scope.
+
+## Effective Subtitle Final Selection Authority (First Slice, GOAL-016)
+
+- Blueprint: GOAL-011 selection idiom + GOAL-015 Human Authority lineage over `docs/041_SUBTITLE_PIPELINE.md
+  §15` subjects; no new Blueprint PATCH required
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema **v42** (one append-only table
+  `subtitle_effective_final_selections`)
+- Commit: `feat: add effective subtitle final selection`
+- Immediate next milestone: SRT export over the current applicable final selection (export eligibility
+  enforcement + artifact generation for the effective-source generation) — product-gated, deferred
+
+This milestone implements the explicit Final Selection boundary of the effective-transcript subtitle
+contract generation (GOAL-016). **Accept ≠ Final Selection ≠ export.** Eligibility is derived and never
+persisted: a NEW selection requires the subject's current decision to exist, be `accept`, and be applicable
+(the conservative stale policy — reject/modify/superseded-accept/stale subjects are never eligible, while
+existing selections remain immutable history). The explicit command binds, by truthful FKs, the exact
+candidate, review subject, **supporting Accept decision observed at command time** (persisted, never
+inferred later), and the explicit selector `HumanActorReference` (provenance, never authorization, never
+inferred from the reviewer).
+
+The selection scope is the intake (`TranscriptSourceIntakeId`); identity is
+`(contract, intake, candidate, subject, supporting decision, sequence)` with selector/rationale as
+fingerprint-verified provenance; current = highest per-intake sequence over `UNIQUE(intake, sequence)` with
+validated supersession — the GOAL-011 rule. Replay follows the target-match idiom: the current selection
+already binding the exact (candidate, subject, supporting decision) triple is reused idempotently; a
+different candidate OR a new supporting Accept for the same subject appends new lineage (older selections
+are never silently reused). Identical near-concurrent commands converge on fingerprint-verified collisions;
+competing different selections raise an explicit conflict — an explicit Human command is never silently
+discarded. Applicability is derived (`applicable`/`superseded`/`supporting_decision_superseded`/
+`stale_due_to_candidate_source`/`unresolvable`) and separate from integrity.
+
+Every released version v1..v41 chains single-step to v42 preserving all rows (GOAL-013/014/015 and legacy
+rows unchanged; zero-row asserted for export/legacy tables). Read-only validation gains ten integrity-only
+`EFFECTIVE_FINAL_SELECTION_*` checks (dangling refs, lineage mismatch, non-Accept support,
+identity/fingerprint re-derivation, sequence contiguity, broken supersession) — superseded/stale
+selections and later-superseded supporting decisions are deliberately never corruption (tested healthy).
+One CLI (`lectureos.effective_selection_cli` with
+`eligibility`/`select`/`show`/`history`/`current`/`status`, no `--force`, explicit "export state: not part
+of this contract") and a deterministic demo (`lectureos.effective_selection_demo`) with a byte-stable
+golden prove the eligibility/replay/blocking/new-lineage/supersession/stale-history/same-content/
+invalid-graph/downstream-isolation scenarios. The complete 2428-test suite passes. SRT export and
+enforcement, physical materialization, the modified-subtitle authoring path, and additional selection
+contract versions remain later, separately-gated milestones and are out of scope.
