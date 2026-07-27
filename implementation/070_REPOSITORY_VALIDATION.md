@@ -132,6 +132,12 @@ and derives `health` (`healthy` / `warnings` / `errors`) and `ok` (no errors).
 | `EFFECTIVE_SUBTITLE_CUE_WITHOUT_SOURCE_SEGMENT` | error | a cue has no source-segment lineage |
 | `EFFECTIVE_SUBTITLE_CUE_SEGMENT_OUTSIDE_SNAPSHOT` | error | a cue's source segment does not belong to the candidate's bound source snapshot |
 | `EFFECTIVE_SUBTITLE_CUE_CONTENT_MISMATCH` | error | a v1 passthrough cue's text or timing disagrees with its consumed source segment (staleness against current authority is deliberately never checked) |
+| `EFFECTIVE_REVIEW_SUBJECT_DANGLING_CANDIDATE` | error | a review subject references a missing effective subtitle candidate |
+| `EFFECTIVE_REVIEW_SUBJECT_UNSUPPORTED_PREPARATION` | error | a review subject records an unsupported preparation contract kind/version |
+| `EFFECTIVE_REVIEW_SUBJECT_DUPLICATE_PREPARATION` | error | more than one review subject exists for one candidate and preparation contract |
+| `EFFECTIVE_REVIEW_SUBJECT_KEY_MISMATCH` | error | a review subject's preparation key does not re-derive from its contract and candidate |
+| `EFFECTIVE_REVIEW_SUBJECT_IDENTITY_MISMATCH` | error | a review subject's identity does not re-derive from its stored payload |
+| `EFFECTIVE_REVIEW_SUBJECT_GRAPH_FINGERPRINT_MISMATCH` | error | a review subject's graph fingerprint does not match the bound candidate graph (absence of a Human Decision, reviewer, selection, or export is deliberately never flagged) |
 | `MALFORMED_IDENTITY` | error | one or more rows have an empty or blank identity |
 
 ## Scope

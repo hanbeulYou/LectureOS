@@ -2460,3 +2460,48 @@ round-trip / same-content-different-source / inapplicable scenarios. The complet
 Downstream bridging (review, selection eligibility, export enforcement), additional generators or
 configurations, automatic staleness reactions, and legacy candidate migration remain later, separately-gated
 milestones and are out of scope.
+
+## Effective-Source Subtitle Review Preparation (First Slice, 041 §15 downstream / GOAL-014)
+
+- Blueprint: `docs/041_SUBTITLE_PIPELINE.md §15` E11–E14 downstream separation / `patches/PATCH-0029`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema **v40** (one insert-only table
+  `subtitle_effective_review_subjects`)
+- Commit: `feat: add effective subtitle review preparation`
+- Immediate next milestone: Human Decisions over effective-source review subjects (reusing the §18 Human
+  Authority idiom) — product-gated, deferred
+
+This milestone implements the first downstream stage of the effective-transcript subtitle contract
+generation (GOAL-014): an **explicit** request prepares one exact immutable `EffectiveSubtitleCandidate`
+graph as an immutable **Review Subject** — the historical fact that this exact graph was presented for
+review. Preparation is preparation only: it grants no authority (no Human Decision, reviewer,
+approval/rejection/completion state, decision applicability, final-selection eligibility, or export
+eligibility), touches no legacy review table (ReviewItem/CandidateReference/subtitle review — zero-row
+asserted), and never prepares automatically on generation or authority changes.
+
+The subject binds the exact graph twice: a truthful FK to the effective-source candidate representation
+(never a generic candidate id) and a deterministic **candidate graph fingerprint** over the candidate's
+immutable provenance and complete ordered cue set (identity, ordinal, text, timing, ordered source-segment
+lineage) — an integrity anchor, never authority. Structural integrity (cue count, contiguous ordinals,
+non-empty lineage) is verified before preparation; a broken graph refuses with nothing persisted.
+**Recorded stale-candidate policy:** a structurally valid but source-stale candidate may be explicitly
+prepared, returning derived stale currentness — historical inspectability ≠ current decision applicability.
+
+Identity is deterministic (`subtitle-effective-review-subject:<sha256(kind, version, candidate, graph
+fingerprint)>`); the replay anchor (`preparation_key` UNIQUE + UNIQUE(candidate, kind, version)) yields one
+canonical subject per candidate and preparation contract; identical replay reuses, byte-identical content
+under different candidates stays distinct, near-concurrent identical requests converge on the collision, and
+a divergent payload for one anchor is an explicit conflict. Persistence is one atomic single-row insert with
+full rollback. Currentness is derived only: the full GOAL-012/013 `ConsumptionCurrentness` vocabulary for
+the candidate source plus `current`/`stale_due_to_candidate_source`/`unresolvable` for the subject; no
+mutable flag exists and stale subjects remain valid history. Every released version v1..v39 chains
+single-step to v40 preserving all rows (GOAL-013 and legacy rows unchanged). Read-only validation gains six
+integrity-only `EFFECTIVE_REVIEW_SUBJECT_*` checks (dangling candidate, unsupported contract, duplicate
+preparation, key/identity re-derivation, graph-fingerprint recomputation) — absence of a Human Decision and
+candidate staleness are deliberately never flagged (tested healthy). One CLI
+(`lectureos.effective_review_cli` with `prepare`/`show`/`list`/`status`, no `--force`, no fabricated review
+status) and a deterministic demo (`lectureos.effective_review_demo`) with a byte-stable golden prove the
+prepare/replay/corrected/round-trip/same-content/stale-history/invalid-graph scenarios. The complete
+2341-test suite passes. Human Decisions, reviewer assignment, decision applicability, final-selection
+eligibility, export enforcement, and additional preparation contract versions remain later,
+separately-gated milestones and are out of scope.
