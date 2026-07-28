@@ -2716,3 +2716,48 @@ One CLI (`lectureos.effective_deliver_cli` with `eligibility`/`deliver`/`show`/`
 (`lectureos.effective_deliver_demo`) with a byte-stable golden prove the fourteen GOAL-019 scenarios
 (56 focused new tests). The complete 2562-test suite passes. Publication, URLs, network transfer, and
 recipient acknowledgement remain later, separately-gated milestones and are out of scope.
+
+## Effective SRT Publication Authority (First Slice, GOAL-020)
+
+- Blueprint: the released Human Authority pattern (GOAL-009/GOAL-015) and the released append-only
+  per-scope authority idiom (GOAL-011/GOAL-016), applied over GOAL-019 deliveries; no new Blueprint
+  PATCH required
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema **v46** (one append-only table
+  `subtitle_effective_srt_publications`)
+- Commit: `feat: add effective subtitle publication authority`
+- Immediate next milestone: the effective-source subtitle pipeline now ends in explicit, auditable
+  publication authority with derived availability — subsequent goals may serve availability
+  externally (a deliberately separate, network-facing contract) or return to broader system
+  capabilities (e.g. the Lecture Intelligence pipeline)
+
+This milestone implements explicit Publication and Availability Authority over successfully
+delivered effective-source subtitles (GOAL-020). One explicit Human command (`publish` targeting
+one exact DELIVERED delivery, or `withdraw` for an intake scope with publication history) appends
+one immutable authority record (contract `effective_srt_publication` v1); Current Publication is
+derived per intake as the highest valid sequence over the validated supersession chain, and
+Availability is derived separately (`not_published` / `available` / `withdrawn` / `not_observed` /
+`destination_missing` / `destination_mismatch` / `unresolvable`). **Delivery ≠ Publication ≠
+Availability ≠ network access**: no URL, no network operation, no file write, no recipient
+acknowledgement, no mutable `is_published` flag.
+
+Eligibility is derived, never persisted: a repository-proven DELIVERED record with coherent
+lineage; when a Delivery Root is supplied the destination must currently match (missing/diverged
+bytes block a NEW publish), while historical publications stay immutable when files later change —
+availability alone derives the loss. Stale/superseded artifacts' deliveries remain publishable
+(historical operability). Identity is deterministic over (contract, intake scope, kind, exact
+target | null, sequence); publisher and rationale are fingerprint-verified provenance, never
+identity. Repeated intent follows GOAL-009: the same target — even by another actor — converges on
+the established authority state preserving first-establishing provenance; different targets,
+withdrawals, and re-publications append; withdraw deletes nothing anywhere. Near-concurrent
+identical commands converge through the durable slot; divergent commands (publish-vs-withdraw,
+competing targets) raise an explicit conflict — never silent loss. Every released version v1..v45
+chains single-step to v46 preserving all rows; artifact/materialization/delivery/legacy rows are
+untouched. Read-only validation gains nine integrity-only `EFFECTIVE_SRT_PUBLICATION_*` checks;
+withdrawals, superseded history, and missing destinations are never corruption and validation never
+reads the filesystem. One CLI (`lectureos.effective_publish_cli` with `eligibility`/`publish`/
+`withdraw`/`show`/`history`/`current`/`availability`/`status`) and a deterministic demo
+(`lectureos.effective_publish_demo`) with a byte-stable golden prove the fourteen GOAL-020
+scenarios (44 focused new tests). The complete 2606-test suite passes. Public URLs, download
+endpoints, network transfer, recipient models, scheduling, and automatic publication remain later,
+separately-gated milestones and are out of scope.

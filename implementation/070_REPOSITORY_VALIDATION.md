@@ -179,6 +179,15 @@ and derives `health` (`healthy` / `warnings` / `errors`) and `ok` (no errors).
 | `EFFECTIVE_SRT_DELIVERY_ORPHAN_OUTCOME` | error | a delivery outcome references a missing intent |
 | `EFFECTIVE_SRT_DELIVERY_UNSUPPORTED_FAILURE_CATEGORY` | error | a failed delivery outcome uses an unsupported failure category |
 | `EFFECTIVE_SRT_DELIVERY_DELIVERED_FINGERPRINT_MISMATCH` | error | a delivered outcome's fingerprint disagrees with the intent's expected payload (PENDING intents, FAILED outcomes, and missing or diverged source/destination files are deliberately never flagged) |
+| `EFFECTIVE_SRT_PUBLICATION_TARGET_RULE_VIOLATION` | error | a publication's kind and target lineage violate the closed publish/withdraw rule |
+| `EFFECTIVE_SRT_PUBLICATION_DANGLING_DELIVERY` | error | a publication targets a missing effective SRT delivery |
+| `EFFECTIVE_SRT_PUBLICATION_ARTIFACT_LINEAGE_MISMATCH` | error | a publication's artifact lineage disagrees with its target delivery |
+| `EFFECTIVE_SRT_PUBLICATION_TARGET_NOT_DELIVERED` | error | a publication targets a delivery without a DELIVERED outcome |
+| `EFFECTIVE_SRT_PUBLICATION_SCOPE_MISMATCH` | error | a publication's scope disagrees with its target delivery's intake scope |
+| `EFFECTIVE_SRT_PUBLICATION_IDENTITY_MISMATCH` | error | a publication's identity does not re-derive from its stored payload |
+| `EFFECTIVE_SRT_PUBLICATION_FINGERPRINT_MISMATCH` | error | a publication's content fingerprint does not re-derive from its stored payload |
+| `EFFECTIVE_SRT_PUBLICATION_SEQUENCE_NONCONTIGUOUS` | error | an intake scope's publication sequences are not contiguous |
+| `EFFECTIVE_SRT_PUBLICATION_BROKEN_SUPERSESSION` | error | a non-initial publication does not supersede its scope's immediately prior record (withdrawals, superseded publications, and missing destination files are deliberately never flagged) |
 | `MALFORMED_IDENTITY` | error | one or more rows have an empty or blank identity |
 
 ## Scope

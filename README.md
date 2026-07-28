@@ -29,7 +29,7 @@ LectureOS는 긴 한국어 강의의 후반작업에서 생기는 반복 작업�
 ### ✅ Implemented (구현 완료 · 테스트됨)
 
 - **실행 · lineage** — 처리 실행(run), 유닛 실행, `DomainResult` provenance를 SQLite에 durable하게 저장(스키마
-  **v45**, 이전 모든 버전에서 additive 단일 단계 마이그레이션).
+  **v46**, 이전 모든 버전에서 additive 단일 단계 마이그레이션).
 - **미디어 임포트(Media Import)** — 로컬 파일을 **content-addressed** canonical Source Media 기록으로 등록
   (스트리밍 SHA-256 → `sha256:<digest>`, 경로는 identity가 아님, 동일 내용 idempotent). 파일 identity와
   provenance만 기록하며 디코딩·transcode·probe·재생·transcription은 하지 않습니다. `lectureos.media_import_cli`.
@@ -115,6 +115,12 @@ LectureOS는 긴 한국어 강의의 후반작업에서 생기는 반복 작업�
   이전에 artifact fingerprint로 검증되고 DELIVERED는 목적지 재검증 후에만 기록되며, 실패는 안정된 category의
   정직한 FAILED outcome입니다. dangling PENDING은 명시적 `reconcile`(관찰만)로 닫힙니다. delivery ≠
   publication — URL·공개·수신 확인은 없습니다. `lectureos.effective_deliver_cli`.
+- **Effective SRT Publication Authority** — 성공적으로 배달된 자막에 대한 명시적 publish/withdraw Human
+  Authority입니다(GOAL-020, released Human Authority·선택 idiom 재사용). 명령은 정확히 하나의 DELIVERED
+  delivery를 대상으로 하고, current publication은 intake별 최고 sequence로 파생되며, availability
+  (available/withdrawn/destination_missing 등)는 authority와 분리되어 파생됩니다. withdraw는 아무것도
+  삭제하지 않고 파일 삭제·변조는 history를 변경하지 않습니다. URL·네트워크·수신 확인은 없습니다.
+  `lectureos.effective_publish_cli`.
 - **인식문 파이프라인** — 원본 인식문 + provider 결과, 교정 생성·적용, 검수 준비, 사람의 검수 결정, applicability,
   current selection, ready state.
 - **자막 파이프라인** — 인테이크, 후보 생성, reading/time 표현, 구조 검증, 검수 준비, 사람의 검수 결정, 결정 적용,
@@ -695,6 +701,41 @@ PYTHONPATH=src python3 -m lectureos.effective_deliver_cli reconcile --delivery s
 [`examples/effective-deliver/`](examples/effective-deliver/README.md), 계약은
 `implementation/109_EFFECTIVE_SRT_DELIVERY.md`를 참고하세요.
 
+## Effective SRT Publication Authority
+
+배달된 effective 자막에 대한 명시적 publication authority 경계입니다(GOAL-020). **Delivery ≠ Publication ≠
+Availability ≠ 네트워크 접근.** **`--force`는 없습니다:**
+
+```bash
+# 파생 적격성 (persist되지 않음)
+PYTHONPATH=src python3 -m lectureos.effective_publish_cli eligibility --delivery subtitle-effective-srt-delivery:<digest> --delivery-root /path/to/deliver --database /path/to/lectureos.sqlite3
+
+# 명시적 publish / withdraw (append-only Human Authority; withdraw는 아무것도 삭제하지 않음)
+PYTHONPATH=src python3 -m lectureos.effective_publish_cli publish --delivery subtitle-effective-srt-delivery:<digest> --publisher publisher:kim --delivery-root /path/to/deliver --database /path/to/lectureos.sqlite3
+PYTHONPATH=src python3 -m lectureos.effective_publish_cli withdraw --intake transcript-source-intake:sha256:<digest> --publisher publisher:kim --database /path/to/lectureos.sqlite3
+
+# 불변 record / append-only history / 파생 current / 파생 availability / 관찰 분리 status
+PYTHONPATH=src python3 -m lectureos.effective_publish_cli show --publication subtitle-effective-srt-publication:<digest> --database /path/to/lectureos.sqlite3
+PYTHONPATH=src python3 -m lectureos.effective_publish_cli history --intake transcript-source-intake:sha256:<digest> --database /path/to/lectureos.sqlite3
+PYTHONPATH=src python3 -m lectureos.effective_publish_cli current --intake transcript-source-intake:sha256:<digest> --database /path/to/lectureos.sqlite3
+PYTHONPATH=src python3 -m lectureos.effective_publish_cli availability --intake transcript-source-intake:sha256:<digest> --delivery-root /path/to/deliver --database /path/to/lectureos.sqlite3
+PYTHONPATH=src python3 -m lectureos.effective_publish_cli status --publication subtitle-effective-srt-publication:<digest> --delivery-root /path/to/deliver --database /path/to/lectureos.sqlite3
+```
+
+- publish는 정확히 하나의 DELIVERED delivery를 대상으로 하며(암시적 latest 없음), 같은 target의 반복 명령은
+  (다른 actor여도) 이미 성립한 authority 상태로 수렴합니다(최초 성립 provenance 보존). withdraw·교체 publish·
+  재공개는 append-only로 추가되고 이전 record는 불변 history로 남습니다.
+- current publication은 intake별 최고 sequence로 파생되고(mutable 플래그·created_at·latest-row 없음),
+  availability는 authority와 분리되어 파생됩니다 — 배포 파일 삭제/변조는 `destination_missing`/
+  `destination_mismatch`일 뿐 history를 변경하지 않으며, `--delivery-root` 없이는 정직하게
+  `not_observed`입니다.
+- publication identity는 (계약, intake scope, kind, 정확한 target, sequence)에서 파생되며 publisher와
+  rationale은 fingerprint로 검증되는 provenance입니다. 경쟁 명령은 명시적 conflict입니다.
+
+결정적 데모: `PYTHONPATH=src python3 -m lectureos.effective_publish_demo`. 동작 예제는
+[`examples/effective-publish/`](examples/effective-publish/README.md), 계약은
+`implementation/110_EFFECTIVE_SRT_PUBLICATION.md`를 참고하세요.
+
 ## Repository Validation (저장소 검증)
 
 저장소가 내부적으로 일관적인지 **읽기 전용**으로 검증합니다(저장소를 수정하지 않습니다). identity, 참조,
@@ -742,7 +783,7 @@ golden 출력이 포함됩니다. export된 JSON은 서술적입니다 — 실�
 LectureOS/
 ├── src/lectureos/
 │   ├── application/        # 순수 domain + application 서비스(모델·불변식·오케스트레이션)
-│   ├── persistence/        # insert-only SQLite 저장소 + additive 스키마(v45)
+│   ├── persistence/        # insert-only SQLite 저장소 + additive 스키마(v46)
 │   ├── infrastructure/     # 로컬 파일시스템 writer(temp-file + 원자적 배치)
 │   ├── execution/          # 처리 실행, 유닛 실행, DomainResult lineage
 │   ├── providers/          # 선택적 provider 어댑터(예: OpenAI) — MVP에는 불필요
@@ -764,6 +805,7 @@ LectureOS/
 │   ├── effective_srt_cli.py # Effective Subtitle SRT Artifact CLI
 │   ├── effective_materialize_cli.py # Effective SRT 물리 Materialization CLI
 │   ├── effective_deliver_cli.py # Effective SRT 명시적 Delivery CLI
+│   ├── effective_publish_cli.py # Effective SRT Publication Authority CLI
 │   ├── edit_export_cli.py  # 실행 가능한 Edit Export CLI
 │   ├── edit_export_demo.py # 실행 가능한 mock end-to-end 데모(미디어·네트워크 불필요)
 │   └── *_acceptance.py     # 인프로세스 end-to-end 인수 실행기
@@ -795,7 +837,7 @@ LectureOS/
 ## Development Status (개발 상태)
 
 - **Blueprint:** **PATCH-0020**까지 안정(`docs/`, `patches/`).
-- **구현:** edit-export MVP 완료; SQLite 스키마 **v45**; 전체 스위트 green(1800개 이상).
+- **구현:** edit-export MVP 완료; SQLite 스키마 **v46**; 전체 스위트 green(1800개 이상).
 - **거버넌스:** Blueprint 우선 — 제품 의미를 바꾸려면 PATCH를 먼저 쓰고 나서 구현합니다.
   `AGENTS.md`와 `implementation/050_IMPLEMENTATION_WORKFLOW.md` 참고.
 
