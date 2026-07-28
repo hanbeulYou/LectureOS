@@ -103,7 +103,7 @@ LectureOS는 긴 한국어 강의의 후반작업에서 생기는 반복 작업�
 - **Effective Subtitle SRT Artifact** — 현재 적용 가능한 Final Selection에서 released canonical SRT
   serializer로 바이트 결정적 논리 artifact를 생성합니다(GOAL-017). artifact는 정확한 selection/candidate
   lineage와 content fingerprint를 고정한 불변 record이며 파일·경로·URL·materialization을 의미하지 않습니다
-  (물리 materialization은 이후 Goal). superseded/stale selection은 새 artifact를 만들 수 없고 currentness는
+  (물리 materialization은 GOAL-018의 별도 명시적 단계). superseded/stale selection은 새 artifact를 만들 수 없고 currentness는
   파생됩니다. `lectureos.effective_srt_cli`.
 - **Effective SRT 물리 Materialization** — 논리 artifact의 정확한 canonical bytes를 승인된 Storage Root
   아래에 실현합니다(GOAL-018, released record-first 규율·hardened writer 재사용). intent는 쓰기 전에
@@ -736,6 +736,25 @@ PYTHONPATH=src python3 -m lectureos.effective_publish_cli status --publication s
 [`examples/effective-publish/`](examples/effective-publish/README.md), 계약은
 `implementation/110_EFFECTIVE_SRT_PUBLICATION.md`를 참고하세요.
 
+## Effective Subtitle Pipeline v1 Release
+
+GOAL-013~020의 여덟 단계(candidate → review → Human decision → final selection → 논리 SRT artifact →
+물리 materialization → 검증된 delivery → publication authority → 파생 availability)가 하나의 정합적인
+릴리스로 닫혔습니다(GOAL-021). 모든 전이는 명시적 명령이고, current 상태는 파생되며, history는
+append-only이고, legacy 파이프라인은 격리되어 있습니다.
+
+```bash
+# 전체 파이프라인 결정적 릴리스 데모 (byte-stable golden)
+PYTHONPATH=src python3 -m lectureos.effective_subtitle_release_demo
+```
+
+- 릴리스 문서: `implementation/111_EFFECTIVE_SUBTITLE_PIPELINE_V1_RELEASE.md`
+- 릴리스 manifest·golden: [`examples/effective-subtitle-v1/`](examples/effective-subtitle-v1/README.md)
+- 릴리스 수용 스위트: `tests/test_effective_subtitle_pipeline_release.py`
+- 단계별 완결 문서: `implementation/103`~`110` · 단계별 CLI는 위 각 섹션 참고
+- v1에 포함되지 않는 것(유예 경계): HTTP 서빙·다운로드 endpoint·공개 URL·클라우드 업로드·접근 제어·수신
+  확인·frontend·자동 오케스트레이션·Lecture Intelligence
+
 ## Repository Validation (저장소 검증)
 
 저장소가 내부적으로 일관적인지 **읽기 전용**으로 검증합니다(저장소를 수정하지 않습니다). identity, 참조,
@@ -837,7 +856,9 @@ LectureOS/
 ## Development Status (개발 상태)
 
 - **Blueprint:** **PATCH-0020**까지 안정(`docs/`, `patches/`).
-- **구현:** edit-export MVP 완료; SQLite 스키마 **v46**; 전체 스위트 green(1800개 이상).
+- **구현:** edit-export MVP 완료; **Effective Subtitle Pipeline v1 릴리스 완료**
+  (`implementation/111_EFFECTIVE_SUBTITLE_PIPELINE_V1_RELEASE.md`); SQLite 스키마 **v46**; 전체 스위트
+  green(1800개 이상).
 - **거버넌스:** Blueprint 우선 — 제품 의미를 바꾸려면 PATCH를 먼저 쓰고 나서 구현합니다.
   `AGENTS.md`와 `implementation/050_IMPLEMENTATION_WORKFLOW.md` 참고.
 

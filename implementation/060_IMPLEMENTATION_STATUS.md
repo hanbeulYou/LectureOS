@@ -2761,3 +2761,34 @@ reads the filesystem. One CLI (`lectureos.effective_publish_cli` with `eligibili
 scenarios (44 focused new tests). The complete 2606-test suite passes. Public URLs, download
 endpoints, network transfer, recipient models, scheduling, and automatic publication remain later,
 separately-gated milestones and are out of scope.
+
+## Effective Subtitle Pipeline v1 Release Closure (GOAL-021)
+
+- Blueprint: release closure over the released GOAL-013…GOAL-020 contracts; no new Blueprint PATCH
+  required and no new product capability added
+- Status: **COMPLETE — Effective Subtitle Pipeline v1 Complete**
+- Schema: unchanged (**v46**; no release persistence added)
+- Commits: `test: add effective subtitle v1 release acceptance`,
+  `docs: close effective subtitle pipeline v1`
+- Immediate next epic: **Lecture Intelligence** (docs/042 / PATCH-0009 analysis-input eligibility) —
+  the effective subtitle pipeline is complete and network-facing serving remains a deliberately
+  deferred boundary
+
+This milestone closes GOAL-013…GOAL-020 as one coherent released system rather than a sequence of
+individually passing features. It adds: one connected production-service release acceptance suite
+(`tests/test_effective_subtitle_pipeline_release.py`, 12 tests — typed lineage across all eight
+stages, exact-byte SRT verification end to end, full-pipeline exact replay with zero new rows,
+reject/modify blocking downstream authority, new-Accept lineage, candidate replacement with
+immutable superseded history, physical/destination deletion preserving history, withdraw/republish
+append-only, restart reconstruction of every derived state, healthy full-pipeline validation, and
+cross-stage corruption detection); one deterministic release demo
+(`lectureos.effective_subtitle_release_demo`) with a byte-stable machine-path-free golden; a
+deterministic release manifest (`examples/effective-subtitle-v1/release-manifest.json`: goals,
+schema range v39→v46, stages/tables/services/CLIs, contract kinds/versions, authority and derived
+state vocabularies, deferred boundaries); and the canonical release document
+(`implementation/111_EFFECTIVE_SUBTITLE_PIPELINE_V1_RELEASE.md`) with the stage/contract/identity/
+authority maps, validator inventory, concurrency and side-effect audits, legacy isolation, and
+explicit v1 boundary (no HTTP/URL/access control/acknowledgement/frontend/orchestration/Lecture
+Intelligence). One documentation drift was corrected (README no longer describes materialization as
+a future goal). No release tag was created — the repository has no tag policy. The complete
+2622-test suite passes (16 new release tests).
