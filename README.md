@@ -29,7 +29,7 @@ LectureOS는 긴 한국어 강의의 후반작업에서 생기는 반복 작업�
 ### ✅ Implemented (구현 완료 · 테스트됨)
 
 - **실행 · lineage** — 처리 실행(run), 유닛 실행, `DomainResult` provenance를 SQLite에 durable하게 저장(스키마
-  **v46**, 이전 모든 버전에서 additive 단일 단계 마이그레이션).
+  **v47**, 이전 모든 버전에서 additive 단일 단계 마이그레이션).
 - **미디어 임포트(Media Import)** — 로컬 파일을 **content-addressed** canonical Source Media 기록으로 등록
   (스트리밍 SHA-256 → `sha256:<digest>`, 경로는 identity가 아님, 동일 내용 idempotent). 파일 identity와
   provenance만 기록하며 디코딩·transcode·probe·재생·transcription은 하지 않습니다. `lectureos.media_import_cli`.
@@ -126,6 +126,11 @@ LectureOS는 긴 한국어 강의의 후반작업에서 생기는 반복 작업�
   authority가 분석 입력으로 admissible한지 **파생**으로 판정합니다(GOAL-022, §20 resolver·§19 fingerprint
   재사용). 아무것도 persist하지 않는 advisory 결과이며 이후 명시적 admission이 재검증합니다. 분석·AI 호출은
   없습니다. `lectureos.analysis_input_eligibility_cli`.
+- **Lecture Analysis Input Admission (명시적)** — 042 Milestone 1의 durable half입니다(GOAL-023). 명시적
+  명령이 eligibility를 명령 시점에 재검증한 뒤 정확한 authority snapshot(intake·source media·corrected
+  revision·parent raw·selection·§19 fingerprint)을 바인딩한 **불변 append-only** analysis input 기록을
+  만듭니다. 같은 authority 재admission은 멱등 수렴, 바뀐 authority는 새 기록, 이전 기록은 불변 history.
+  Analysis 실행·AI는 없습니다. `lectureos.analysis_input_admission_cli`.
 - **인식문 파이프라인** — 원본 인식문 + provider 결과, 교정 생성·적용, 검수 준비, 사람의 검수 결정, applicability,
   current selection, ready state.
 - **자막 파이프라인** — 인테이크, 후보 생성, reading/time 표현, 구조 검증, 검수 준비, 사람의 검수 결정, 결정 적용,
@@ -781,6 +786,28 @@ PYTHONPATH=src python3 -m lectureos.analysis_input_eligibility_cli evaluate --in
 [`examples/analysis-input-eligibility/`](examples/analysis-input-eligibility/README.md), 계약은
 `implementation/112_LECTURE_ANALYSIS_INPUT_ELIGIBILITY.md`를 참고하세요.
 
+## Lecture Analysis Input Admission (명시적)
+
+042 Milestone 1의 durable half입니다(GOAL-023) — **Admission ≠ Analysis Execution:**
+
+```bash
+PYTHONPATH=src python3 -m lectureos.analysis_input_admission_cli admit  --intake transcript-source-intake:sha256:<digest> --database /path/to/lectureos.sqlite3
+PYTHONPATH=src python3 -m lectureos.analysis_input_admission_cli show   --admission lecture-analysis-input:<digest> --database /path/to/lectureos.sqlite3
+PYTHONPATH=src python3 -m lectureos.analysis_input_admission_cli status --admission lecture-analysis-input:<digest> --database /path/to/lectureos.sqlite3
+PYTHONPATH=src python3 -m lectureos.analysis_input_admission_cli list   --intake transcript-source-intake:sha256:<digest> --database /path/to/lectureos.sqlite3
+```
+
+- 모든 admission은 GOAL-022 eligibility를 **명령 시점에 재검증**하고(ineligible → 아무것도 persist하지
+  않음), 정확한 authority snapshot을 바인딩한 불변 기록을 append합니다(수정·삭제 없음).
+- identity는 released GOAL-012 binding 규칙(정확한 불변 source: intake + corrected revision)에서만
+  파생됩니다 — 같은 authority 재admission(동시 요청·복귀 포함)은 기존 기록으로 멱등 수렴하고, 바뀐
+  authority는 새 기록을 만들며 이전 기록은 불변 history로 남습니다(`status`가 current/superseded를 파생).
+- legacy 실행 결합형 042 구현(`eligible_analysis_inputs`)은 결코 읽거나 쓰지 않습니다.
+
+결정적 데모: `PYTHONPATH=src python3 -m lectureos.analysis_input_admission_demo`. 동작 예제는
+[`examples/analysis-input-admission/`](examples/analysis-input-admission/README.md), 계약은
+`implementation/113_LECTURE_ANALYSIS_INPUT_ADMISSION.md`를 참고하세요.
+
 ## Repository Validation (저장소 검증)
 
 저장소가 내부적으로 일관적인지 **읽기 전용**으로 검증합니다(저장소를 수정하지 않습니다). identity, 참조,
@@ -828,7 +855,7 @@ golden 출력이 포함됩니다. export된 JSON은 서술적입니다 — 실�
 LectureOS/
 ├── src/lectureos/
 │   ├── application/        # 순수 domain + application 서비스(모델·불변식·오케스트레이션)
-│   ├── persistence/        # insert-only SQLite 저장소 + additive 스키마(v46)
+│   ├── persistence/        # insert-only SQLite 저장소 + additive 스키마(v47)
 │   ├── infrastructure/     # 로컬 파일시스템 writer(temp-file + 원자적 배치)
 │   ├── execution/          # 처리 실행, 유닛 실행, DomainResult lineage
 │   ├── providers/          # 선택적 provider 어댑터(예: OpenAI) — MVP에는 불필요
@@ -852,6 +879,7 @@ LectureOS/
 │   ├── effective_deliver_cli.py # Effective SRT 명시적 Delivery CLI
 │   ├── effective_publish_cli.py # Effective SRT Publication Authority CLI
 │   ├── analysis_input_eligibility_cli.py # 파생 Lecture Analysis Input Eligibility CLI
+│   ├── analysis_input_admission_cli.py # 명시적 Lecture Analysis Input Admission CLI
 │   ├── edit_export_cli.py  # 실행 가능한 Edit Export CLI
 │   ├── edit_export_demo.py # 실행 가능한 mock end-to-end 데모(미디어·네트워크 불필요)
 │   └── *_acceptance.py     # 인프로세스 end-to-end 인수 실행기
@@ -884,7 +912,7 @@ LectureOS/
 
 - **Blueprint:** **PATCH-0020**까지 안정(`docs/`, `patches/`).
 - **구현:** edit-export MVP 완료; **Effective Subtitle Pipeline v1 릴리스 완료**
-  (`implementation/111_EFFECTIVE_SUBTITLE_PIPELINE_V1_RELEASE.md`); SQLite 스키마 **v46**; 전체 스위트
+  (`implementation/111_EFFECTIVE_SUBTITLE_PIPELINE_V1_RELEASE.md`); SQLite 스키마 **v47**; 전체 스위트
   green(1800개 이상).
 - **거버넌스:** Blueprint 우선 — 제품 의미를 바꾸려면 PATCH를 먼저 쓰고 나서 구현합니다.
   `AGENTS.md`와 `implementation/050_IMPLEMENTATION_WORKFLOW.md` 참고.

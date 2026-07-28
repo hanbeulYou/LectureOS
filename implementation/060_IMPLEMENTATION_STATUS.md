@@ -2828,3 +2828,36 @@ ineligible exit 1) and a deterministic demo (`lectureos.analysis_input_eligibili
 byte-stable golden prove the ten GOAL-022 scenarios (20 focused new tests). The complete
 2642-test suite passes; Effective Subtitle Pipeline v1 and all transcript contracts are
 unchanged.
+
+## Explicit Lecture Analysis Input Admission (First Slice, GOAL-023)
+
+- Blueprint: `docs/042` §5.1 + `PATCH-0009` (042 Milestone 1, Confirmed) — the durable half for
+  the effective-transcript generation; no new Blueprint PATCH required
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema **v47** (one append-only table
+  `lecture_analysis_input_admissions`)
+- Commit: `feat: add explicit lecture analysis input admission`
+- Immediate next milestone: the first analysis capability over admitted inputs — 042's later
+  milestones (segmentation/finding foundations, §7.1/§8.1) remain product-gated and need gate
+  evaluation before implementation
+
+This milestone completes 042 Milestone 1 for the effective-transcript generation:
+`LectureAnalysisInputAdmissionService.admit(intake_id)` revalidates the GOAL-022 derived
+eligibility at command time (closing its advisory/TOCTOU boundary — a prior result is never
+trusted; ineligible intakes refuse before persistence) and appends one immutable, identity-owning,
+provenance-bearing analysis input record binding the exact authority snapshot: intake, source
+media, current applicable corrected revision, parent raw transcript, both observed selection
+records, the released §19 content fingerprint, and the segment count. Identity follows the
+released GOAL-012 binding rule — derived from the exact immutable source only (contract, intake,
+corrected revision); same-authority re-admission converges idempotently (near-concurrent commands
+and returning authority included), a changed authority appends a NEW record, prior records remain
+valid immutable history (append-only, no update/delete), and fingerprint divergence is an explicit
+integrity conflict. `authority_match` derives (never stores) current/superseded/ineligible
+standing. No wall-clock, path, or rowid participates; no Analysis Run, ProcessingRun, Finding, or
+AI exists. Every released version v1..v46 chains single-step to v47 preserving all rows; the
+legacy execution-coupled `eligible_analysis_inputs` contract stays untouched at zero rows.
+Read-only validation gains six integrity-only `LECTURE_ANALYSIS_ADMISSION_*` checks (superseded
+admissions are never corruption). One CLI (`lectureos.analysis_input_admission_cli` with
+`admit`/`show`/`status`/`list`) and a deterministic demo (`lectureos.analysis_input_admission_demo`)
+with a byte-stable golden prove the eight GOAL-023 scenarios (38 focused new tests). The complete
+2680-test suite passes; the subtitle pipeline and all transcript contracts are unchanged.
