@@ -75,7 +75,7 @@ class RepositoryValidatorTests(unittest.TestCase):
         self.assertTrue(report.ok)
         self.assertEqual(report.error_count, 0)
         self.assertEqual(report.warning_count, 0)
-        self.assertEqual(report.schema_version, 46)
+        self.assertEqual(report.schema_version, 47)
         self.assertGreater(report.objects_checked, 0)
 
     def test_validator_does_not_mutate_the_database(self) -> None:
@@ -2847,6 +2847,163 @@ class EffectiveSrtPublicationValidationTests(unittest.TestCase):
         broken = self._corrupt("target-rule.db", mutate)
         self.assertIn(
             "EFFECTIVE_SRT_PUBLICATION_TARGET_RULE_VIOLATION", self._codes(broken)
+        )
+
+
+class LectureAnalysisInputAdmissionValidationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        from lectureos.application.correction_candidate_admission import (
+            build_correction_candidate_input,
+        )
+        from lectureos.application.provider_transcript_admission import (
+            build_provider_transcript_document,
+        )
+        from lectureos.composition import (
+            compose_sqlite_corrected_revision_generation_service,
+            compose_sqlite_corrected_revision_selection_service,
+            compose_sqlite_correction_candidate_admission_service,
+            compose_sqlite_correction_candidate_decision_service,
+            compose_sqlite_current_raw_transcript_selection_service,
+            compose_sqlite_lecture_analysis_input_admission_service,
+            compose_sqlite_media_import_service,
+            compose_sqlite_provider_transcript_admission_service,
+            compose_sqlite_transcript_source_intake_service,
+        )
+        from lectureos.persistence.raw_transcripts import SQLiteRawTranscriptRepository
+        from lectureos.persistence.transcript_segments import (
+            SQLiteTranscriptSegmentRepository,
+        )
+
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.base = Path(self.tempdir.name)
+        self.healthy = self.base / "admission.db"
+        connection = initialize_sqlite_database(self.healthy)
+        source = self.base / "s.bin"
+        source.write_bytes(b"admission-validation \x00\x01")
+        media_id = compose_sqlite_media_import_service(connection).import_media(str(source)).record.identity.value
+        intake = compose_sqlite_transcript_source_intake_service(connection).admit(media_id).intake.identity.value
+        raw = compose_sqlite_provider_transcript_admission_service(connection).admit(
+            intake_id=intake,
+            document=build_provider_transcript_document(
+                {"provider": "fake", "model": "tiny", "language": "ko", "provider_result_ref": "A",
+                 "segments": [{"start": 0.0, "end": 2.0, "text": "원본"}]}
+            ),
+        ).admission
+        compose_sqlite_current_raw_transcript_selection_service(connection).select(
+            intake, raw.raw_transcript_id.value
+        )
+        selection = compose_sqlite_corrected_revision_selection_service(connection)
+        admissions = compose_sqlite_lecture_analysis_input_admission_service(connection)
+
+        def _revise(ref, text):
+            segment_id = SQLiteRawTranscriptRepository(connection).get(
+                raw.raw_transcript_id
+            ).segment_ids[0]
+            source_text = SQLiteTranscriptSegmentRepository(connection).get(segment_id).text
+            candidate = compose_sqlite_correction_candidate_admission_service(connection).admit(
+                intake_id=intake,
+                candidate=build_correction_candidate_input(
+                    {"raw_transcript_id": raw.raw_transcript_id.value,
+                     "segment_id": segment_id.value, "candidate_ref": ref,
+                     "source_type": "manual", "source_reference": "human",
+                     "proposed_text": text, "source_text_snapshot": source_text,
+                     "rationale": "fix"}
+                ),
+            ).candidate.identity.value
+            compose_sqlite_correction_candidate_decision_service(connection).decide(
+                candidate_id=candidate, kind="accept", reviewer="r:kim"
+            )
+            revision = compose_sqlite_corrected_revision_generation_service(
+                connection
+            ).generate(candidate_id=candidate).revision.identity.value
+            selection.select_revision(revision_id=revision, reviewer="s:kim")
+            return revision
+
+        # A superseded admission (valid immutable history) plus the current one.
+        _revise("c1", "교정 하나")
+        admissions.admit(intake_id=intake)
+        _revise("c2", "교정 둘")
+        admissions.admit(intake_id=intake)
+        connection.close()
+
+    def tearDown(self) -> None:
+        self.tempdir.cleanup()
+
+    def _corrupt(self, name: str, statement: str) -> Path:
+        target = self.base / name
+        shutil.copyfile(self.healthy, target)
+        connection = sqlite3.connect(target)
+        try:
+            connection.execute("PRAGMA foreign_keys = OFF")
+            connection.execute("BEGIN")
+            connection.execute(statement)
+            connection.execute("COMMIT")
+        finally:
+            connection.close()
+        return target
+
+    def _codes(self, database: Path) -> set[str]:
+        return {d.code for d in validate_database(str(database)).diagnostics}
+
+    def test_healthy_with_superseded_admission(self) -> None:
+        report = validate_database(str(self.healthy))
+        self.assertTrue(report.ok)
+        self.assertEqual(report.health, RepositoryHealth.HEALTHY)
+
+    def test_source_media_mismatch_detected(self) -> None:
+        broken = self._corrupt(
+            "media.db",
+            "UPDATE lecture_analysis_input_admissions "
+            "SET source_media_id = 'sha256:" + "0" * 64 + "'",
+        )
+        self.assertIn(
+            "LECTURE_ANALYSIS_ADMISSION_SOURCE_MEDIA_MISMATCH", self._codes(broken)
+        )
+
+    def test_raw_and_selection_lineage_mismatch_detected(self) -> None:
+        broken = self._corrupt(
+            "raw-lineage.db",
+            "UPDATE lecture_analysis_input_admissions "
+            "SET raw_selection_id = 'current-raw-selection:" + "0" * 64 + "'",
+        )
+        self.assertIn(
+            "LECTURE_ANALYSIS_ADMISSION_RAW_LINEAGE_MISMATCH", self._codes(broken)
+        )
+        broken = self._corrupt(
+            "selection-lineage.db",
+            "UPDATE lecture_analysis_input_admissions "
+            "SET corrected_selection_id = 'corrected-revision-selection:" + "0" * 64 + "'",
+        )
+        self.assertIn(
+            "LECTURE_ANALYSIS_ADMISSION_SELECTION_LINEAGE_MISMATCH", self._codes(broken)
+        )
+
+    def test_fingerprint_and_segment_count_mismatch_detected(self) -> None:
+        broken = self._corrupt(
+            "fingerprint.db",
+            "UPDATE lecture_analysis_input_admissions SET content_fingerprint = '"
+            + "f" * 64 + "'",
+        )
+        self.assertIn(
+            "LECTURE_ANALYSIS_ADMISSION_FINGERPRINT_MISMATCH", self._codes(broken)
+        )
+        broken = self._corrupt(
+            "count.db",
+            "UPDATE lecture_analysis_input_admissions SET segment_count = 9",
+        )
+        self.assertIn(
+            "LECTURE_ANALYSIS_ADMISSION_SEGMENT_COUNT_MISMATCH", self._codes(broken)
+        )
+
+    def test_identity_mismatch_detected(self) -> None:
+        broken = self._corrupt(
+            "identity.db",
+            "UPDATE lecture_analysis_input_admissions "
+            "SET identity = 'lecture-analysis-input:" + "0" * 64 + "' "
+            "WHERE rowid = (SELECT MIN(rowid) FROM lecture_analysis_input_admissions)",
+        )
+        self.assertIn(
+            "LECTURE_ANALYSIS_ADMISSION_IDENTITY_MISMATCH", self._codes(broken)
         )
 
 

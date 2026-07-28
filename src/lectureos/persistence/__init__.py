@@ -134,6 +134,10 @@ from .effective_srt_publication import (
     SQLiteEffectiveSrtPublicationCommandPersistence,
     SQLiteEffectiveSrtPublicationRepository,
 )
+from .lecture_analysis_input_admission import (
+    SQLiteLectureAnalysisInputAdmissionCommandPersistence,
+    SQLiteLectureAnalysisInputAdmissionRepository,
+)
 from .effective_subtitle_srt_artifact import (
     SQLiteEffectiveSubtitleSrtArtifactCommandPersistence,
     SQLiteEffectiveSubtitleSrtArtifactRepository,
@@ -259,6 +263,8 @@ __all__ = [
     "SQLiteEffectiveSrtDeliveryRepository",
     "SQLiteEffectiveSrtPublicationCommandPersistence",
     "SQLiteEffectiveSrtPublicationRepository",
+    "SQLiteLectureAnalysisInputAdmissionCommandPersistence",
+    "SQLiteLectureAnalysisInputAdmissionRepository",
     "SQLiteEffectiveSrtMaterializationCommandPersistence",
     "SQLiteEffectiveSrtMaterializationRepository",
     "SQLiteEffectiveSubtitleSrtArtifactCommandPersistence",

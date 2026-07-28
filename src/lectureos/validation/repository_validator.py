@@ -79,6 +79,7 @@ _INSPECTED_TABLES = (
     "subtitle_effective_srt_delivery_intents",
     "subtitle_effective_srt_delivery_outcomes",
     "subtitle_effective_srt_publications",
+    "lecture_analysis_input_admissions",
 )
 _IDENTITY_TABLES = (
     "domain_result_references",
@@ -105,6 +106,7 @@ _IDENTITY_TABLES = (
     "subtitle_effective_srt_materializations",
     "subtitle_effective_srt_delivery_intents",
     "subtitle_effective_srt_publications",
+    "lecture_analysis_input_admissions",
 )
 _APPROVING_KINDS = ("accept", "modify")
 
@@ -2676,6 +2678,140 @@ def _check_effective_srt_publications(
     return diagnostics
 
 
+def _check_lecture_analysis_input_admissions(
+    connection: sqlite3.Connection,
+) -> list[Diagnostic]:
+    """Integrity of admitted analysis inputs (GOAL-023). Deliberately NOT flagged: admissions
+    whose authority was later superseded (valid immutable history), ineligible current
+    authority, and the untouched legacy `eligible_analysis_inputs` contract."""
+
+    if not _table_exists(connection, "lecture_analysis_input_admissions"):
+        return []
+    diagnostics: list[Diagnostic] = []
+
+    def _flag(code: str, identity: str, message: str) -> None:
+        diagnostics.append(
+            Diagnostic(
+                code=code,
+                severity=Severity.ERROR,
+                location=f"lecture_analysis_input_admissions:{identity}",
+                message=message,
+            )
+        )
+
+    # The recorded source media must equal the intake's source media.
+    if _table_exists(connection, "transcript_source_intakes"):
+        for (identity,) in connection.execute(
+            """
+            SELECT a.identity
+            FROM lecture_analysis_input_admissions a
+            JOIN transcript_source_intakes i ON i.identity = a.transcript_source_intake_id
+            WHERE a.source_media_id <> i.source_media_id
+            ORDER BY a.identity
+            """
+        ).fetchall():
+            _flag("LECTURE_ANALYSIS_ADMISSION_SOURCE_MEDIA_MISMATCH", identity,
+                  "admission source media disagrees with its intake")
+
+    # The observed selection provenance must be internally coherent: the raw selection must
+    # belong to the intake and select the recorded parent raw transcript; the corrected
+    # selection must belong to the intake and select the exact admitted revision.
+    if _table_exists(connection, "current_raw_transcript_selections"):
+        for (identity,) in connection.execute(
+            """
+            SELECT a.identity
+            FROM lecture_analysis_input_admissions a
+            LEFT JOIN current_raw_transcript_selections s ON s.identity = a.raw_selection_id
+            WHERE s.identity IS NULL
+               OR s.transcript_source_intake_id <> a.transcript_source_intake_id
+               OR s.raw_transcript_id <> a.parent_raw_transcript_id
+            ORDER BY a.identity
+            """
+        ).fetchall():
+            _flag("LECTURE_ANALYSIS_ADMISSION_RAW_LINEAGE_MISMATCH", identity,
+                  "admission raw-selection provenance disagrees with its recorded lineage")
+    if _table_exists(connection, "corrected_revision_selections"):
+        for (identity,) in connection.execute(
+            """
+            SELECT a.identity
+            FROM lecture_analysis_input_admissions a
+            LEFT JOIN corrected_revision_selections s ON s.identity = a.corrected_selection_id
+            WHERE s.identity IS NULL
+               OR s.transcript_source_intake_id <> a.transcript_source_intake_id
+               OR s.kind <> 'corrected_revision'
+               OR s.corrected_revision_id <> a.corrected_revision_id
+            ORDER BY a.identity
+            """
+        ).fetchall():
+            _flag("LECTURE_ANALYSIS_ADMISSION_SELECTION_LINEAGE_MISMATCH", identity,
+                  "admission corrected-selection provenance disagrees with the admitted "
+                  "revision")
+
+    # The admitted snapshot must re-derive from the immutable revision content: the released
+    # §19 fingerprint over the ordered canonical segments, and the segment count.
+    if _table_exists(connection, "corrected_transcript_revision_segments") and _table_exists(
+        connection, "transcript_segments"
+    ):
+        for identity, revision, fingerprint, segment_count in connection.execute(
+            """
+            SELECT identity, corrected_revision_id, content_fingerprint, segment_count
+            FROM lecture_analysis_input_admissions
+            ORDER BY identity
+            """
+        ).fetchall():
+            rows = connection.execute(
+                """
+                SELECT t.text, t.start, t.end, t.source_order
+                FROM corrected_transcript_revision_segments r
+                JOIN transcript_segments t ON t.identity = r.transcript_segment_id
+                WHERE r.transcript_revision_id = ?
+                ORDER BY r.ordinal
+                """,
+                (revision,),
+            ).fetchall()
+            if len(rows) != segment_count:
+                _flag("LECTURE_ANALYSIS_ADMISSION_SEGMENT_COUNT_MISMATCH", identity,
+                      "admission segment count disagrees with its revision snapshot")
+            expected = hashlib.sha256(
+                json.dumps(
+                    [
+                        {"text": text, "start": start, "end": end,
+                         "source_order": source_order}
+                        for text, start, end, source_order in rows
+                    ],
+                    ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
+            if rows and fingerprint != expected:
+                _flag("LECTURE_ANALYSIS_ADMISSION_FINGERPRINT_MISMATCH", identity,
+                      "admission content fingerprint does not re-derive from its revision "
+                      "snapshot")
+
+    for identity, intake, revision in connection.execute(
+        """
+        SELECT identity, transcript_source_intake_id, corrected_revision_id
+        FROM lecture_analysis_input_admissions
+        ORDER BY identity
+        """
+    ).fetchall():
+        expected = "lecture-analysis-input:" + hashlib.sha256(
+            json.dumps(
+                {
+                    "contract": "lecture_analysis_input_admission",
+                    "contract_version": 1,
+                    "intake": intake,
+                    "corrected_revision": revision,
+                },
+                ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        if identity != expected:
+            _flag("LECTURE_ANALYSIS_ADMISSION_IDENTITY_MISMATCH", identity,
+                  "admission identity does not re-derive from its stored payload")
+
+    return diagnostics
+
+
 def _check_raw_transcript_segments(connection: sqlite3.Connection) -> list[Diagnostic]:
     if not _table_exists(connection, "raw_transcript_segments"):
         return []
@@ -2783,6 +2919,7 @@ def validate_repository(connection: sqlite3.Connection) -> ValidationReport:
     diagnostics += _check_effective_srt_materializations(connection)
     diagnostics += _check_effective_srt_deliveries(connection)
     diagnostics += _check_effective_srt_publications(connection)
+    diagnostics += _check_lecture_analysis_input_admissions(connection)
     diagnostics += _check_raw_transcript_segments(connection)
     diagnostics += _check_malformed_identities(connection)
 

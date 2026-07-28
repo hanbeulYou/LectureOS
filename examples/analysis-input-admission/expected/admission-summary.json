@@ -1,0 +1,12 @@
+{
+  "admission_1_fingerprint": "1e72ec51f4f9f0bc8a323ed090818f1c7174234b1ed3828c440c7a7a7055642d",
+  "admission_1_id": "lecture-analysis-input:8904f91bed486a00ab02fb1174565fbd78559080800cd66671fbbe6d7613cda4",
+  "admission_2_fingerprint": "7cc16fa78c185de8acb0d96cab63ecf041d22bd5a2ce37dc6be359c30e026a9b",
+  "admission_2_id": "lecture-analysis-input:3f02d9be323953e8df384dab8c366204f72bf0f5e2a649adcf6e28230d471e76",
+  "admission_count": 2,
+  "intake_id": "transcript-source-intake:sha256:7be6a9582ff6c7bd4e66c052dc634a38b88909402f2fb330d663000d7f2079a5",
+  "repository_validation": "healthy",
+  "revision_1_id": "corrected-revision:9e30381e608da1ae98d9d4d66a66ac5434711d6e4d6e7552b678427b2cd51e40",
+  "revision_2_id": "corrected-revision:10cfbcc0b9fa980a328975f76b98d35bb8ab67330c7559675e20975b5d2cf49b",
+  "schema_version": 47
+}

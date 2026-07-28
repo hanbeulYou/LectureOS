@@ -375,6 +375,13 @@ from .lecture_analysis_input_eligibility import (
     LectureAnalysisInputEligibilityError,
     LectureAnalysisInputEligibilityService,
 )
+from .lecture_analysis_input_admission import (
+    AdmissionOutcome,
+    LectureAnalysisInputAdmission,
+    LectureAnalysisInputAdmissionError,
+    LectureAnalysisInputAdmissionService,
+    derive_admission_identity,
+)
 from .effective_transcript_consumption import (
     MANIFEST_CONSUMER_KIND,
     SUBTITLE_GENERATION_CONSUMER_KIND,
@@ -848,6 +855,11 @@ __all__ = [
     "LectureAnalysisInputEligibility",
     "LectureAnalysisInputEligibilityError",
     "LectureAnalysisInputEligibilityService",
+    "AdmissionOutcome",
+    "LectureAnalysisInputAdmission",
+    "LectureAnalysisInputAdmissionError",
+    "LectureAnalysisInputAdmissionService",
+    "derive_admission_identity",
     "EffectiveSrtPublication",
     "EffectiveSrtPublicationError",
     "EffectiveSrtPublicationService",

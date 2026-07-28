@@ -53,7 +53,9 @@ class EffectiveSubtitleReleaseDemoTests(unittest.TestCase):
     def test_release_manifest_is_deterministic_and_consistent(self):
         manifest = json.loads(_MANIFEST.read_text(encoding="utf-8"))
         self.assertEqual(manifest["release"], self.summary["release"])
-        self.assertEqual(
+        # The manifest records the schema boundary AT RELEASE (v39..v46); later goals may
+        # advance the live schema beyond it without reopening the release.
+        self.assertLessEqual(
             manifest["schema_range"]["latest_version"], self.summary["schema_version"]
         )
         self.assertEqual(len(manifest["included_goals"]), 8)

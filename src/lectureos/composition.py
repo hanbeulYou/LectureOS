@@ -776,6 +776,33 @@ def compose_sqlite_lecture_analysis_input_eligibility_service(
     )
 
 
+def compose_sqlite_lecture_analysis_input_admission_service(
+    connection: sqlite3.Connection,
+) -> "LectureAnalysisInputAdmissionService":
+    """Build explicit Lecture Analysis Input Admission on one caller connection (GOAL-023).
+
+    Every admission revalidates the derived GOAL-022 eligibility at command time, then appends
+    one immutable analysis input record binding the exact authority snapshot — read-only over
+    every upstream record; only `lecture_analysis_input_admissions` is written. No analysis,
+    execution, or AI exists in this contract, and the legacy `eligible_analysis_inputs` path
+    is never touched.
+    """
+
+    from lectureos.application.lecture_analysis_input_admission import (
+        LectureAnalysisInputAdmissionService,
+    )
+    from lectureos.persistence.lecture_analysis_input_admission import (
+        SQLiteLectureAnalysisInputAdmissionCommandPersistence,
+        SQLiteLectureAnalysisInputAdmissionRepository,
+    )
+
+    return LectureAnalysisInputAdmissionService(
+        compose_sqlite_lecture_analysis_input_eligibility_service(connection),
+        SQLiteLectureAnalysisInputAdmissionRepository(connection),
+        SQLiteLectureAnalysisInputAdmissionCommandPersistence(connection),
+    )
+
+
 def compose_sqlite_effective_subtitle_generation_service(
     connection: sqlite3.Connection,
 ) -> EffectiveSubtitleGenerationService:
