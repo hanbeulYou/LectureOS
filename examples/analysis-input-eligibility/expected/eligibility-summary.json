@@ -1,0 +1,108 @@
+{
+  "eligible_first": {
+    "blocking_reasons": [],
+    "content_fingerprint": "1e72ec51f4f9f0bc8a323ed090818f1c7174234b1ed3828c440c7a7a7055642d",
+    "corrected_revision": "corrected-revision:9e30381e608da1ae98d9d4d66a66ac5434711d6e4d6e7552b678427b2cd51e40",
+    "effective_kind": "corrected_revision",
+    "eligible": true,
+    "inapplicability_reason": null,
+    "intake": "transcript-source-intake:sha256:7be6a9582ff6c7bd4e66c052dc634a38b88909402f2fb330d663000d7f2079a5",
+    "parent_raw_transcript": "raw-transcript:a4cd6712bd2fc6ea3be75b4a12cd2f0aa4e439746f033f64de18e8027a3c71c1",
+    "segment_count": 2,
+    "selection_state": "corrected_revision_selected",
+    "source_media": "sha256:7be6a9582ff6c7bd4e66c052dc634a38b88909402f2fb330d663000d7f2079a5"
+  },
+  "eligible_second": {
+    "blocking_reasons": [],
+    "content_fingerprint": "7cc16fa78c185de8acb0d96cab63ecf041d22bd5a2ce37dc6be359c30e026a9b",
+    "corrected_revision": "corrected-revision:10cfbcc0b9fa980a328975f76b98d35bb8ab67330c7559675e20975b5d2cf49b",
+    "effective_kind": "corrected_revision",
+    "eligible": true,
+    "inapplicability_reason": null,
+    "intake": "transcript-source-intake:sha256:7be6a9582ff6c7bd4e66c052dc634a38b88909402f2fb330d663000d7f2079a5",
+    "parent_raw_transcript": "raw-transcript:a4cd6712bd2fc6ea3be75b4a12cd2f0aa4e439746f033f64de18e8027a3c71c1",
+    "segment_count": 2,
+    "selection_state": "corrected_revision_selected",
+    "source_media": "sha256:7be6a9582ff6c7bd4e66c052dc634a38b88909402f2fb330d663000d7f2079a5"
+  },
+  "inapplicable": {
+    "blocking_reasons": [
+      "corrected_selection_not_applicable"
+    ],
+    "content_fingerprint": null,
+    "corrected_revision": "corrected-revision:10cfbcc0b9fa980a328975f76b98d35bb8ab67330c7559675e20975b5d2cf49b",
+    "effective_kind": "inapplicable_selection",
+    "eligible": false,
+    "inapplicability_reason": "parent_raw_transcript_not_current",
+    "intake": "transcript-source-intake:sha256:7be6a9582ff6c7bd4e66c052dc634a38b88909402f2fb330d663000d7f2079a5",
+    "parent_raw_transcript": "raw-transcript:83fdb1e260f7a70c1f9860afe4f1db94325a2545f40cdfccf4d9736204de7776",
+    "segment_count": null,
+    "selection_state": "corrected_revision_selected",
+    "source_media": "sha256:7be6a9582ff6c7bd4e66c052dc634a38b88909402f2fb330d663000d7f2079a5"
+  },
+  "intake_id": "transcript-source-intake:sha256:7be6a9582ff6c7bd4e66c052dc634a38b88909402f2fb330d663000d7f2079a5",
+  "no_raw": {
+    "blocking_reasons": [
+      "no_current_raw_transcript"
+    ],
+    "content_fingerprint": null,
+    "corrected_revision": null,
+    "effective_kind": null,
+    "eligible": false,
+    "inapplicability_reason": null,
+    "intake": "transcript-source-intake:sha256:7be6a9582ff6c7bd4e66c052dc634a38b88909402f2fb330d663000d7f2079a5",
+    "parent_raw_transcript": null,
+    "segment_count": null,
+    "selection_state": null,
+    "source_media": "sha256:7be6a9582ff6c7bd4e66c052dc634a38b88909402f2fb330d663000d7f2079a5"
+  },
+  "raw_fallback": {
+    "blocking_reasons": [
+      "corrected_transcript_not_selected"
+    ],
+    "content_fingerprint": null,
+    "corrected_revision": null,
+    "effective_kind": "raw_transcript",
+    "eligible": false,
+    "inapplicability_reason": null,
+    "intake": "transcript-source-intake:sha256:7be6a9582ff6c7bd4e66c052dc634a38b88909402f2fb330d663000d7f2079a5",
+    "parent_raw_transcript": "raw-transcript:a4cd6712bd2fc6ea3be75b4a12cd2f0aa4e439746f033f64de18e8027a3c71c1",
+    "segment_count": null,
+    "selection_state": "raw_fallback",
+    "source_media": "sha256:7be6a9582ff6c7bd4e66c052dc634a38b88909402f2fb330d663000d7f2079a5"
+  },
+  "raw_only": {
+    "blocking_reasons": [
+      "corrected_transcript_not_selected"
+    ],
+    "content_fingerprint": null,
+    "corrected_revision": null,
+    "effective_kind": "raw_transcript",
+    "eligible": false,
+    "inapplicability_reason": null,
+    "intake": "transcript-source-intake:sha256:7be6a9582ff6c7bd4e66c052dc634a38b88909402f2fb330d663000d7f2079a5",
+    "parent_raw_transcript": "raw-transcript:a4cd6712bd2fc6ea3be75b4a12cd2f0aa4e439746f033f64de18e8027a3c71c1",
+    "segment_count": null,
+    "selection_state": "no_history",
+    "source_media": "sha256:7be6a9582ff6c7bd4e66c052dc634a38b88909402f2fb330d663000d7f2079a5"
+  },
+  "repository_validation": "healthy",
+  "revision_1_id": "corrected-revision:9e30381e608da1ae98d9d4d66a66ac5434711d6e4d6e7552b678427b2cd51e40",
+  "revision_2_id": "corrected-revision:10cfbcc0b9fa980a328975f76b98d35bb8ab67330c7559675e20975b5d2cf49b",
+  "schema_version": 46,
+  "unknown": {
+    "blocking_reasons": [
+      "intake_not_found"
+    ],
+    "content_fingerprint": null,
+    "corrected_revision": null,
+    "effective_kind": null,
+    "eligible": false,
+    "inapplicability_reason": null,
+    "intake": "transcript-source-intake:sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "parent_raw_transcript": null,
+    "segment_count": null,
+    "selection_state": null,
+    "source_media": null
+  }
+}

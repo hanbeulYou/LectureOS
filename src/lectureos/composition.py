@@ -749,6 +749,33 @@ def compose_sqlite_effective_transcript_consumption_service(
     )
 
 
+def compose_sqlite_lecture_analysis_input_eligibility_service(
+    connection: sqlite3.Connection,
+) -> "LectureAnalysisInputEligibilityService":
+    """Build the derived Lecture Analysis Input Eligibility query (042 §5.1 / GOAL-022).
+
+    Read-only over every record: authority resolves once through the sole released 040 §20
+    resolver, the corrected snapshot loads by immutable identity, and the released §19 content
+    fingerprint is reused verbatim. Nothing is persisted — eligibility is advisory and a later
+    explicit admission command must revalidate current authority.
+    """
+
+    from lectureos.application.lecture_analysis_input_eligibility import (
+        LectureAnalysisInputEligibilityService,
+    )
+    from lectureos.persistence.current_raw_transcript_selection import (
+        SQLiteRawTranscriptSelectionRepository,
+    )
+
+    return LectureAnalysisInputEligibilityService(
+        SQLiteTranscriptSourceIntakeRepository(connection),
+        SQLiteRawTranscriptSelectionRepository(connection),
+        compose_sqlite_corrected_revision_selection_service(connection),
+        SQLiteCorrectedTranscriptRevisionRepository(connection),
+        SQLiteTranscriptSegmentRepository(connection),
+    )
+
+
 def compose_sqlite_effective_subtitle_generation_service(
     connection: sqlite3.Connection,
 ) -> EffectiveSubtitleGenerationService:

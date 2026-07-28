@@ -369,6 +369,12 @@ from .effective_srt_publication import (
     PublicationKind,
     derive_publication_identity,
 )
+from .lecture_analysis_input_eligibility import (
+    AnalysisInputBlockingReason,
+    LectureAnalysisInputEligibility,
+    LectureAnalysisInputEligibilityError,
+    LectureAnalysisInputEligibilityService,
+)
 from .effective_transcript_consumption import (
     MANIFEST_CONSUMER_KIND,
     SUBTITLE_GENERATION_CONSUMER_KIND,
@@ -838,6 +844,10 @@ __all__ = [
     "EffectiveSrtDeliveryError",
     "EffectiveSrtDeliveryService",
     "derive_delivery_identity",
+    "AnalysisInputBlockingReason",
+    "LectureAnalysisInputEligibility",
+    "LectureAnalysisInputEligibilityError",
+    "LectureAnalysisInputEligibilityService",
     "EffectiveSrtPublication",
     "EffectiveSrtPublicationError",
     "EffectiveSrtPublicationService",
