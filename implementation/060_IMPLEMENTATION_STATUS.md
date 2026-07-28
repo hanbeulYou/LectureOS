@@ -2792,3 +2792,39 @@ explicit v1 boundary (no HTTP/URL/access control/acknowledgement/frontend/orches
 Intelligence). One documentation drift was corrected (README no longer describes materialization as
 a future goal). No release tag was created — the repository has no tag policy. The complete
 2622-test suite passes (16 new release tests).
+
+## Derived Lecture Analysis Input Eligibility (First Slice, GOAL-022)
+
+- Blueprint: `docs/042` §5/§5.1 + `PATCH-0009` (042 Milestone 1, Confirmed), over the released
+  040 §20 effective-transcript authority; no new Blueprint PATCH required
+- Status: **COMPLETE**
+- Selected persistence: **none** — eligibility is derived only; schema unchanged (**v46**)
+- Commit: `feat: add lecture analysis input eligibility`
+- Immediate next milestone: Explicit Lecture Analysis Input Admission — revalidate eligibility and
+  persist one immutable, provenance-bearing Eligible Analysis Input record for the effective
+  generation, separate from Analysis Execution
+
+This milestone resumes the Lecture Intelligence pipeline with its first executable contract for the
+effective-transcript generation: `LectureAnalysisInputEligibilityService.evaluate(intake_id)`
+derives whether one intake's current effective transcript authority is admissible as an analysis
+input. Per the confirmed 042 §5.1 admission authority (the validated selected Corrected
+Transcript + Source Timeline + Source Media reference), eligibility requires the §20 resolver to
+return a current **applicable corrected revision** with a complete non-empty snapshot; raw-only
+authority and explicit raw-fallback selections are honest ineligible states, inapplicable
+selections surface the canonical resolver's reason (never a silent fallback), and only current
+authority is admissible (no historical admission). The closed blocking vocabulary is
+`intake_not_found` / `no_current_raw_transcript` / `corrected_transcript_not_selected` /
+`corrected_selection_not_applicable` / `transcript_content_empty` (conservative non-empty-content
+rule only — no invented token/duration/timing minimums). The result exposes the exact lineage a
+later admission would bind (intake, source media, corrected revision, parent raw transcript,
+observed selections, released §19 content fingerprint reused verbatim); one evaluation resolves
+authority exactly once and loads snapshots by immutable identity (snapshot-coherent), and the
+result is advisory — admission must revalidate (documented TOCTOU boundary). Normal ineligibility
+never throws; integrity failures raise and are never concealed. Nothing is persisted anywhere
+(restart-identical results; legacy `eligible_analysis_inputs` — the released execution-coupled
+042 §5.1 implementation for the legacy generation — stays untouched at zero rows, classified and
+documented). One CLI (`lectureos.analysis_input_eligibility_cli evaluate`; eligible exit 0,
+ineligible exit 1) and a deterministic demo (`lectureos.analysis_input_eligibility_demo`) with a
+byte-stable golden prove the ten GOAL-022 scenarios (20 focused new tests). The complete
+2642-test suite passes; Effective Subtitle Pipeline v1 and all transcript contracts are
+unchanged.

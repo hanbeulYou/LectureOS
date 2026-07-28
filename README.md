@@ -121,6 +121,11 @@ LectureOS는 긴 한국어 강의의 후반작업에서 생기는 반복 작업�
   (available/withdrawn/destination_missing 등)는 authority와 분리되어 파생됩니다. withdraw는 아무것도
   삭제하지 않고 파일 삭제·변조는 history를 변경하지 않습니다. URL·네트워크·수신 확인은 없습니다.
   `lectureos.effective_publish_cli`.
+- **Lecture Analysis Input Eligibility (파생)** — 042 §5.1의 확정된 admission authority(Transcript
+  Pipeline이 선택한 validated Corrected Transcript)를 기준으로, intake의 현재 effective transcript
+  authority가 분석 입력으로 admissible한지 **파생**으로 판정합니다(GOAL-022, §20 resolver·§19 fingerprint
+  재사용). 아무것도 persist하지 않는 advisory 결과이며 이후 명시적 admission이 재검증합니다. 분석·AI 호출은
+  없습니다. `lectureos.analysis_input_eligibility_cli`.
 - **인식문 파이프라인** — 원본 인식문 + provider 결과, 교정 생성·적용, 검수 준비, 사람의 검수 결정, applicability,
   current selection, ready state.
 - **자막 파이프라인** — 인테이크, 후보 생성, reading/time 표현, 구조 검증, 검수 준비, 사람의 검수 결정, 결정 적용,
@@ -755,6 +760,27 @@ PYTHONPATH=src python3 -m lectureos.effective_subtitle_release_demo
 - v1에 포함되지 않는 것(유예 경계): HTTP 서빙·다운로드 endpoint·공개 URL·클라우드 업로드·접근 제어·수신
   확인·frontend·자동 오케스트레이션·Lecture Intelligence
 
+## Lecture Analysis Input Eligibility (파생)
+
+Lecture Intelligence Pipeline의 첫 실행 계약입니다(042 §5.1 / PATCH-0009 Milestone 1, GOAL-022) —
+effective transcript 세대의 파생 전용 판정으로, legacy 실행 결합형 042 구현(`eligible_analysis_inputs`)과
+분리된 별도 contract generation입니다. **Eligibility ≠ Analysis Input ≠ Analysis Run:**
+
+```bash
+PYTHONPATH=src python3 -m lectureos.analysis_input_eligibility_cli evaluate --intake transcript-source-intake:sha256:<digest> --database /path/to/lectureos.sqlite3
+```
+
+- 적격 조건: §20 resolver가 현재 **적용 가능한 corrected revision**을 해석하고 snapshot이 비어 있지 않을 때
+  (042 §5.1 확정 admission authority). raw 전용/raw-fallback은 정직한 ineligible이며 조용한 fallback은
+  없습니다.
+- 결과는 이후 admission이 바인딩할 정확한 lineage(intake·source media·revision·parent raw·selection·§19
+  content fingerprint)를 노출하고, 아무것도 persist하지 않으며(재시작 후 동일), advisory입니다 — 명시적
+  admission이 current authority를 재검증해야 합니다.
+
+결정적 데모: `PYTHONPATH=src python3 -m lectureos.analysis_input_eligibility_demo`. 동작 예제는
+[`examples/analysis-input-eligibility/`](examples/analysis-input-eligibility/README.md), 계약은
+`implementation/112_LECTURE_ANALYSIS_INPUT_ELIGIBILITY.md`를 참고하세요.
+
 ## Repository Validation (저장소 검증)
 
 저장소가 내부적으로 일관적인지 **읽기 전용**으로 검증합니다(저장소를 수정하지 않습니다). identity, 참조,
@@ -825,6 +851,7 @@ LectureOS/
 │   ├── effective_materialize_cli.py # Effective SRT 물리 Materialization CLI
 │   ├── effective_deliver_cli.py # Effective SRT 명시적 Delivery CLI
 │   ├── effective_publish_cli.py # Effective SRT Publication Authority CLI
+│   ├── analysis_input_eligibility_cli.py # 파생 Lecture Analysis Input Eligibility CLI
 │   ├── edit_export_cli.py  # 실행 가능한 Edit Export CLI
 │   ├── edit_export_demo.py # 실행 가능한 mock end-to-end 데모(미디어·네트워크 불필요)
 │   └── *_acceptance.py     # 인프로세스 end-to-end 인수 실행기
