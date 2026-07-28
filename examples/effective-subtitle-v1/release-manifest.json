@@ -1,0 +1,119 @@
+{
+  "release": "Effective Subtitle Pipeline v1",
+  "release_contract_version": 1,
+  "included_goals": [
+    "GOAL-013",
+    "GOAL-014",
+    "GOAL-015",
+    "GOAL-016",
+    "GOAL-017",
+    "GOAL-018",
+    "GOAL-019",
+    "GOAL-020"
+  ],
+  "schema_range": {
+    "first_release_version": 39,
+    "latest_version": 46,
+    "prerequisite_consumption_version": 38
+  },
+  "stages": [
+    {
+      "stage": "candidate",
+      "goal": "GOAL-013",
+      "table": "subtitle_effective_candidates",
+      "service": "EffectiveSubtitleGenerationService",
+      "cli": "lectureos.effective_subtitle_cli",
+      "completion_document": "implementation/103_EFFECTIVE_SUBTITLE_GENERATION.md"
+    },
+    {
+      "stage": "review_subject",
+      "goal": "GOAL-014",
+      "table": "subtitle_effective_review_subjects",
+      "service": "EffectiveSubtitleReviewPreparationService",
+      "cli": "lectureos.effective_review_cli",
+      "completion_document": "implementation/104_EFFECTIVE_SUBTITLE_REVIEW_PREPARATION.md"
+    },
+    {
+      "stage": "human_decision",
+      "goal": "GOAL-015",
+      "table": "subtitle_effective_review_decisions",
+      "service": "EffectiveSubtitleReviewDecisionService",
+      "cli": "lectureos.effective_decision_cli",
+      "completion_document": "implementation/105_EFFECTIVE_SUBTITLE_REVIEW_DECISION.md"
+    },
+    {
+      "stage": "final_selection",
+      "goal": "GOAL-016",
+      "table": "subtitle_effective_final_selections",
+      "service": "EffectiveSubtitleFinalSelectionService",
+      "cli": "lectureos.effective_selection_cli",
+      "completion_document": "implementation/106_EFFECTIVE_SUBTITLE_FINAL_SELECTION.md"
+    },
+    {
+      "stage": "srt_artifact",
+      "goal": "GOAL-017",
+      "table": "subtitle_effective_srt_artifacts",
+      "service": "EffectiveSubtitleSrtArtifactService",
+      "cli": "lectureos.effective_srt_cli",
+      "completion_document": "implementation/107_EFFECTIVE_SUBTITLE_SRT_ARTIFACT.md"
+    },
+    {
+      "stage": "materialization",
+      "goal": "GOAL-018",
+      "table": "subtitle_effective_srt_materializations",
+      "outcome_table": "subtitle_effective_srt_materialization_outcomes",
+      "service": "EffectiveSrtMaterializationService",
+      "cli": "lectureos.effective_materialize_cli",
+      "completion_document": "implementation/108_EFFECTIVE_SRT_MATERIALIZATION.md"
+    },
+    {
+      "stage": "delivery",
+      "goal": "GOAL-019",
+      "table": "subtitle_effective_srt_delivery_intents",
+      "outcome_table": "subtitle_effective_srt_delivery_outcomes",
+      "service": "EffectiveSrtDeliveryService",
+      "cli": "lectureos.effective_deliver_cli",
+      "completion_document": "implementation/109_EFFECTIVE_SRT_DELIVERY.md"
+    },
+    {
+      "stage": "publication",
+      "goal": "GOAL-020",
+      "table": "subtitle_effective_srt_publications",
+      "service": "EffectiveSrtPublicationService",
+      "cli": "lectureos.effective_publish_cli",
+      "completion_document": "implementation/110_EFFECTIVE_SRT_PUBLICATION.md"
+    }
+  ],
+  "contracts": {
+    "srt_serializer": {"kind": "canonical_srt", "version": 1, "parameters_version": 1},
+    "materialization_storage_kind": "local_file",
+    "delivery": {"kind": "subtitle_effective_srt_delivery", "version": 1,
+                 "mechanism": "local_copy"},
+    "publication": {"kind": "effective_srt_publication", "version": 1}
+  },
+  "authority_vocabularies": {
+    "review_decision": ["accept", "reject", "modify"],
+    "publication": ["publish", "withdraw"]
+  },
+  "derived_state_vocabularies": {
+    "materialization_state": ["pending", "materialized", "failed"],
+    "delivery_state": ["pending", "delivered", "failed"],
+    "publication_availability": [
+      "not_published", "available", "withdrawn", "not_observed",
+      "destination_missing", "destination_mismatch", "unresolvable"
+    ]
+  },
+  "deferred_boundaries": [
+    "HTTP serving / download endpoints / public URLs",
+    "cloud upload and non-local delivery mechanisms",
+    "access control / authentication / authorization",
+    "recipient acknowledgement",
+    "publication scheduling and automatic publication",
+    "frontend and subtitle editor UI",
+    "automatic pipeline orchestration",
+    "Lecture Intelligence"
+  ],
+  "release_demo": "python3 -m lectureos.effective_subtitle_release_demo",
+  "release_acceptance_suite": "tests/test_effective_subtitle_pipeline_release.py",
+  "release_document": "implementation/111_EFFECTIVE_SUBTITLE_PIPELINE_V1_RELEASE.md"
+}

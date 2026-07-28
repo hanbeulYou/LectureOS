@@ -1,0 +1,28 @@
+{
+  "artifact_fingerprint": "993fc61b3caab33157c8245c0391412073cdc2ef60364ebc8e0a83f8822eae2f",
+  "artifact_id": "subtitle-effective-srt-artifact:cbf0fbd13124146405e65fc351d9767b618a14a7676f2d77a46d045d19922589",
+  "availability": "available",
+  "candidate_id": "subtitle-effective-candidate:471659984ca8eee588aafd0c75df98d37c6856cb2a9adb6b6b0321c7f7a48ca9",
+  "decision_id": "subtitle-effective-review-decision:8b26627f09530bcbeeb329979bd2ce62cd2cddb9799fcb7bb974751e5e439fbd",
+  "decision_kind": "accept",
+  "delivery_id": "subtitle-effective-srt-delivery:00735330106c856ef4d5ba800a202f9f54a3950f6e0c9fbef826404b26761d58",
+  "delivery_location": "published/v1.srt",
+  "delivery_state": "delivered",
+  "final_selection_id": "subtitle-effective-final-selection:e5b7c27814108b971f558132768188d4b48ddb334e7431f0973033a8e86db4b2",
+  "intake_id": "transcript-source-intake:sha256:7be6a9582ff6c7bd4e66c052dc634a38b88909402f2fb330d663000d7f2079a5",
+  "legacy_row_counts": {
+    "subtitle_final_subtitles": 0,
+    "subtitle_srt_artifacts": 0,
+    "subtitle_srt_materializations": 0
+  },
+  "materialization_id": "subtitle-effective-srt-materialization:b52a32116859cd482e030222c72dd47cf2493d8700b8a4a630d8da218e5818da",
+  "materialization_location": "release/v1.srt",
+  "materialization_state": "materialized",
+  "publication_id": "subtitle-effective-srt-publication:54b4041bbed45b33020d631860a2c2c0a4dd9c829a1437a2795d977c01edaa5c",
+  "publication_kind": "publish",
+  "release": "Effective Subtitle Pipeline v1",
+  "repository_validation": "healthy",
+  "review_subject_id": "subtitle-effective-review-subject:59fcaae7a61896e84ff34bf535eabc532f251987814435b8565d0bc7042f828f",
+  "schema_version": 46,
+  "srt_payload": "1\n00:00:00,000 --> 00:00:01,000\n안녕하세요 여러부\n\n2\n00:00:01,000 --> 00:00:02,000\n오늘의 강의입니다\n"
+}
