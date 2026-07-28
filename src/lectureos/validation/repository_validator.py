@@ -78,6 +78,7 @@ _INSPECTED_TABLES = (
     "subtitle_effective_srt_materialization_outcomes",
     "subtitle_effective_srt_delivery_intents",
     "subtitle_effective_srt_delivery_outcomes",
+    "subtitle_effective_srt_publications",
 )
 _IDENTITY_TABLES = (
     "domain_result_references",
@@ -103,6 +104,7 @@ _IDENTITY_TABLES = (
     "subtitle_effective_srt_artifacts",
     "subtitle_effective_srt_materializations",
     "subtitle_effective_srt_delivery_intents",
+    "subtitle_effective_srt_publications",
 )
 _APPROVING_KINDS = ("accept", "modify")
 
@@ -2502,6 +2504,178 @@ def _check_effective_srt_deliveries(
     return diagnostics
 
 
+def _check_effective_srt_publications(
+    connection: sqlite3.Connection,
+) -> list[Diagnostic]:
+    """Integrity of publication-authority records (GOAL-020). Deliberately NOT flagged:
+    withdrawals, superseded/historical publications, missing or diverged destination or source
+    files, and stale/superseded artifacts — publication authority is never corrupted by
+    filesystem state or later authority changes. This check never reads the filesystem."""
+
+    if not _table_exists(connection, "subtitle_effective_srt_publications"):
+        return []
+    diagnostics: list[Diagnostic] = []
+
+    def _flag(code: str, identity: str, message: str) -> None:
+        diagnostics.append(
+            Diagnostic(
+                code=code,
+                severity=Severity.ERROR,
+                location=f"subtitle_effective_srt_publications:{identity}",
+                message=message,
+            )
+        )
+
+    # The closed kind/target rule (also schema-enforced; re-checked for tampered stores).
+    for (identity,) in connection.execute(
+        """
+        SELECT identity
+        FROM subtitle_effective_srt_publications
+        WHERE kind NOT IN ('publish', 'withdraw')
+           OR (kind = 'publish'
+               AND (target_delivery_id IS NULL OR target_artifact_id IS NULL))
+           OR (kind = 'withdraw'
+               AND (target_delivery_id IS NOT NULL OR target_artifact_id IS NOT NULL))
+        ORDER BY identity
+        """
+    ).fetchall():
+        _flag("EFFECTIVE_SRT_PUBLICATION_TARGET_RULE_VIOLATION", identity,
+              "publication kind and target lineage violate the closed publish/withdraw rule")
+
+    if _table_exists(connection, "subtitle_effective_srt_delivery_intents"):
+        for (identity,) in connection.execute(
+            """
+            SELECT p.identity
+            FROM subtitle_effective_srt_publications p
+            LEFT JOIN subtitle_effective_srt_delivery_intents d
+                   ON d.identity = p.target_delivery_id
+            WHERE p.target_delivery_id IS NOT NULL AND d.identity IS NULL
+            ORDER BY p.identity
+            """
+        ).fetchall():
+            _flag("EFFECTIVE_SRT_PUBLICATION_DANGLING_DELIVERY", identity,
+                  "publication targets a missing effective SRT delivery")
+        # The persisted artifact lineage must agree with the target delivery's lineage.
+        for (identity,) in connection.execute(
+            """
+            SELECT p.identity
+            FROM subtitle_effective_srt_publications p
+            JOIN subtitle_effective_srt_delivery_intents d
+              ON d.identity = p.target_delivery_id
+            WHERE p.target_artifact_id <> d.artifact_id
+            ORDER BY p.identity
+            """
+        ).fetchall():
+            _flag("EFFECTIVE_SRT_PUBLICATION_ARTIFACT_LINEAGE_MISMATCH", identity,
+                  "publication artifact lineage disagrees with its target delivery")
+        # A publish target must be a repository-proven DELIVERED delivery.
+        if _table_exists(connection, "subtitle_effective_srt_delivery_outcomes"):
+            for (identity,) in connection.execute(
+                """
+                SELECT p.identity
+                FROM subtitle_effective_srt_publications p
+                JOIN subtitle_effective_srt_delivery_intents d
+                  ON d.identity = p.target_delivery_id
+                LEFT JOIN subtitle_effective_srt_delivery_outcomes o
+                       ON o.delivery_id = d.identity
+                WHERE o.delivery_id IS NULL OR o.state <> 'delivered'
+                ORDER BY p.identity
+                """
+            ).fetchall():
+                _flag("EFFECTIVE_SRT_PUBLICATION_TARGET_NOT_DELIVERED", identity,
+                      "publication targets a delivery without a DELIVERED outcome")
+        # The publication scope must equal the target delivery's artifact scope.
+        if _table_exists(connection, "subtitle_effective_srt_artifacts"):
+            for (identity,) in connection.execute(
+                """
+                SELECT p.identity
+                FROM subtitle_effective_srt_publications p
+                JOIN subtitle_effective_srt_delivery_intents d
+                  ON d.identity = p.target_delivery_id
+                JOIN subtitle_effective_srt_artifacts a ON a.identity = d.artifact_id
+                WHERE p.transcript_source_intake_id <> a.transcript_source_intake_id
+                ORDER BY p.identity
+                """
+            ).fetchall():
+                _flag("EFFECTIVE_SRT_PUBLICATION_SCOPE_MISMATCH", identity,
+                      "publication scope disagrees with its target delivery's intake scope")
+
+    for identity, intake, kind, target_delivery, target_artifact, publisher, sequence, \
+            fingerprint, rationale in connection.execute(
+        """
+        SELECT identity, transcript_source_intake_id, kind, target_delivery_id,
+               target_artifact_id, publisher, sequence, content_fingerprint, rationale
+        FROM subtitle_effective_srt_publications
+        ORDER BY identity
+        """
+    ).fetchall():
+        expected_identity = "subtitle-effective-srt-publication:" + hashlib.sha256(
+            json.dumps(
+                {
+                    "contract_kind": "effective_srt_publication",
+                    "contract_version": 1,
+                    "intake": intake,
+                    "kind": kind,
+                    "target_delivery": target_delivery,
+                    "sequence": sequence,
+                },
+                ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        if identity != expected_identity:
+            _flag("EFFECTIVE_SRT_PUBLICATION_IDENTITY_MISMATCH", identity,
+                  "publication identity does not re-derive from its stored payload")
+        expected_fingerprint = hashlib.sha256(
+            json.dumps(
+                {
+                    "intake": intake,
+                    "kind": kind,
+                    "target_delivery": target_delivery,
+                    "target_artifact": target_artifact,
+                    "sequence": sequence,
+                    "publisher": publisher,
+                    "rationale": rationale,
+                },
+                ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        if fingerprint != expected_fingerprint:
+            _flag("EFFECTIVE_SRT_PUBLICATION_FINGERPRINT_MISMATCH", identity,
+                  "publication content fingerprint does not re-derive from its stored payload")
+
+    for (intake,) in connection.execute(
+        """
+        SELECT transcript_source_intake_id
+        FROM subtitle_effective_srt_publications
+        GROUP BY transcript_source_intake_id
+        HAVING COUNT(*) <> MAX(sequence) + 1 OR MIN(sequence) <> 0
+            OR COUNT(DISTINCT sequence) <> COUNT(*)
+        ORDER BY transcript_source_intake_id
+        """
+    ).fetchall():
+        _flag("EFFECTIVE_SRT_PUBLICATION_SEQUENCE_NONCONTIGUOUS", intake,
+              "an intake scope's publication sequences are not contiguous")
+
+    for (identity,) in connection.execute(
+        """
+        SELECT p.identity
+        FROM subtitle_effective_srt_publications p
+        LEFT JOIN subtitle_effective_srt_publications q
+               ON q.identity = p.previous_publication_id
+        WHERE p.previous_publication_id IS NOT NULL
+          AND (q.identity IS NULL
+               OR q.transcript_source_intake_id <> p.transcript_source_intake_id
+               OR q.sequence <> p.sequence - 1
+               OR p.previous_publication_id = p.identity)
+        ORDER BY p.identity
+        """
+    ).fetchall():
+        _flag("EFFECTIVE_SRT_PUBLICATION_BROKEN_SUPERSESSION", identity,
+              "a non-initial publication does not supersede its scope's immediately prior record")
+
+    return diagnostics
+
+
 def _check_raw_transcript_segments(connection: sqlite3.Connection) -> list[Diagnostic]:
     if not _table_exists(connection, "raw_transcript_segments"):
         return []
@@ -2608,6 +2782,7 @@ def validate_repository(connection: sqlite3.Connection) -> ValidationReport:
     diagnostics += _check_effective_subtitle_srt_artifacts(connection)
     diagnostics += _check_effective_srt_materializations(connection)
     diagnostics += _check_effective_srt_deliveries(connection)
+    diagnostics += _check_effective_srt_publications(connection)
     diagnostics += _check_raw_transcript_segments(connection)
     diagnostics += _check_malformed_identities(connection)
 

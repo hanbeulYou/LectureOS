@@ -76,6 +76,9 @@ from lectureos.application.effective_subtitle_final_selection import (
 from lectureos.application.effective_srt_delivery import (
     EffectiveSrtDeliveryService,
 )
+from lectureos.application.effective_srt_publication import (
+    EffectiveSrtPublicationService,
+)
 from lectureos.application.effective_srt_materialization import (
     EffectiveSrtMaterializationService,
 )
@@ -213,6 +216,8 @@ from lectureos.persistence import (
     SQLiteEffectiveSubtitleFinalSelectionRepository,
     SQLiteEffectiveSrtDeliveryCommandPersistence,
     SQLiteEffectiveSrtDeliveryRepository,
+    SQLiteEffectiveSrtPublicationCommandPersistence,
+    SQLiteEffectiveSrtPublicationRepository,
     SQLiteEffectiveSrtMaterializationCommandPersistence,
     SQLiteEffectiveSrtMaterializationRepository,
     SQLiteEffectiveSubtitleSrtArtifactCommandPersistence,
@@ -890,6 +895,40 @@ def compose_sqlite_effective_srt_delivery_service(
         persistence,
         source_reader,
         destination_writer,
+    )
+
+
+def compose_sqlite_effective_srt_publication_service(
+    connection: sqlite3.Connection,
+    delivery_root: str | None = None,
+) -> EffectiveSrtPublicationService:
+    """Build publication authority on one caller connection (GOAL-020). Publication is an
+    explicit append-only Human Authority record over one exact DELIVERED delivery — it writes
+    no file, creates no URL, performs no network operation, and never mutates artifact,
+    materialization, or delivery records. The optional approved Delivery Root enables purely
+    observational destination-agreement and availability derivation; without it, availability
+    honestly reports ``not_observed``. No root is ever persisted.
+    """
+
+    destination_reader = None
+    if delivery_root is not None:
+        from lectureos.infrastructure.local_effective_srt_delivery_writer import (
+            LocalEffectiveSrtDeliveryWriter,
+        )
+
+        destination_reader = LocalEffectiveSrtDeliveryWriter(delivery_root)
+    artifacts = compose_sqlite_effective_subtitle_srt_artifact_service(connection)
+    materializations = SQLiteEffectiveSrtMaterializationRepository(connection)
+    deliveries = SQLiteEffectiveSrtDeliveryRepository(connection)
+    publications = SQLiteEffectiveSrtPublicationRepository(connection)
+    persistence = SQLiteEffectiveSrtPublicationCommandPersistence(connection)
+    return EffectiveSrtPublicationService(
+        deliveries,
+        materializations,
+        artifacts,
+        publications,
+        persistence,
+        destination_reader,
     )
 
 

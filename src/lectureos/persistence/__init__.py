@@ -130,6 +130,10 @@ from .effective_srt_delivery import (
     SQLiteEffectiveSrtDeliveryCommandPersistence,
     SQLiteEffectiveSrtDeliveryRepository,
 )
+from .effective_srt_publication import (
+    SQLiteEffectiveSrtPublicationCommandPersistence,
+    SQLiteEffectiveSrtPublicationRepository,
+)
 from .effective_subtitle_srt_artifact import (
     SQLiteEffectiveSubtitleSrtArtifactCommandPersistence,
     SQLiteEffectiveSubtitleSrtArtifactRepository,
@@ -253,6 +257,8 @@ __all__ = [
     "SQLiteEffectiveSubtitleFinalSelectionRepository",
     "SQLiteEffectiveSrtDeliveryCommandPersistence",
     "SQLiteEffectiveSrtDeliveryRepository",
+    "SQLiteEffectiveSrtPublicationCommandPersistence",
+    "SQLiteEffectiveSrtPublicationRepository",
     "SQLiteEffectiveSrtMaterializationCommandPersistence",
     "SQLiteEffectiveSrtMaterializationRepository",
     "SQLiteEffectiveSubtitleSrtArtifactCommandPersistence",

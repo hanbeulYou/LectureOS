@@ -361,6 +361,14 @@ from .effective_srt_delivery import (
     EffectiveSrtDeliveryService,
     derive_delivery_identity,
 )
+from .effective_srt_publication import (
+    EffectiveSrtPublication,
+    EffectiveSrtPublicationError,
+    EffectiveSrtPublicationService,
+    PublicationAvailability,
+    PublicationKind,
+    derive_publication_identity,
+)
 from .effective_transcript_consumption import (
     MANIFEST_CONSUMER_KIND,
     SUBTITLE_GENERATION_CONSUMER_KIND,
@@ -830,6 +838,12 @@ __all__ = [
     "EffectiveSrtDeliveryError",
     "EffectiveSrtDeliveryService",
     "derive_delivery_identity",
+    "EffectiveSrtPublication",
+    "EffectiveSrtPublicationError",
+    "EffectiveSrtPublicationService",
+    "PublicationAvailability",
+    "PublicationKind",
+    "derive_publication_identity",
     "EffectiveSrtMaterialization",
     "EffectiveSrtMaterializationError",
     "EffectiveSrtMaterializationService",

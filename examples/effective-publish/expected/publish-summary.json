@@ -1,0 +1,17 @@
+{
+  "artifact_a_id": "subtitle-effective-srt-artifact:cbf0fbd13124146405e65fc351d9767b618a14a7676f2d77a46d045d19922589",
+  "artifact_b_id": "subtitle-effective-srt-artifact:42d8f15861181aeaf61690f8d1a28dfccecf0e1799d49c33a89823ff2d711fb4",
+  "delivery_a_id": "subtitle-effective-srt-delivery:349d5397cdd1f072f38e761e91864d9234b68fc94da444dabcdb33fdfe86f4a3",
+  "delivery_b_id": "subtitle-effective-srt-delivery:26c16e6b9a003b61e50b0d473b7203664ebb05b2ab97a8cf77e8a58367ca6a22",
+  "intake_id": "transcript-source-intake:sha256:7be6a9582ff6c7bd4e66c052dc634a38b88909402f2fb330d663000d7f2079a5",
+  "publication_count": 5,
+  "publication_first_id": "subtitle-effective-srt-publication:5fe48e22d1a1c27fd8699379dcff0245bf7686c763ba3576a3bcea338e8839fb",
+  "publication_history_kinds": [
+    "publish",
+    "publish",
+    "withdraw",
+    "publish",
+    "publish"
+  ],
+  "publication_withdraw_id": "subtitle-effective-srt-publication:7db702eb5cb749c7fe7d3c48c501205bd25b6a5a7594e9f9db4c8f7edfd79880"
+}

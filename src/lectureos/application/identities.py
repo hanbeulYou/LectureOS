@@ -248,3 +248,8 @@ class EffectiveSrtMaterializationId(OpaqueIdentity):
 @dataclass(frozen=True, slots=True)
 class EffectiveSrtDeliveryId(OpaqueIdentity):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class EffectiveSrtPublicationId(OpaqueIdentity):
+    pass
