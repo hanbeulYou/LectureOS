@@ -2910,3 +2910,86 @@ anchor is never corruption). One CLI (`lectureos.analysis_finding_cli` with
 a byte-stable golden prove the twelve GOAL-025 scenarios (79 focused new tests). The complete
 2759-test suite passes; the subtitle pipeline, transcript contracts, and both legacy analysis
 generations are unchanged.
+
+## Lecture Segmentation Foundation — Effective-Transcript Generation (First Slice, GOAL-026)
+
+- Blueprint: `docs/042` §7.2 + `PATCH-0031` (S-1…S-13, Confirmed), over the released GOAL-023
+  durable analysis input; the canonical Segment record contract is inherited unchanged from
+  `docs/042` §7.1 / `PATCH-0011`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema **v49** (one append-only table
+  `lecture_analysis_segments`)
+- Commit: `feat: add effective lecture segmentation foundation`
+- Immediate next milestone: `042 §9.1` Edit Candidate still carries its legacy-generation admission
+  boundary and was deliberately not re-scoped by PATCH-0031 (S-13); it needs its own targeted
+  generation-scope PATCH before implementation
+
+This milestone adds the second analysis capability of the effective-transcript generation, sibling
+to the Findings of GOAL-025: `LectureAnalysisSegmentationService.admit_segmentation(...)` admits an
+**ordered batch** of provider-independent ranges against **exactly one** immutable
+`LectureAnalysisInputAdmission` and appends one immutable, identity-owning, provenance-bearing
+canonical Segment per member, atomically. Per S-4 the anchor's authority standing is **re-derived at
+command time** through the released GOAL-023 `authority_match` (no resolver is reimplemented) and
+only `current` admits; the other two values are explicit refusals and a missing or malformed
+reference is refused before standing is evaluated. Per §7.1 and S-3 **no Analysis Finding is
+required, referenced, or created** — the demo admits a full segmentation with zero Findings anywhere
+— and upstream provenance is obtained through the anchor rather than duplicated (the row has no
+intake, media, revision, timeline, or fingerprint column). The batch position **is** the sequence, so
+sequences are contiguous from 0 by construction and cannot collide within a command; an empty batch
+is refused. Because §7.1 forbids canonical-set/uniqueness constraints, several independent batches
+may share a sequence with different ranges, and **no `UNIQUE(admission_id, sequence)` constraint
+exists** — adding one would violate the contract. §7.1's Minimum Boundary is preserved verbatim
+(exactly one required single range, finite, non-negative, `start <= end`, zero-duration valid,
+whole-recording valid) and **no media-duration, transcript-boundary, coverage, gap, or overlap
+validation is introduced** (S-8 forbids it and the anchor records no extent). Every boundary
+canonicalizes bounds to float **and collapses negative zero**, so integral and `-0.0` spellings
+converge on the same identity — the defect class GOAL-025 discovered in the sibling Finding
+contract. The same latent negative-zero defect was found in the released GOAL-025 Finding contract
+during this Goal and fixed preventively (no stored row was affected). Identity is
+Application-owned and deterministic
+(`lecture-analysis-segment:<sha256(contract kind/version, admission, sequence, canonical range)>`);
+no wall-clock, randomness, rowid, path, or provider identifier participates. **Identity conflict
+reachability is Option B**: every persisted canonical field participates in identity, so a divergent
+payload is structurally unreachable through the command — the semantic-equality guard is retained
+anyway as an integrity check and is exercised by a tampering stub. Exact batch replay converges
+(`reused`, no new row); partial pre-existence verifies every existing member *before* any write and
+records only the missing ones, reporting recorded/reused counts explicitly. Provenance is
+execution-free and marker-free: **no ProcessingRun, ProcessingUnit, UnitExecution, RUNNING state, or
+DomainResult is created** (asserted by an unchanged upstream DomainResult count). Per S-12 the legacy
+`lecture_segments` relation is **not reused** — its mandatory `source_input_id`/`processing_run_id`/
+`unit_execution_id`/`domain_result_id` could only be satisfied by fabricating what S-7 prohibits — so
+persistence is a new additive v49 table; every released version v1..v48 chains single-step to v49
+preserving all rows, and the legacy execution-coupled analysis contracts stay untouched at zero rows.
+Read-only validation gains six integrity-only `LECTURE_ANALYSIS_SEGMENT_*` checks (a superseded
+anchor and a shared sequence are never corruption). One CLI (`lectureos.analysis_segment_cli` with
+`admit`/`show`/`status`/`list`) and a deterministic demo (`lectureos.analysis_segment_demo`) with a
+byte-stable golden prove the fourteen GOAL-026 scenarios (82 focused new tests). The complete
+2843-test suite passes; the subtitle pipeline, transcript contracts, and both legacy analysis
+generations are unchanged. **GOAL-025's released Analysis Finding contract was changed** by the
+separate preventive fix recorded below — it is not unchanged, and that correction is stated here
+deliberately.
+
+
+## Negative-Zero Canonicalization Fix — Effective Analysis Finding (GOAL-025 follow-up)
+
+- Blueprint: no contract change; `docs/042` §8.2 and `PATCH-0030` are unaffected
+- Status: **COMPLETE**
+- Selected persistence: none — no schema, migration, or stored row changes
+- Commit: `fix: collapse negative zero in effective analysis finding ranges`
+
+A latent defect of the same class GOAL-025 fixed for integral bounds was found in the released
+Analysis Finding contract while implementing GOAL-026. `-0.0 < 0` is False, so a negative-zero range
+bound passed the non-negative check, but `json.dumps(-0.0)` is `-0.0` while `json.dumps(0.0)` is
+`0.0`, and SQLite's REAL affinity stores plain `0.0`. A Finding admitted with a `-0.0` bound would
+therefore have been written with an identity its own stored row could never re-derive — permanently
+unreadable through `get`/`list_for_admission` and permanently flagged by repository validation, in an
+insert-only table with no delete path.
+
+The fix introduces one `_canonical_bound` helper used by **both** the range validator and the
+identity derivation, so `-0.0` and `0.0` are one canonical bound everywhere, and guards it against
+`OverflowError` so an int too large for a double is refused inside the boundary's own error family
+rather than escaping as an `ArithmeticError`. **No stored row is affected and no readable released
+identity changes**: for every value that could round-trip under the old code,
+`_canonical_bound(x) == float(x)`; only the previously-unreadable `-0.0` case changes, and it changes
+from broken to correct. Two regression tests cover the identity convergence and the round-trip. The
+same guards are applied to the GOAL-026 Segment contract from the start.
