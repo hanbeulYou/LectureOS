@@ -52,6 +52,8 @@ from typing import Protocol
 
 from lectureos.persistence.errors import PersistenceIdentityCollisionError
 
+from .canonical_timeline_value import canonical_timeline_value
+
 from .identities import LectureAnalysisFindingId, LectureAnalysisInputAdmissionId
 from .lecture_analysis_input_admission import (
     AdmissionAuthorityMatch,
@@ -137,22 +139,13 @@ def _normalize_confidence_component(name: str, value: float | None) -> float | N
 def _canonical_bound(value: float) -> float:
     """Return one range bound in its single canonical float form.
 
-    Two spellings must never mint two identities for one bound. `json.dumps(1)` is `1` while
-    `json.dumps(1.0)` is `1.0`, and `-0.0 < 0` is False so negative zero passes the non-negative
-    check while hashing differently from `0.0`. SQLite's REAL affinity stores `1.0` and `0.0`
-    either way, so an uncollapsed bound would leave a row that can never re-derive its own
-    identity — permanently unreadable and permanently flagged in an insert-only table.
+    Delegates to the shared effective-generation primitive so this contract cannot drift from the
+    sibling ones (see `canonical_timeline_value` for why the collapses are load-bearing).
     """
 
-    try:
-        canonical = float(value)
-    except OverflowError as error:
-        # An int too large for a double: without this guard the ArithmeticError escapes this
-        # boundary's error family and reaches callers as a traceback.
-        raise LectureAnalysisFindingError(
-            "analysis finding range bound is out of representable range"
-        ) from error
-    return 0.0 if canonical == 0.0 else canonical
+    return canonical_timeline_value(
+        value, error=LectureAnalysisFindingError, subject="analysis finding range bound"
+    )
 
 
 def _normalize_source_range(

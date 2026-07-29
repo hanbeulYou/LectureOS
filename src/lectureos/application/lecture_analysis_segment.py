@@ -58,10 +58,11 @@ import hashlib
 import json
 from dataclasses import dataclass
 from enum import Enum
-from math import isfinite
 from typing import Iterable, Protocol, Sequence
 
 from lectureos.persistence.errors import PersistenceIdentityCollisionError
+
+from .canonical_timeline_value import canonical_timeline_value
 
 from .identities import LectureAnalysisInputAdmissionId, LectureAnalysisSegmentId
 from .lecture_analysis_input_admission import (
@@ -102,40 +103,14 @@ def _canonical_json(payload: object) -> str:
 def canonical_bound(name: str, value: float) -> float:
     """Validate one range bound and return it in its canonical ``float`` form.
 
-    Coercion is load-bearing, not cosmetic. The bound participates in identity through canonical
-    JSON, where ``json.dumps(1)`` is ``1`` but ``json.dumps(1.0)`` is ``1.0`` — two different
-    digests for one range. The column has REAL affinity, so SQLite stores ``1.0`` regardless and a
-    non-normalized row would re-derive an identity different from the one in its own identity
-    column: permanently unreadable and permanently flagged, in an insert-only table with no delete
-    path. Normalizing at every boundary keeps one range = one identity. (This is the defect GOAL-025
-    found in the sibling Finding contract; the same rule is applied here from the start.)
+    Delegates to the shared effective-generation primitive so this contract cannot drift from the
+    sibling ones: the int/float and negative-zero collapses are load-bearing for identity (see
+    `canonical_timeline_value`), not cosmetic.
     """
 
-    if not isinstance(value, (int, float)) or isinstance(value, bool):
-        raise LectureAnalysisSegmentError(f"lecture segment {name} must be a real number")
-    try:
-        if not isfinite(value):
-            raise LectureAnalysisSegmentError(f"lecture segment {name} must be finite")
-    except OverflowError as error:
-        # An int too large for a double: `isfinite` raises rather than returning False, which
-        # would escape this boundary's error family entirely.
-        raise LectureAnalysisSegmentError(
-            f"lecture segment {name} is out of representable range"
-        ) from error
-    if value < 0:
-        raise LectureAnalysisSegmentError(f"lecture segment {name} must not be negative")
-    try:
-        canonical = float(value)
-    except OverflowError as error:
-        raise LectureAnalysisSegmentError(
-            f"lecture segment {name} is out of representable range"
-        ) from error
-    # Collapse negative zero. `-0.0 < 0` is False, so it passes the non-negative check, and
-    # `json.dumps(-0.0)` is `-0.0` while `json.dumps(0.0)` is `0.0` — two digests for one bound.
-    # SQLite then stores plain `0.0`, so the row would re-derive an identity different from the one
-    # in its own identity column: permanently unreadable and permanently flagged, in an insert-only
-    # table with no delete path. There is exactly one canonical zero here.
-    return 0.0 if canonical == 0.0 else canonical
+    return canonical_timeline_value(
+        value, error=LectureAnalysisSegmentError, subject=f"lecture segment {name}"
+    )
 
 
 def normalize_range(start: float, end: float) -> tuple[float, float]:
