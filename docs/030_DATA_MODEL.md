@@ -210,7 +210,7 @@ Lecture Segment는 다음 원칙을 따른다.
 
 구간 label taxonomy와 Lecture Segment의 중첩 가능성은 이 문서에서 확정하지 않는다.
 
-Lecture Segment의 canonical 기록 계약은 `042_LECTURE_INTELLIGENCE_PIPELINE.md §7.1`(`patches/PATCH-0011`)에서 확정되었다: durable·immutable·identity-owning·insert-only·provenance-bearing 기록으로, eligibility가 ELIGIBLE인 하나의 Eligible Analysis Input에 anchor되고 정확히 하나의 필수 Source Timeline Time Range를 가진다. Segment Label과 taxonomy, 중첩·계층·multi-range, revision·supersession은 여전히 deferred다.
+Lecture Segment의 canonical 기록 계약은 `042_LECTURE_INTELLIGENCE_PIPELINE.md §7.1`(`patches/PATCH-0011`)에서 확정되었다: durable·immutable·identity-owning·insert-only·provenance-bearing 기록으로, eligibility가 ELIGIBLE인 하나의 Eligible Analysis Input에 anchor되고 정확히 하나의 필수 Source Timeline Time Range를 가진다. anchor **cardinality** 규칙(정확히 하나의 durable analysis input + 정확히 하나의 필수 Time Range)은 generation-neutral하다. 다만 위 문장이 지목한 `Eligible Analysis Input`이라는 record 이름과 그 `ELIGIBLE` eligibility 상태 요구는 **legacy generation 전용**이며, effective-transcript generation에서 그 자리를 차지하는 canonical record와 admission 전제는 `042 §5.1.1`과 `§7.2`(`patches/PATCH-0031`)가 확정한다. Segment Label과 taxonomy, 중첩·계층·multi-range, revision·supersession은 여전히 deferred다.
 
 ## 9. Edit Candidate Model
 

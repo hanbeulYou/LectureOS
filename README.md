@@ -910,7 +910,7 @@ LectureOS/
 
 ## Development Status (개발 상태)
 
-- **Blueprint:** **PATCH-0030**까지 안정(`docs/`, `patches/`).
+- **Blueprint:** **PATCH-0031**까지 안정(`docs/`, `patches/`).
 - **구현:** edit-export MVP 완료; **Effective Subtitle Pipeline v1 릴리스 완료**
   (`implementation/111_EFFECTIVE_SUBTITLE_PIPELINE_V1_RELEASE.md`); Lecture Intelligence는
   effective-transcript generation의 **Analysis Finding Application Foundation**까지 완료
