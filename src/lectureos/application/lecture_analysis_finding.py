@@ -123,9 +123,36 @@ def _normalize_confidence_component(name: str, value: float | None) -> float | N
         return None
     if not isinstance(value, (int, float)) or isinstance(value, bool):
         raise LectureAnalysisFindingError(f"analysis finding {name} must be a real number")
-    if not isfinite(value) or value < 0.0 or value > 1.0:
+    try:
+        finite = isfinite(value)
+    except OverflowError as error:
+        raise LectureAnalysisFindingError(
+            f"analysis finding {name} is out of representable range"
+        ) from error
+    if not finite or value < 0.0 or value > 1.0:
         raise LectureAnalysisFindingError(f"analysis finding {name} must be within [0, 1]")
     return float(value)
+
+
+def _canonical_bound(value: float) -> float:
+    """Return one range bound in its single canonical float form.
+
+    Two spellings must never mint two identities for one bound. `json.dumps(1)` is `1` while
+    `json.dumps(1.0)` is `1.0`, and `-0.0 < 0` is False so negative zero passes the non-negative
+    check while hashing differently from `0.0`. SQLite's REAL affinity stores `1.0` and `0.0`
+    either way, so an uncollapsed bound would leave a row that can never re-derive its own
+    identity — permanently unreadable and permanently flagged in an insert-only table.
+    """
+
+    try:
+        canonical = float(value)
+    except OverflowError as error:
+        # An int too large for a double: without this guard the ArithmeticError escapes this
+        # boundary's error family and reaches callers as a traceback.
+        raise LectureAnalysisFindingError(
+            "analysis finding range bound is out of representable range"
+        ) from error
+    return 0.0 if canonical == 0.0 else canonical
 
 
 def _normalize_source_range(
@@ -159,7 +186,13 @@ def _normalize_source_range(
         raise LectureAnalysisFindingError("analysis finding range start must be a real number")
     if not isinstance(end, (int, float)) or isinstance(end, bool):
         raise LectureAnalysisFindingError("analysis finding range end must be a real number")
-    if not isfinite(start) or not isfinite(end):
+    try:
+        finite = isfinite(start) and isfinite(end)
+    except OverflowError as error:
+        raise LectureAnalysisFindingError(
+            "analysis finding source range is out of representable range"
+        ) from error
+    if not finite:
         raise LectureAnalysisFindingError("analysis finding source range must be finite")
     if start < 0 or end < 0:
         raise LectureAnalysisFindingError(
@@ -169,7 +202,7 @@ def _normalize_source_range(
         raise LectureAnalysisFindingError(
             "analysis finding range start must not be after end"
         )
-    return float(start), float(end)
+    return _canonical_bound(start), _canonical_bound(end)
 
 
 def _require_evidence(value: str) -> str:
@@ -208,8 +241,8 @@ def derive_finding_identity(
                 "admission": admission_id.value,
                 "finding_type": finding_type,
                 "evidence": evidence,
-                "range_start": None if range_start is None else float(range_start),
-                "range_end": None if range_end is None else float(range_end),
+                "range_start": None if range_start is None else _canonical_bound(range_start),
+                "range_end": None if range_end is None else _canonical_bound(range_end),
             }
         ).encode("utf-8")
     ).hexdigest()

@@ -79,6 +79,14 @@ class IdentityTests(unittest.TestCase):
         # Differing evidence must never converge (042 §8.2 D-9): no trimming or case folding.
         self.assertNotEqual(self._id(), self._id(evidence="잡음 "))
 
+    def test_negative_zero_and_zero_share_one_identity(self):
+        # `-0.0` passes the non-negative check but hashes differently from `0.0`, while SQLite
+        # stores plain `0.0` — without collapsing, such a row could never re-derive its identity.
+        self.assertEqual(
+            self._id(range_start=-0.0, range_end=1.0),
+            self._id(range_start=0.0, range_end=1.0),
+        )
+
     def test_source_range_participates(self):
         self.assertNotEqual(self._id(), self._id(range_start=0.0, range_end=1.0))
         self.assertNotEqual(
@@ -168,6 +176,12 @@ class ModelInvariantTests(unittest.TestCase):
             self._build(range_start=-1.0, range_end=1.0)
         with self.assertRaises(LectureAnalysisFindingError):
             self._build(range_start=2.0, range_end=1.0)
+
+    def test_out_of_representable_range_stays_in_the_error_family(self):
+        with self.assertRaises(LectureAnalysisFindingError):
+            self._build(range_start=0, range_end=10 ** 400)
+        with self.assertRaises(LectureAnalysisFindingError):
+            self._build(confidence=10 ** 400)
 
     def test_non_finite_range_is_refused(self):
         with self.assertRaises(LectureAnalysisFindingError):
@@ -505,6 +519,16 @@ class LectureAnalysisFindingServiceTests(unittest.TestCase):
                 confidence=0.9,
             )
         self.assertEqual(self._count(), 1)
+
+    def test_negative_zero_range_round_trips_and_replays(self):
+        first = self._admit(finding_type="speaker_overlap", evidence="겹침",
+                            range_start=-0.0, range_end=1.0)
+        self.assertEqual(first.finding.range_start, 0.0)
+        self.assertEqual(self.findings.get(first.finding.identity.value), first.finding)
+        again = self._admit(finding_type="speaker_overlap", evidence="겹침",
+                            range_start=0.0, range_end=1.0)
+        self.assertEqual(again.outcome.value, "reused")
+        self.assertEqual(again.finding.identity, first.finding.identity)
 
     def test_integer_range_and_confidence_normalize_to_canonical_floats(self):
         """An int-valued range must not mint a second identity: the column has REAL affinity,

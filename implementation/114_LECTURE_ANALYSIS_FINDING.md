@@ -143,6 +143,17 @@ generation's realization of PATCH-0010; this contract never reads or writes it (
 rows). The two generations coexist exactly as PATCH-0030 D-1 records and as the legacy and
 effective subtitle pipelines already do.
 
+## Post-release fix — negative-zero canonicalization (GOAL-026 follow-up)
+
+While implementing the sibling Segmentation contract, a latent defect of the same class this
+milestone fixed for integral bounds was found here: `-0.0 < 0` is False, so a negative-zero range
+bound passed validation, hashed as `-0.0`, and was stored by SQLite as plain `0.0` — leaving a row
+whose identity could never re-derive. Range canonicalization and identity derivation now share one
+`_canonical_bound` helper, so `-0.0` and `0.0` are one canonical bound in both, and the helper is
+guarded against `OverflowError` for ints too large for a double. No stored row is affected and no
+readable released identity changes; only the previously-unreadable case changes. See the
+corresponding entry in `060_IMPLEMENTATION_STATUS.md`.
+
 ## Status
 
 Complete: 79 focused new tests; the complete 2759-test suite passes; schema v48. `042 §7.1`
