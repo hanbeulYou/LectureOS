@@ -831,6 +831,36 @@ def compose_sqlite_lecture_analysis_finding_service(
     )
 
 
+def compose_sqlite_lecture_analysis_segmentation_service(
+    connection: sqlite3.Connection,
+) -> "LectureAnalysisSegmentationService":
+    """Build effective-generation Lecture Segmentation on one caller connection (042 §7.2).
+
+    Every command re-derives the anchoring admission's authority standing through the released
+    GOAL-023 service — no authority resolver is reimplemented here — and admits only at `current`.
+    One ordered batch of immutable canonical segments is appended atomically; only
+    `lecture_analysis_segments` is written and every upstream record is read-only. No Analysis
+    Finding is required or created (the two are siblings, 042 §7.2 S-3), and no provider, AI,
+    ProcessingRun, UnitExecution, or DomainResult exists in this contract. The legacy
+    execution-coupled `lecture_segments` / `eligible_analysis_inputs` paths are never touched
+    (PATCH-0031 S-7, S-12).
+    """
+
+    from lectureos.application.lecture_analysis_segment import (
+        LectureAnalysisSegmentationService,
+    )
+    from lectureos.persistence.lecture_analysis_segment import (
+        SQLiteLectureAnalysisSegmentCommandPersistence,
+        SQLiteLectureAnalysisSegmentRepository,
+    )
+
+    return LectureAnalysisSegmentationService(
+        compose_sqlite_lecture_analysis_input_admission_service(connection),
+        SQLiteLectureAnalysisSegmentRepository(connection),
+        SQLiteLectureAnalysisSegmentCommandPersistence(connection),
+    )
+
+
 def compose_sqlite_effective_subtitle_generation_service(
     connection: sqlite3.Connection,
 ) -> EffectiveSubtitleGenerationService:

@@ -1,12 +1,11 @@
 {
   "admission_id": "lecture-analysis-input:8904f91bed486a00ab02fb1174565fbd78559080800cd66671fbbe6d7613cda4",
-  "finding_1_id": "lecture-analysis-finding:4bf7c597229ad1c3bafeee6b737d1490df15ecf8363d66c35f2e774d925b7acc",
-  "finding_2_id": "lecture-analysis-finding:9279008005036bbfc0c0f9a8f5a8c89fbf971f31c5252a67e56ad607080a7a00",
-  "finding_3_id": "lecture-analysis-finding:cdca4df9777ef6d3e35df07ff0ee01a38566bb47a56f29f1c8419a23a904ad39",
-  "finding_count": 3,
   "intake_id": "transcript-source-intake:sha256:7be6a9582ff6c7bd4e66c052dc634a38b88909402f2fb330d663000d7f2079a5",
   "repository_validation": "healthy",
   "revision_1_id": "corrected-revision:9e30381e608da1ae98d9d4d66a66ac5434711d6e4d6e7552b678427b2cd51e40",
   "revision_2_id": "corrected-revision:10cfbcc0b9fa980a328975f76b98d35bb8ab67330c7559675e20975b5d2cf49b",
-  "schema_version": 49
+  "schema_version": 49,
+  "segment_1_id": "lecture-analysis-segment:373d09f0607ed8f80d5746602372dfdb7ee42d521395042d3c3aeadb1f7f44a2",
+  "segment_2_id": "lecture-analysis-segment:a140073edb30c093b0424d6650605a5fd2fb810b9b0fe76b217d7ad234237f07",
+  "segment_count": 5
 }

@@ -138,6 +138,10 @@ from .lecture_analysis_finding import (
     SQLiteLectureAnalysisFindingCommandPersistence,
     SQLiteLectureAnalysisFindingRepository,
 )
+from .lecture_analysis_segment import (
+    SQLiteLectureAnalysisSegmentCommandPersistence,
+    SQLiteLectureAnalysisSegmentRepository,
+)
 from .lecture_analysis_input_admission import (
     SQLiteLectureAnalysisInputAdmissionCommandPersistence,
     SQLiteLectureAnalysisInputAdmissionRepository,
@@ -271,6 +275,8 @@ __all__ = [
     "SQLiteLectureAnalysisFindingRepository",
     "SQLiteLectureAnalysisInputAdmissionCommandPersistence",
     "SQLiteLectureAnalysisInputAdmissionRepository",
+    "SQLiteLectureAnalysisSegmentCommandPersistence",
+    "SQLiteLectureAnalysisSegmentRepository",
     "SQLiteEffectiveSrtMaterializationCommandPersistence",
     "SQLiteEffectiveSrtMaterializationRepository",
     "SQLiteEffectiveSubtitleSrtArtifactCommandPersistence",

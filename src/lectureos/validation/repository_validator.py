@@ -82,6 +82,7 @@ _INSPECTED_TABLES = (
     "subtitle_effective_srt_publications",
     "lecture_analysis_input_admissions",
     "lecture_analysis_findings",
+    "lecture_analysis_segments",
 )
 _IDENTITY_TABLES = (
     "domain_result_references",
@@ -110,6 +111,7 @@ _IDENTITY_TABLES = (
     "subtitle_effective_srt_publications",
     "lecture_analysis_input_admissions",
     "lecture_analysis_findings",
+    "lecture_analysis_segments",
 )
 _CANONICAL_FINDING_TYPE = re.compile(r"^[a-z][a-z0-9_]*$")
 _APPROVING_KINDS = ("accept", "modify")
@@ -2916,6 +2918,96 @@ def _check_lecture_analysis_findings(connection: sqlite3.Connection) -> list[Dia
     return diagnostics
 
 
+def _check_lecture_analysis_segments(connection: sqlite3.Connection) -> list[Diagnostic]:
+    """Integrity of effective-generation Lecture Segments (042 §7.2 / GOAL-026, PATCH-0031).
+
+    Deliberately NOT flagged: a segment whose anchoring admission was later superseded or whose
+    intake's current authority became ineligible; a historical segment no longer in use; several
+    batches sharing a `sequence` under one admission (042 §7.1 forbids canonical-set/uniqueness
+    constraints, so that is contract-correct, not corruption); and a range extending beyond any
+    externally estimated media duration. This check is integrity-only and reads no filesystem, no
+    media, and no provider.
+    """
+
+    if not _table_exists(connection, "lecture_analysis_segments"):
+        return []
+    diagnostics: list[Diagnostic] = []
+
+    def _flag(code: str, identity: str, message: str) -> None:
+        diagnostics.append(
+            Diagnostic(
+                code=code,
+                severity=Severity.ERROR,
+                location=f"lecture_analysis_segments:{identity}",
+                message=message,
+            )
+        )
+
+    if _table_exists(connection, "lecture_analysis_input_admissions"):
+        for (identity,) in connection.execute(
+            """
+            SELECT s.identity
+            FROM lecture_analysis_segments s
+            LEFT JOIN lecture_analysis_input_admissions a ON a.identity = s.admission_id
+            WHERE a.identity IS NULL
+            ORDER BY s.identity
+            """
+        ).fetchall():
+            _flag("LECTURE_ANALYSIS_SEGMENT_ANCHOR_MISSING", identity,
+                  "segment anchor admission does not exist")
+
+    for identity, admission_id, sequence, start, end, version in connection.execute(
+        """
+        SELECT identity, admission_id, sequence, range_start, range_end,
+               segment_contract_version
+        FROM lecture_analysis_segments
+        ORDER BY identity
+        """
+    ).fetchall():
+        if version != 1:
+            _flag("LECTURE_ANALYSIS_SEGMENT_CONTRACT_VERSION_MISMATCH", identity,
+                  "segment records an unsupported contract version")
+        if not isinstance(sequence, int) or sequence < 0:
+            _flag("LECTURE_ANALYSIS_SEGMENT_SEQUENCE_INVALID", identity,
+                  "segment sequence is not a non-negative integer")
+        if (
+            not isinstance(start, float)
+            or not isinstance(end, float)
+            or start != start          # NaN
+            or end != end
+            or start in (float("inf"), float("-inf"))
+            or end in (float("inf"), float("-inf"))
+        ):
+            _flag("LECTURE_ANALYSIS_SEGMENT_RANGE_NOT_CANONICAL", identity,
+                  "segment range is not a finite canonical float")
+            continue
+        if start < 0 or end < 0 or start > end:
+            _flag("LECTURE_ANALYSIS_SEGMENT_RANGE_INVALID", identity,
+                  "segment range is negative or inverted")
+
+        # Identity re-derivation proves the whole canonical binding at once: the contract kind and
+        # version (the generation provenance), the anchor, the ordinal, and the canonical range —
+        # including that the stored range is the exact float that was hashed.
+        expected = "lecture-analysis-segment:" + hashlib.sha256(
+            json.dumps(
+                {
+                    "contract": "lecture_analysis_segment",
+                    "contract_version": 1,
+                    "admission": admission_id,
+                    "sequence": sequence,
+                    "range_start": start,
+                    "range_end": end,
+                },
+                ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        if identity != expected:
+            _flag("LECTURE_ANALYSIS_SEGMENT_IDENTITY_MISMATCH", identity,
+                  "segment identity does not re-derive from its stored payload")
+
+    return diagnostics
+
+
 def _check_raw_transcript_segments(connection: sqlite3.Connection) -> list[Diagnostic]:
     if not _table_exists(connection, "raw_transcript_segments"):
         return []
@@ -3025,6 +3117,7 @@ def validate_repository(connection: sqlite3.Connection) -> ValidationReport:
     diagnostics += _check_effective_srt_publications(connection)
     diagnostics += _check_lecture_analysis_input_admissions(connection)
     diagnostics += _check_lecture_analysis_findings(connection)
+    diagnostics += _check_lecture_analysis_segments(connection)
     diagnostics += _check_raw_transcript_segments(connection)
     diagnostics += _check_malformed_identities(connection)
 
