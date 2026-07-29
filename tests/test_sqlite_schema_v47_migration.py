@@ -56,8 +56,9 @@ class SQLiteSchemaVersionFortySevenTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
 
-    def test_schema_version_is_forty_seven(self) -> None:
-        self.assertEqual(SQLITE_SCHEMA_VERSION, 47)
+    def test_v47_remains_a_supported_version(self) -> None:
+        self.assertIn(47, sqlite_lifecycle._SUPPORTED_SCHEMA_VERSIONS)
+        self.assertLessEqual(47, SQLITE_SCHEMA_VERSION)
 
     def test_fresh_database_initializes_with_v47_tables(self) -> None:
         connection = initialize_sqlite_database(self.database_path)
@@ -90,7 +91,8 @@ class SQLiteSchemaVersionFortySevenTests(unittest.TestCase):
             connection.close()
 
     def test_v47_no_op_migration_is_allowed(self) -> None:
-        initialize_sqlite_database(self.database_path).close()
+        create_legacy_database(self.database_path, 46)
+        migrate_sqlite_database(self.database_path, 47)
         migrate_sqlite_database(self.database_path, 47)
         connection = open_sqlite_database(self.database_path)
         try:
@@ -109,10 +111,10 @@ class SQLiteSchemaVersionFortySevenTests(unittest.TestCase):
     def test_unsupported_target_is_rejected(self) -> None:
         initialize_sqlite_database(self.database_path).close()
         with self.assertRaises(PersistenceError):
-            migrate_sqlite_database(self.database_path, 48)
+            migrate_sqlite_database(self.database_path, 49)
 
     def test_downgrade_is_rejected(self) -> None:
-        initialize_sqlite_database(self.database_path).close()
+        create_legacy_database(self.database_path, 47)
         with self.assertRaises(PersistenceError):
             migrate_sqlite_database(self.database_path, 46)
 
@@ -126,11 +128,11 @@ class SQLiteSchemaVersionFortySevenTests(unittest.TestCase):
             connection.close()
 
     def test_every_released_version_chains_to_v47_preserving_data(self) -> None:
-        for start in range(1, SQLITE_SCHEMA_VERSION):
+        for start in range(1, 47):
             with self.subTest(start=start):
                 path = Path(self.temporary_directory.name) / f"chain-v{start}.sqlite3"
                 create_legacy_database(path, start)
-                for target in range(start + 1, SQLITE_SCHEMA_VERSION + 1):
+                for target in range(start + 1, 48):
                     migrate_sqlite_database(path, target)
                 connection = open_sqlite_database(path)
                 try:
@@ -138,7 +140,7 @@ class SQLiteSchemaVersionFortySevenTests(unittest.TestCase):
                         connection.execute(
                             "SELECT version FROM schema_metadata"
                         ).fetchone()[0],
-                        SQLITE_SCHEMA_VERSION,
+                        47,
                     )
                     self.assertTrue(V47_TABLES.issubset(table_names(connection)))
                     self.assertEqual(
