@@ -258,3 +258,12 @@ class EffectiveSrtPublicationId(OpaqueIdentity):
 @dataclass(frozen=True, slots=True)
 class LectureAnalysisInputAdmissionId(OpaqueIdentity):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class LectureAnalysisFindingId(OpaqueIdentity):
+    """Effective-transcript generation Analysis Finding (042 §8.2 / PATCH-0030).
+
+    Distinct from the legacy execution-coupled `AnalysisFindingId` (042 §8.1), which anchors to
+    an `EligibleAnalysisInput` and requires a running unit execution.
+    """

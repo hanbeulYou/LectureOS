@@ -803,6 +803,34 @@ def compose_sqlite_lecture_analysis_input_admission_service(
     )
 
 
+def compose_sqlite_lecture_analysis_finding_service(
+    connection: sqlite3.Connection,
+) -> "LectureAnalysisFindingService":
+    """Build effective-generation Analysis Finding admission on one caller connection (042 §8.2).
+
+    Every command re-derives the anchoring admission's authority standing through the released
+    GOAL-023 service — no authority resolver is reimplemented here — and admits only at `current`.
+    One immutable canonical finding is appended; only `lecture_analysis_findings` is written and
+    every upstream record is read-only. No analysis, provider, AI, ProcessingRun, or UnitExecution
+    exists in this contract, and the legacy execution-coupled `analysis_findings` /
+    `eligible_analysis_inputs` paths are never touched (PATCH-0030 D-6, D-11).
+    """
+
+    from lectureos.application.lecture_analysis_finding import (
+        LectureAnalysisFindingService,
+    )
+    from lectureos.persistence.lecture_analysis_finding import (
+        SQLiteLectureAnalysisFindingCommandPersistence,
+        SQLiteLectureAnalysisFindingRepository,
+    )
+
+    return LectureAnalysisFindingService(
+        compose_sqlite_lecture_analysis_input_admission_service(connection),
+        SQLiteLectureAnalysisFindingRepository(connection),
+        SQLiteLectureAnalysisFindingCommandPersistence(connection),
+    )
+
+
 def compose_sqlite_effective_subtitle_generation_service(
     connection: sqlite3.Connection,
 ) -> EffectiveSubtitleGenerationService:

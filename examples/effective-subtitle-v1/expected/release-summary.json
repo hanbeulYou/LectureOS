@@ -23,6 +23,6 @@
   "release": "Effective Subtitle Pipeline v1",
   "repository_validation": "healthy",
   "review_subject_id": "subtitle-effective-review-subject:59fcaae7a61896e84ff34bf535eabc532f251987814435b8565d0bc7042f828f",
-  "schema_version": 47,
+  "schema_version": 48,
   "srt_payload": "1\n00:00:00,000 --> 00:00:01,000\n안녕하세요 여러부\n\n2\n00:00:01,000 --> 00:00:02,000\n오늘의 강의입니다\n"
 }

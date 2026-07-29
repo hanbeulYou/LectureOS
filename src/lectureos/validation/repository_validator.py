@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sqlite3
 from pathlib import Path
 
@@ -80,6 +81,7 @@ _INSPECTED_TABLES = (
     "subtitle_effective_srt_delivery_outcomes",
     "subtitle_effective_srt_publications",
     "lecture_analysis_input_admissions",
+    "lecture_analysis_findings",
 )
 _IDENTITY_TABLES = (
     "domain_result_references",
@@ -107,7 +109,9 @@ _IDENTITY_TABLES = (
     "subtitle_effective_srt_delivery_intents",
     "subtitle_effective_srt_publications",
     "lecture_analysis_input_admissions",
+    "lecture_analysis_findings",
 )
+_CANONICAL_FINDING_TYPE = re.compile(r"^[a-z][a-z0-9_]*$")
 _APPROVING_KINDS = ("accept", "modify")
 
 
@@ -2812,6 +2816,106 @@ def _check_lecture_analysis_input_admissions(
     return diagnostics
 
 
+def _check_lecture_analysis_findings(connection: sqlite3.Connection) -> list[Diagnostic]:
+    """Integrity of effective-generation Analysis Findings (042 §8.2 / GOAL-025, PATCH-0030).
+
+    Deliberately NOT flagged: a finding whose anchoring admission was later superseded or whose
+    intake's current authority became ineligible. Those are valid immutable history (D-5), never
+    corruption, and currentness is never a stored finding state (D-10). This check is
+    integrity-only and reads no filesystem and no provider.
+    """
+
+    if not _table_exists(connection, "lecture_analysis_findings"):
+        return []
+    diagnostics: list[Diagnostic] = []
+
+    def _flag(code: str, identity: str, message: str) -> None:
+        diagnostics.append(
+            Diagnostic(
+                code=code,
+                severity=Severity.ERROR,
+                location=f"lecture_analysis_findings:{identity}",
+                message=message,
+            )
+        )
+
+    # The anchor must exist: a finding without its admission has lost its entire provenance.
+    if _table_exists(connection, "lecture_analysis_input_admissions"):
+        for (identity,) in connection.execute(
+            """
+            SELECT f.identity
+            FROM lecture_analysis_findings f
+            LEFT JOIN lecture_analysis_input_admissions a ON a.identity = f.admission_id
+            WHERE a.identity IS NULL
+            ORDER BY f.identity
+            """
+        ).fetchall():
+            _flag("LECTURE_ANALYSIS_FINDING_ANCHOR_MISSING", identity,
+                  "finding anchor admission does not exist")
+
+    for (
+        identity,
+        admission_id,
+        finding_type,
+        evidence,
+        confidence,
+        uncertainty,
+        range_start,
+        range_end,
+        contract_version,
+    ) in connection.execute(
+        """
+        SELECT identity, admission_id, finding_type, evidence, confidence,
+               uncertainty, range_start, range_end, finding_contract_version
+        FROM lecture_analysis_findings
+        ORDER BY identity
+        """
+    ).fetchall():
+        if contract_version != 1:
+            _flag("LECTURE_ANALYSIS_FINDING_CONTRACT_VERSION_MISMATCH", identity,
+                  "finding records an unsupported contract version")
+        if not _CANONICAL_FINDING_TYPE.fullmatch(finding_type or ""):
+            _flag("LECTURE_ANALYSIS_FINDING_TYPE_MALFORMED", identity,
+                  "finding type is not a canonical Application-owned token")
+        if not (evidence or "").strip():
+            _flag("LECTURE_ANALYSIS_FINDING_EVIDENCE_EMPTY", identity,
+                  "finding evidence is empty")
+        if (range_start is None) != (range_end is None):
+            _flag("LECTURE_ANALYSIS_FINDING_RANGE_INVALID", identity,
+                  "finding source range requires both start and end")
+        elif range_start is not None and (
+            range_start < 0 or range_end < 0 or range_start > range_end
+        ):
+            _flag("LECTURE_ANALYSIS_FINDING_RANGE_INVALID", identity,
+                  "finding source range is negative or inverted")
+        for name, value in (("confidence", confidence), ("uncertainty", uncertainty)):
+            if value is not None and (value < 0.0 or value > 1.0):
+                _flag("LECTURE_ANALYSIS_FINDING_CONFIDENCE_OUT_OF_RANGE", identity,
+                      f"finding {name} is outside [0, 1]")
+
+        # Identity re-derivation proves the whole canonical binding at once: the contract kind and
+        # version (the generation provenance), the anchor, and every identity-participating field.
+        expected = "lecture-analysis-finding:" + hashlib.sha256(
+            json.dumps(
+                {
+                    "contract": "lecture_analysis_finding",
+                    "contract_version": 1,
+                    "admission": admission_id,
+                    "finding_type": finding_type,
+                    "evidence": evidence,
+                    "range_start": range_start,
+                    "range_end": range_end,
+                },
+                ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        if identity != expected:
+            _flag("LECTURE_ANALYSIS_FINDING_IDENTITY_MISMATCH", identity,
+                  "finding identity does not re-derive from its stored payload")
+
+    return diagnostics
+
+
 def _check_raw_transcript_segments(connection: sqlite3.Connection) -> list[Diagnostic]:
     if not _table_exists(connection, "raw_transcript_segments"):
         return []
@@ -2920,6 +3024,7 @@ def validate_repository(connection: sqlite3.Connection) -> ValidationReport:
     diagnostics += _check_effective_srt_deliveries(connection)
     diagnostics += _check_effective_srt_publications(connection)
     diagnostics += _check_lecture_analysis_input_admissions(connection)
+    diagnostics += _check_lecture_analysis_findings(connection)
     diagnostics += _check_raw_transcript_segments(connection)
     diagnostics += _check_malformed_identities(connection)
 
