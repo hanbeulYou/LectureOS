@@ -2861,3 +2861,52 @@ admissions are never corruption). One CLI (`lectureos.analysis_input_admission_c
 `admit`/`show`/`status`/`list`) and a deterministic demo (`lectureos.analysis_input_admission_demo`)
 with a byte-stable golden prove the eight GOAL-023 scenarios (38 focused new tests). The complete
 2680-test suite passes; the subtitle pipeline and all transcript contracts are unchanged.
+
+## Analysis Finding Application Foundation — Effective-Transcript Generation (First Slice, GOAL-025)
+
+- Blueprint: `docs/042` §8.2 + `PATCH-0030` (D-1…D-12, Confirmed), over the released GOAL-023
+  durable analysis input; the canonical Finding record contract is inherited unchanged from
+  `docs/042` §8.1 / `PATCH-0010`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema **v48** (one append-only table
+  `lecture_analysis_findings`)
+- Commit: `feat: add effective analysis finding foundation`
+- Immediate next milestone: `042 §7.1` Lecture Segmentation and `042 §9.1` Edit Candidate still
+  carry their legacy-generation admission boundaries and were deliberately not re-scoped by
+  PATCH-0030 (D-12); each needs its own targeted generation-scope PATCH before implementation
+
+This milestone opens Analysis itself for the effective-transcript generation:
+`LectureAnalysisFindingService.admit(...)` admits one provider-independent finding payload
+against **exactly one** immutable `LectureAnalysisInputAdmission` and appends one immutable,
+identity-owning, provenance-bearing canonical Finding. Per PATCH-0030 D-3 the anchor's authority
+standing is **re-derived at command time** through the released GOAL-023 `authority_match` (no
+authority resolver is reimplemented) and only `current` admits;
+`superseded_by_authority_change` and `current_authority_ineligible` are explicit refusals, and a
+missing or malformed reference is refused before standing is evaluated — never a fourth standing
+value. Upstream provenance is obtained *through* the anchor and deliberately not duplicated: the
+row carries no intake, source media, corrected revision, or fingerprint column. Finding Type
+reuses the released `^[a-z][a-z0-9_]*$` open Application-owned token rule (no closed enum, no
+LI-001…LI-012 taxonomy, no alias mapping or case folding); evidence is required, stored verbatim,
+and participates in identity; confidence and uncertainty are optional `[0, 1]` **recorded facts,
+not identity**; the source range is optional, single, both-or-neither, finite, non-negative, and
+`start <= end` (no media-duration or transcript-boundary validation is introduced — `042 §9.2`
+forbids adding it at a Foundation). Identity is Application-owned and deterministic
+(`lecture-analysis-finding:<sha256(contract kind/version, admission, type, evidence, range)>`);
+no wall-clock, randomness, rowid, path, or provider identifier participates. Generation provenance
+is execution-free and marker-free per D-6: **no ProcessingRun, ProcessingUnit, UnitExecution,
+RUNNING state, or DomainResult is created** (test-asserted, including an unchanged upstream
+DomainResult count). Exact replay converges (`reused`, no new row, near-concurrent inserts
+included); a divergent recorded payload on an existing identity is an explicit conflict, never an
+overwrite; a different anchor, type, evidence, or range is a distinct Finding. Existing Findings
+are never mutated when authority changes, and returning authority restores admissibility on the
+same canonical admission identity. Per D-11 the legacy `analysis_findings` relation is **not
+reused** — its mandatory `source_input_id`/`run_id`/`unit_execution_id` could only be satisfied by
+fabricating what D-6 prohibits — so persistence is a new additive v48 table; every released
+version v1..v47 chains single-step to v48 preserving all rows, and the legacy execution-coupled
+`analysis_findings` / `eligible_analysis_inputs` contracts stay untouched at zero rows.
+Read-only validation gains seven integrity-only `LECTURE_ANALYSIS_FINDING_*` checks (a superseded
+anchor is never corruption). One CLI (`lectureos.analysis_finding_cli` with
+`admit`/`show`/`status`/`list`) and a deterministic demo (`lectureos.analysis_finding_demo`) with
+a byte-stable golden prove the twelve GOAL-025 scenarios (79 focused new tests). The complete
+2759-test suite passes; the subtitle pipeline, transcript contracts, and both legacy analysis
+generations are unchanged.
