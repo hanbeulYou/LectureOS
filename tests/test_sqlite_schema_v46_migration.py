@@ -17,7 +17,7 @@ V46_TABLES = {"subtitle_effective_srt_publications"}
 
 _ADDITION_BLOCKS = tuple(
     (level, getattr(sqlite_lifecycle, f"_V{level}_ADDITION_STATEMENTS"))
-    for level in range(2, 48)
+    for level in range(2, 49)
 )
 
 
@@ -111,7 +111,7 @@ class SQLiteSchemaVersionFortySixTests(unittest.TestCase):
     def test_unsupported_target_is_rejected(self) -> None:
         initialize_sqlite_database(self.database_path).close()
         with self.assertRaises(PersistenceError):
-            migrate_sqlite_database(self.database_path, 49)
+            migrate_sqlite_database(self.database_path, 50)
 
     def test_downgrade_is_rejected(self) -> None:
         initialize_sqlite_database(self.database_path).close()

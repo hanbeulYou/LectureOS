@@ -66,6 +66,7 @@ _ADDITION_BLOCKS = (
     (45, sqlite_lifecycle._V45_ADDITION_STATEMENTS),
     (46, sqlite_lifecycle._V46_ADDITION_STATEMENTS),
     (47, sqlite_lifecycle._V47_ADDITION_STATEMENTS),
+    (48, sqlite_lifecycle._V48_ADDITION_STATEMENTS),
 )
 
 
@@ -153,7 +154,7 @@ class SQLiteSchemaVersionTwelveTests(unittest.TestCase):
     def test_unsupported_target_is_rejected(self) -> None:
         initialize_sqlite_database(self.database_path).close()
         with self.assertRaises(PersistenceError):
-            migrate_sqlite_database(self.database_path, 49)
+            migrate_sqlite_database(self.database_path, 50)
 
     def test_repository_rejects_pre_v12_schema(self) -> None:
         create_legacy_database(self.database_path, 11)
