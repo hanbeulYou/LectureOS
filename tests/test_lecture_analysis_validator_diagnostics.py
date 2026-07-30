@@ -1,7 +1,7 @@
 """Repository-validator diagnostics for the effective-generation analysis graph.
 
 Covers the integrity checks added by GOAL-025 (Analysis Finding), GOAL-026 (Lecture Segmentation),
-and GOAL-027 (Edit Candidate). Those checks previously had **no** test at all in any of the three
+GOAL-027 (Edit Candidate), and GOAL-028 (Review). Those checks previously had **no** test at all in any of the three
 milestones, which is why a defect in one of them — a probe whose condition the schema's own foreign
 key already makes unreachable — was only caught by manual review. Each check here is driven by a
 targeted corruption injected with foreign keys disabled, plus the healthy and
@@ -29,6 +29,7 @@ from lectureos.composition import (
     compose_sqlite_lecture_analysis_finding_service,
     compose_sqlite_lecture_analysis_input_admission_service,
     compose_sqlite_lecture_analysis_segmentation_service,
+    compose_sqlite_lecture_review_service,
     compose_sqlite_media_import_service,
     compose_sqlite_provider_transcript_admission_service,
     compose_sqlite_transcript_source_intake_service,
@@ -90,6 +91,17 @@ class AnalysisGraphValidatorTests(unittest.TestCase):
             range_end=1.0,
             rationale="사람이 검토할 만하다",
         ).candidate
+        reviews = compose_sqlite_lecture_review_service(connection)
+        self.accepted = reviews.admit_review_decision(
+            candidate_id=self.candidate.identity.value,
+            decision_kind="accept",
+            actor="reviewer:lee",
+        )
+        self.rejected = reviews.admit_review_decision(
+            candidate_id=self.candidate.identity.value,
+            decision_kind="reject",
+            actor="reviewer:lee",
+        )
         connection.close()
 
     def tearDown(self):
@@ -302,12 +314,131 @@ class AnalysisGraphValidatorTests(unittest.TestCase):
         health, codes = self._codes()
         self.assertEqual(health, "healthy", codes)
 
+    # -- Review checks (GOAL-028) -------------------------------------------------------------
+
+    def test_review_decision_identity_mismatch_is_flagged(self):
+        self._corrupt(
+            "UPDATE lecture_review_decisions SET actor = 'reviewer:someone_else' "
+            "WHERE identity = ?",
+            (self.accepted.decision.identity.value,),
+        )
+        self._assert_flags("LECTURE_REVIEW_DECISION_IDENTITY_MISMATCH")
+
+    def test_review_decision_anchor_missing_is_flagged(self):
+        self._corrupt(
+            "UPDATE lecture_review_decisions SET candidate_id = ? WHERE identity = ?",
+            ("lecture-analysis-edit-candidate:" + "9" * 64,
+             self.accepted.decision.identity.value),
+        )
+        self._assert_flags("LECTURE_REVIEW_DECISION_ANCHOR_MISSING")
+
+    def test_an_approving_decision_without_its_approval_is_flagged(self):
+        """`§7.4`'s creation rule is structural: accept must own exactly one approval."""
+
+        self._corrupt("DELETE FROM lecture_approved_edit_decisions")
+        self._assert_flags("LECTURE_REVIEW_APPROVAL_CARDINALITY_INVALID")
+
+    def test_a_reject_owning_an_approval_is_flagged(self):
+        self._corrupt(
+            "UPDATE lecture_approved_edit_decisions SET review_decision_id = ?",
+            (self.rejected.decision.identity.value,),
+        )
+        self._assert_flags("LECTURE_REVIEW_APPROVAL_CARDINALITY_INVALID")
+
+    def test_approved_edit_decision_identity_mismatch_is_flagged(self):
+        self._corrupt(
+            "UPDATE lecture_approved_edit_decisions SET approved_label = 'other_label'"
+        )
+        self._assert_flags("LECTURE_APPROVED_EDIT_DECISION_IDENTITY_MISMATCH")
+
+    def test_approved_label_malformed_is_flagged(self):
+        # The schema only requires a non-empty label, so a non-canonical token reaches the
+        # validator: this is a real guard, not defence-in-depth.
+        self._corrupt(
+            "UPDATE lecture_approved_edit_decisions SET approved_label = 'Bad Label'"
+        )
+        self._assert_flags("LECTURE_APPROVED_EDIT_DECISION_LABEL_MALFORMED")
+
+    def test_approved_range_not_canonical_is_flagged(self):
+        self._corrupt(
+            "UPDATE lecture_approved_edit_decisions SET approved_range_end = 'x'"
+        )
+        self._assert_flags("LECTURE_APPROVED_EDIT_DECISION_RANGE_NOT_CANONICAL")
+
+    def test_coexisting_contradictory_judgments_are_never_corruption(self):
+        """R-9's recorded consequence: accept and reject on one candidate coexist as history.
+
+        The validator must not adjudicate them, because current-selection is `§15.4`-deferred.
+        """
+
+        health, codes = self._codes()
+        self.assertEqual(health, "healthy", codes)
+        connection = sqlite3.connect(self.database, isolation_level=None)
+        try:
+            self.assertEqual(
+                connection.execute(
+                    "SELECT COUNT(*) FROM lecture_review_decisions WHERE candidate_id = ?",
+                    (self.candidate.identity.value,),
+                ).fetchone()[0],
+                2,
+            )
+        finally:
+            connection.close()
+
+    def test_a_cross_generation_anchor_collision_is_flagged(self):
+        """The legacy-leak probe is a real guard, not defence-in-depth.
+
+        Legacy `edit_candidates` declares no foreign key and its identity is caller-owned free
+        text, so one identity string can name a row in both generations while the v51 foreign key
+        is still satisfied. Only the hash-derived prefix normally keeps them apart.
+        """
+
+        self._corrupt(
+            """
+            INSERT INTO edit_candidates VALUES (?, 'dr', 'f', 'm', 't', 'run', 'ue', 0,
+                                                'legacy_type', 'legacy rationale', 0.0, 1.0)
+            """,
+            (self.candidate.identity.value,),
+        )
+        self._assert_flags("LECTURE_REVIEW_DECISION_LEGACY_ANCHOR_LEAK")
+
+    def test_the_review_schema_refuses_these_corruptions_outright(self):
+        """Defence-in-depth accounting: a CHECK refuses the write before any validator runs."""
+
+        cases = (
+            ("unknown decision kind",
+             "UPDATE lecture_review_decisions SET decision_kind = 'approve'"),
+            ("blank actor",
+             "UPDATE lecture_review_decisions SET actor = '   '"),
+            ("decision contract version",
+             "UPDATE lecture_review_decisions SET review_contract_version = 2"),
+            ("approved kind outside accept/modify",
+             "UPDATE lecture_approved_edit_decisions SET approved_decision_kind = 'reject'"),
+            ("empty approved label",
+             "UPDATE lecture_approved_edit_decisions SET approved_label = ''"),
+            ("blank approved rationale",
+             "UPDATE lecture_approved_edit_decisions SET approved_rationale = '  '"),
+            ("inverted approved range",
+             "UPDATE lecture_approved_edit_decisions SET approved_range_start = 9.0, "
+             "approved_range_end = 1.0"),
+            ("negative approved bound",
+             "UPDATE lecture_approved_edit_decisions SET approved_range_start = -1.0"),
+            ("approved contract version",
+             "UPDATE lecture_approved_edit_decisions SET approved_contract_version = 2"),
+        )
+        for label, statement in cases:
+            with self.subTest(case=label):
+                with self.assertRaises(sqlite3.IntegrityError):
+                    self._corrupt(statement)
+        health, codes = self._codes()
+        self.assertEqual(health, "healthy", codes)
+
     def test_every_new_analysis_diagnostic_code_is_either_reached_or_schema_guarded(self):
         """Guard against a silently dead diagnostic.
 
-        Each code added by GOAL-025/026/027 must be either exercised by a corruption test in this
-        module or explicitly accounted for as schema-guarded / defence-in-depth. The list below is
-        the accounting; adding a code without updating it fails this test.
+        Each code added by GOAL-025/026/027/028 must be either exercised by a corruption test in
+        this module or explicitly accounted for as schema-guarded / defence-in-depth. The list
+        below is the accounting; adding a code without updating it fails this test.
         """
 
         from lectureos.validation import repository_validator as validator
@@ -315,7 +446,10 @@ class AnalysisGraphValidatorTests(unittest.TestCase):
         source = Path(validator.__file__).read_text(encoding="utf-8")
         declared = {
             code for code in
-            __import__("re").findall(r"\"(LECTURE_ANALYSIS_(?:FINDING|SEGMENT|EDIT_CANDIDATE)_[A-Z_]+)\"", source)
+            __import__("re").findall(
+                r"\"(LECTURE_(?:ANALYSIS_(?:FINDING|SEGMENT|EDIT_CANDIDATE)|REVIEW|APPROVED_EDIT_DECISION)_[A-Z_]+)\"",
+                source,
+            )
         }
         reached_by_test = {
             "LECTURE_ANALYSIS_EDIT_CANDIDATE_IDENTITY_MISMATCH",
@@ -326,6 +460,13 @@ class AnalysisGraphValidatorTests(unittest.TestCase):
             "LECTURE_ANALYSIS_FINDING_ANCHOR_MISSING",
             "LECTURE_ANALYSIS_SEGMENT_IDENTITY_MISMATCH",
             "LECTURE_ANALYSIS_SEGMENT_ANCHOR_MISSING",
+            "LECTURE_REVIEW_DECISION_IDENTITY_MISMATCH",
+            "LECTURE_REVIEW_DECISION_ANCHOR_MISSING",
+            "LECTURE_REVIEW_APPROVAL_CARDINALITY_INVALID",
+            "LECTURE_APPROVED_EDIT_DECISION_IDENTITY_MISMATCH",
+            "LECTURE_APPROVED_EDIT_DECISION_LABEL_MALFORMED",
+            "LECTURE_APPROVED_EDIT_DECISION_RANGE_NOT_CANONICAL",
+            "LECTURE_REVIEW_DECISION_LEGACY_ANCHOR_LEAK",
         }
         schema_guarded = {
             "LECTURE_ANALYSIS_EDIT_CANDIDATE_CONTRACT_VERSION_MISMATCH",
@@ -341,6 +482,13 @@ class AnalysisGraphValidatorTests(unittest.TestCase):
             "LECTURE_ANALYSIS_SEGMENT_SEQUENCE_INVALID",
             "LECTURE_ANALYSIS_SEGMENT_RANGE_NOT_CANONICAL",
             "LECTURE_ANALYSIS_SEGMENT_RANGE_INVALID",
+            "LECTURE_REVIEW_DECISION_CONTRACT_VERSION_MISMATCH",
+            "LECTURE_REVIEW_DECISION_KIND_UNKNOWN",
+            "LECTURE_REVIEW_DECISION_ACTOR_MISSING",
+            "LECTURE_APPROVED_EDIT_DECISION_CONTRACT_VERSION_MISMATCH",
+            "LECTURE_APPROVED_EDIT_DECISION_KIND_INVALID",
+            "LECTURE_APPROVED_EDIT_DECISION_RATIONALE_EMPTY",
+            "LECTURE_APPROVED_EDIT_DECISION_RANGE_INVALID",
         }
         self.assertEqual(
             declared - reached_by_test - schema_guarded,
