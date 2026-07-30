@@ -2993,3 +2993,75 @@ identity changes**: for every value that could round-trip under the old code,
 `_canonical_bound(x) == float(x)`; only the previously-unreadable `-0.0` case changes, and it changes
 from broken to correct. Two regression tests cover the identity convergence and the round-trip. The
 same guards are applied to the GOAL-026 Segment contract from the start.
+
+## Shared Canonical Timeline Value Primitive (GOAL-027 preparatory slice)
+
+- Blueprint: no contract change; `docs/042` §8.2, §7.2, and their PATCHes are unaffected
+- Status: **COMPLETE**
+- Selected persistence: none — no schema, migration, or stored row changes
+- Commit: `refactor: share the canonical timeline value primitive`
+
+GOAL-025 and GOAL-026 each grew their own copy of the numeric canonicalization applied to Source
+Timeline bounds, and the second copy was written only after the first had already shipped a defect
+(the negative-zero case). Rather than add a third copy for GOAL-027, the logic was extracted to
+`application/canonical_timeline_value.py` and both siblings were rewired onto it. The helper rejects
+non-numbers, booleans, non-finite values, negatives, and magnitudes beyond a double, collapses
+negative zero, and raises a caller-supplied error type so each boundary keeps one coherent error
+family. Behaviour is unchanged: integral and `-0.0` spellings still converge on one identity in both
+contracts and every refusal keeps its original type.
+
+## Edit Candidate Foundation — Effective-Transcript Generation (First Slice, GOAL-027)
+
+- Blueprint: `docs/042` §9.3 + `PATCH-0032` (C-1…C-13, Confirmed), over the released GOAL-025
+  Analysis Finding; the canonical Candidate record contract is inherited unchanged from
+  `docs/042` §9.1 / `PATCH-0012`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema **v50** (one append-only table
+  `lecture_analysis_edit_candidates`)
+- Commit: `feat: add effective edit candidate foundation`
+- Immediate next milestone: `§9.2`'s concrete provider for this generation, Review (`043`), Export
+  (`044`), and Final Selection were all deliberately left un-re-scoped by PATCH-0032 (C-13); the
+  next step is a gate evaluation or a targeted PATCH, not an implementation Goal
+
+This milestone completes the current generation's analysis graph —
+`Admission → {Finding → Edit Candidate, Segmentation}`.
+`LectureAnalysisEditCandidateService.admit_edit_candidate(...)` admits one provider-independent
+candidate against **exactly one** current-generation Analysis Finding and appends one immutable
+canonical record. Per C-4 the standing is re-derived at command time at the **root of the chain**
+(Candidate → Finding → Admission) through the released GOAL-025/GOAL-023 path — no resolver is
+reimplemented — and only `current` admits; a missing or malformed Finding reference is refused before
+standing is evaluated. Per C-3 **no Lecture Segment is required, referenced, or created** (the demo
+admits a candidate with zero Segments anywhere), and per C-8 the mandatory Source Media and Source
+Timeline provenance is secured **through the anchor chain** rather than duplicated — the row carries
+no admission, media, timeline, revision, DomainResult, run, or execution column. Candidate Type
+reuses the released open Application-owned token rule (unregistered tokens are admissible: `§9.2`'s
+three-key registry is a legacy provider-slice constraint C-13 did not re-scope); rationale is
+required, stored verbatim, and **participates in identity** so a different reason is a different
+proposal; the Time Range follows `§9.1` verbatim (exactly one required, finite, non-negative,
+`start <= end`, zero-duration structurally valid) with **no media-duration, transcript-boundary,
+containment, or reconciliation validation added**. **Ordering decision O-1: no canonical ordinal.**
+`§9.2` fixes candidate order as transport order carrying no product meaning, its duplicate-
+preservation rule is a provider-slice concern C-13 did not re-scope, and a single-candidate command
+has no deterministic Application-owned ordinal source — inventing one would require a row count,
+`MAX(sequence) + 1`, or insertion order, all prohibited. The recorded consequence is that re-proposing
+the identical canonical candidate converges rather than being preserved twice, which is tested
+explicitly. Identity is deterministic and Application-owned over contract kind/version, finding, type,
+canonical range, and rationale; **conflict reachability is Option B** (every persisted canonical field
+participates), and the semantic-equality guard is kept anyway and driven by a tampering stub.
+Provenance is execution-free and marker-free: **no ProcessingRun, UnitExecution, RUNNING state, or
+DomainResult** (asserted by an unchanged upstream DomainResult count) — `§9.1`'s DomainResultReference
+requirement is unsatisfiable here because the `§8.2` Finding creates none, and is legacy-scoped. Per
+C-12 the legacy `edit_candidates` relation is **not reused**, so persistence is a new additive v50
+table; every released version v1..v49 chains single-step to v50 preserving all rows, and the legacy
+execution-coupled contracts stay untouched at zero rows. Read-only validation gains eight
+integrity-only `LECTURE_ANALYSIS_EDIT_CANDIDATE_*` checks (a superseded chain is never corruption);
+these split into four reached by a corruption test (identity mismatch, anchor missing, malformed
+type, non-canonical range) and four that are schema-guarded defence-in-depth (contract version, empty
+rationale, invalid range, legacy-anchor leak) because a CHECK or the v50 foreign key refuses the
+write first. This Goal also closed a repository-wide gap by adding the **first** tests for the
+GOAL-025/026/027 validator diagnostics, which had none — the reason a dead probe went undetected —
+and the new module fails if a future code is added without being exercised or accounted for. One CLI (`lectureos.analysis_edit_candidate_cli` with
+`admit`/`show`/`status`/`list`) and a deterministic demo (`lectureos.analysis_edit_candidate_demo`)
+with a byte-stable golden prove the thirteen GOAL-027 scenarios (93 focused new tests). The complete
+2939-test suite passes; the subtitle pipeline, transcript contracts, GOAL-025 Findings, GOAL-026
+Segments, and all legacy generations are unchanged.

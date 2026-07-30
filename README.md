@@ -29,7 +29,7 @@ LectureOS는 긴 한국어 강의의 후반작업에서 생기는 반복 작업�
 ### ✅ Implemented (구현 완료 · 테스트됨)
 
 - **실행 · lineage** — 처리 실행(run), 유닛 실행, `DomainResult` provenance를 SQLite에 durable하게 저장(스키마
-  **v49**, 이전 모든 버전에서 additive 단일 단계 마이그레이션).
+  **v50**, 이전 모든 버전에서 additive 단일 단계 마이그레이션).
 - **미디어 임포트(Media Import)** — 로컬 파일을 **content-addressed** canonical Source Media 기록으로 등록
   (스트리밍 SHA-256 → `sha256:<digest>`, 경로는 identity가 아님, 동일 내용 idempotent). 파일 identity와
   provenance만 기록하며 디코딩·transcode·probe·재생·transcription은 하지 않습니다. `lectureos.media_import_cli`.
@@ -855,7 +855,7 @@ golden 출력이 포함됩니다. export된 JSON은 서술적입니다 — 실�
 LectureOS/
 ├── src/lectureos/
 │   ├── application/        # 순수 domain + application 서비스(모델·불변식·오케스트레이션)
-│   ├── persistence/        # insert-only SQLite 저장소 + additive 스키마(v49)
+│   ├── persistence/        # insert-only SQLite 저장소 + additive 스키마(v50)
 │   ├── infrastructure/     # 로컬 파일시스템 writer(temp-file + 원자적 배치)
 │   ├── execution/          # 처리 실행, 유닛 실행, DomainResult lineage
 │   ├── providers/          # 선택적 provider 어댑터(예: OpenAI) — MVP에는 불필요
@@ -910,13 +910,14 @@ LectureOS/
 
 ## Development Status (개발 상태)
 
-- **Blueprint:** **PATCH-0031**까지 안정(`docs/`, `patches/`).
+- **Blueprint:** **PATCH-0032**까지 안정(`docs/`, `patches/`).
 - **구현:** edit-export MVP 완료; **Effective Subtitle Pipeline v1 릴리스 완료**
   (`implementation/111_EFFECTIVE_SUBTITLE_PIPELINE_V1_RELEASE.md`); Lecture Intelligence는
-  effective-transcript generation의 **Analysis Finding Application Foundation**과
-  **Lecture Segmentation Foundation**까지 완료
-  (`implementation/114_LECTURE_ANALYSIS_FINDING.md`, `implementation/115_LECTURE_ANALYSIS_SEGMENT.md`);
-  SQLite 스키마 **v49**; 전체 스위트 green(2800개 이상).
+  effective-transcript generation의 analysis graph 완성 — **Analysis Finding**,
+  **Lecture Segmentation**, **Edit Candidate** Foundation
+  (`implementation/114_LECTURE_ANALYSIS_FINDING.md`, `implementation/115_LECTURE_ANALYSIS_SEGMENT.md`,
+  `implementation/116_LECTURE_ANALYSIS_EDIT_CANDIDATE.md`);
+  SQLite 스키마 **v50**; 전체 스위트 green(2900개 이상).
 - **거버넌스:** Blueprint 우선 — 제품 의미를 바꾸려면 PATCH를 먼저 쓰고 나서 구현합니다.
   `AGENTS.md`와 `implementation/050_IMPLEMENTATION_WORKFLOW.md` 참고.
 
