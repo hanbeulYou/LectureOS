@@ -7,8 +7,8 @@ from pathlib import Path
 
 from .errors import PersistenceError, UnsupportedSchemaVersionError
 
-SQLITE_SCHEMA_VERSION = 50
-_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50)
+SQLITE_SCHEMA_VERSION = 51
+_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51)
 
 _V1_TABLE_STATEMENTS = (
     """CREATE TABLE schema_metadata (
@@ -1669,6 +1669,35 @@ _V50_ADDITION_STATEMENTS = (
 )""",
 )
 
+_V51_ADDITION_STATEMENTS = (
+    """CREATE TABLE lecture_review_decisions (
+    identity TEXT PRIMARY KEY,
+    candidate_id TEXT NOT NULL,
+    decision_kind TEXT NOT NULL CHECK (decision_kind IN ('accept', 'reject', 'modify')),
+    actor TEXT NOT NULL CHECK (length(trim(actor)) > 0),
+    review_contract_version INTEGER NOT NULL
+        CHECK (review_contract_version = 1),
+    FOREIGN KEY (candidate_id)
+        REFERENCES lecture_analysis_edit_candidates(identity)
+)""",
+    """CREATE TABLE lecture_approved_edit_decisions (
+    identity TEXT PRIMARY KEY,
+    review_decision_id TEXT NOT NULL UNIQUE,
+    candidate_id TEXT NOT NULL,
+    approved_decision_kind TEXT NOT NULL
+        CHECK (approved_decision_kind IN ('accept', 'modify')),
+    approved_range_start REAL NOT NULL CHECK (approved_range_start >= 0.0),
+    approved_range_end REAL NOT NULL CHECK (approved_range_end >= 0.0),
+    approved_label TEXT NOT NULL CHECK (length(approved_label) > 0),
+    approved_rationale TEXT NOT NULL CHECK (length(trim(approved_rationale)) > 0),
+    approved_contract_version INTEGER NOT NULL
+        CHECK (approved_contract_version = 1),
+    CHECK (approved_range_start <= approved_range_end),
+    FOREIGN KEY (review_decision_id) REFERENCES lecture_review_decisions(identity),
+    FOREIGN KEY (candidate_id) REFERENCES lecture_analysis_edit_candidates(identity)
+)""",
+)
+
 _V9_ADDITION_STATEMENTS = (
     """CREATE TABLE transcript_current_selections (
     identity TEXT PRIMARY KEY,
@@ -2991,6 +3020,28 @@ _V50_EXPECTED_COLUMNS = {
     ),
 }
 
+_V51_EXPECTED_COLUMNS = {
+    **_V50_EXPECTED_COLUMNS,
+    "lecture_review_decisions": (
+        ("identity", "TEXT", 0, 1),
+        ("candidate_id", "TEXT", 1, 0),
+        ("decision_kind", "TEXT", 1, 0),
+        ("actor", "TEXT", 1, 0),
+        ("review_contract_version", "INTEGER", 1, 0),
+    ),
+    "lecture_approved_edit_decisions": (
+        ("identity", "TEXT", 0, 1),
+        ("review_decision_id", "TEXT", 1, 0),
+        ("candidate_id", "TEXT", 1, 0),
+        ("approved_decision_kind", "TEXT", 1, 0),
+        ("approved_range_start", "REAL", 1, 0),
+        ("approved_range_end", "REAL", 1, 0),
+        ("approved_label", "TEXT", 1, 0),
+        ("approved_rationale", "TEXT", 1, 0),
+        ("approved_contract_version", "INTEGER", 1, 0),
+    ),
+}
+
 def initialize_sqlite_database(database_path: str | Path) -> sqlite3.Connection:
     """Create the latest schema for a new path; validate existing databases."""
 
@@ -3029,7 +3080,7 @@ def migrate_sqlite_database(
 ) -> None:
     """Explicitly perform one approved migration step or validate a no-op target."""
 
-    if target_version not in (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50):
+    if target_version not in (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51):
         raise PersistenceError(f"unsupported SQLite migration target: {target_version}")
     path = _validate_database_path(database_path)
     if not path.is_file():
@@ -3186,6 +3237,9 @@ def migrate_sqlite_database(
         if current_version == 49 and target_version == 50:
             _migrate_v49_to_v50(connection)
             return
+        if current_version == 50 and target_version == 51:
+            _migrate_v50_to_v51(connection)
+            return
         raise PersistenceError(
             f"unsupported SQLite migration: {current_version} to {target_version}"
         )
@@ -3283,6 +3337,7 @@ def _initialize_latest_schema(connection: sqlite3.Connection) -> None:
             *_V48_ADDITION_STATEMENTS,
             *_V49_ADDITION_STATEMENTS,
             *_V50_ADDITION_STATEMENTS,
+            *_V51_ADDITION_STATEMENTS,
         ):
             connection.execute(statement)
         connection.execute(
@@ -3947,6 +4002,24 @@ def _migrate_v36_to_v37(connection: sqlite3.Connection) -> None:
         raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
 
 
+def _migrate_v50_to_v51(connection: sqlite3.Connection) -> None:
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        for statement in _V51_ADDITION_STATEMENTS:
+            connection.execute(statement)
+        connection.execute(
+            "UPDATE schema_metadata SET version = 51 WHERE singleton = 1"
+        )
+        _validate_initialized_connection(connection)
+        _commit(connection)
+    except PersistenceError:
+        _rollback(connection)
+        raise
+    except sqlite3.Error as error:
+        _rollback(connection)
+        raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
+
+
 def _migrate_v49_to_v50(connection: sqlite3.Connection) -> None:
     try:
         connection.execute("BEGIN IMMEDIATE")
@@ -4263,6 +4336,7 @@ def _validate_schema_shape(connection: sqlite3.Connection, version: int) -> None
         48: _V48_EXPECTED_COLUMNS,
         49: _V49_EXPECTED_COLUMNS,
         50: _V50_EXPECTED_COLUMNS,
+        51: _V51_EXPECTED_COLUMNS,
     }[version]
     for table, expected in expected_columns.items():
         actual = tuple(

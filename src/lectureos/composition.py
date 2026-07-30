@@ -860,6 +860,37 @@ def compose_sqlite_lecture_analysis_edit_candidate_service(
     )
 
 
+def compose_sqlite_lecture_review_service(
+    connection: sqlite3.Connection,
+) -> "LectureReviewApplicationService":
+    """Build effective-generation Review admission on one caller connection (043 §7.5).
+
+    Every command resolves the anchoring §9.3 Edit Candidate and re-derives the standing of the
+    admission at the root of its chain through the released GOAL-027/GOAL-025/GOAL-023 path — no
+    authority resolver is reimplemented — admitting only at `current`. One immutable
+    `ReviewDecision`, plus exactly one `ApprovedEditDecision` for accept and modify, is appended in
+    a single atomic transaction; only `lecture_review_decisions` and
+    `lecture_approved_edit_decisions` are written and every upstream record is read-only. No
+    provider, AI, ProcessingRun, UnitExecution, RUNNING state, or DomainResult exists in this
+    contract (PATCH-0033 R-6), and the legacy execution-coupled `edit_review_decisions` /
+    `approved_edit_decisions` path is never touched (R-12).
+    """
+
+    from lectureos.application.lecture_review_decision import (
+        LectureReviewApplicationService,
+    )
+    from lectureos.persistence.lecture_review_decision import (
+        SQLiteLectureReviewCommandPersistence,
+        SQLiteLectureReviewRepository,
+    )
+
+    return LectureReviewApplicationService(
+        compose_sqlite_lecture_analysis_edit_candidate_service(connection),
+        SQLiteLectureReviewRepository(connection),
+        SQLiteLectureReviewCommandPersistence(connection),
+    )
+
+
 def compose_sqlite_lecture_analysis_segmentation_service(
     connection: sqlite3.Connection,
 ) -> "LectureAnalysisSegmentationService":

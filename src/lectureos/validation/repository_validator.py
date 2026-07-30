@@ -84,6 +84,8 @@ _INSPECTED_TABLES = (
     "lecture_analysis_findings",
     "lecture_analysis_segments",
     "lecture_analysis_edit_candidates",
+    "lecture_review_decisions",
+    "lecture_approved_edit_decisions",
 )
 _IDENTITY_TABLES = (
     "domain_result_references",
@@ -114,6 +116,8 @@ _IDENTITY_TABLES = (
     "lecture_analysis_findings",
     "lecture_analysis_segments",
     "lecture_analysis_edit_candidates",
+    "lecture_review_decisions",
+    "lecture_approved_edit_decisions",
 )
 _CANONICAL_FINDING_TYPE = re.compile(r"^[a-z][a-z0-9_]*$")
 _CANONICAL_CANDIDATE_TYPE = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -3122,6 +3126,194 @@ def _check_lecture_analysis_edit_candidates(
     return diagnostics
 
 
+def _check_lecture_review_records(connection: sqlite3.Connection) -> list[Diagnostic]:
+    """Integrity of effective-generation Review records (043 §7.5 / GOAL-028, PATCH-0033).
+
+    Deliberately NOT flagged: a decision whose anchor chain became superseded or whose intake's
+    current authority became ineligible; a reject that approved nothing; several coexisting
+    judgments on one Candidate, including contradictory ones (R-9's recorded consequence — current
+    selection is `§15.4`-deferred and is not this validator's question); the absence of an export.
+    Those are valid immutable history, never corruption. Integrity-only: reads no filesystem, media,
+    or provider.
+    """
+
+    if not _table_exists(connection, "lecture_review_decisions"):
+        return []
+    diagnostics: list[Diagnostic] = []
+
+    def _flag(table: str, code: str, identity: str, message: str) -> None:
+        diagnostics.append(
+            Diagnostic(
+                code=code,
+                severity=Severity.ERROR,
+                location=f"{table}:{identity}",
+                message=message,
+            )
+        )
+
+    # The anchor must exist as a CURRENT-generation Edit Candidate. The v51 foreign key already
+    # enforces that, so THIS probe is defence-in-depth against a repository whose foreign keys were
+    # disabled or whose rows were written out of band.
+    #
+    # The legacy-leak probe below is different, and is NOT foreign-key guarded: legacy
+    # `edit_candidates` declares no foreign key and its identity is caller-owned free text, so one
+    # identity string can legitimately name a row in both generations. What normally keeps them
+    # apart is an Application invariant — this generation's identities are hash-derived under a
+    # distinct prefix — not a schema constraint. The probe is therefore a real guard against a
+    # cross-generation anchor collision, and a corruption test drives it.
+    if _table_exists(connection, "lecture_analysis_edit_candidates"):
+        for (identity,) in connection.execute(
+            """
+            SELECT d.identity
+            FROM lecture_review_decisions d
+            LEFT JOIN lecture_analysis_edit_candidates c ON c.identity = d.candidate_id
+            WHERE c.identity IS NULL
+            ORDER BY d.identity
+            """
+        ).fetchall():
+            _flag("lecture_review_decisions",
+                  "LECTURE_REVIEW_DECISION_ANCHOR_MISSING", identity,
+                  "review decision anchor edit candidate does not exist in the current generation")
+    if _table_exists(connection, "edit_candidates"):
+        for (identity,) in connection.execute(
+            """
+            SELECT d.identity
+            FROM lecture_review_decisions d
+            JOIN edit_candidates l ON l.identity = d.candidate_id
+            ORDER BY d.identity
+            """
+        ).fetchall():
+            _flag("lecture_review_decisions",
+                  "LECTURE_REVIEW_DECISION_LEGACY_ANCHOR_LEAK", identity,
+                  "review decision anchor identity also names a legacy-generation edit candidate")
+
+    for identity, candidate_id, decision_kind, actor, version in connection.execute(
+        """
+        SELECT identity, candidate_id, decision_kind, actor, review_contract_version
+        FROM lecture_review_decisions
+        ORDER BY identity
+        """
+    ).fetchall():
+        if version != 1:
+            _flag("lecture_review_decisions",
+                  "LECTURE_REVIEW_DECISION_CONTRACT_VERSION_MISMATCH", identity,
+                  "review decision records an unsupported contract version")
+        if decision_kind not in ("accept", "reject", "modify"):
+            _flag("lecture_review_decisions",
+                  "LECTURE_REVIEW_DECISION_KIND_UNKNOWN", identity,
+                  "review decision kind is outside the closed {accept, reject, modify} set")
+        if not (actor or "").strip():
+            _flag("lecture_review_decisions",
+                  "LECTURE_REVIEW_DECISION_ACTOR_MISSING", identity,
+                  "review decision records no human actor reference")
+
+        # Identity re-derivation proves the whole canonical binding at once: contract kind and
+        # version (the generation provenance), the anchor, the decision kind, and the actor — the
+        # last being what keeps two people's identical-kind judgments distinct (R-10).
+        expected = "lecture-review-decision:" + hashlib.sha256(
+            json.dumps(
+                {
+                    "contract": "lecture_review_decision",
+                    "contract_version": 1,
+                    "candidate": candidate_id,
+                    "decision_kind": decision_kind,
+                    "actor": actor,
+                },
+                ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        if identity != expected:
+            _flag("lecture_review_decisions",
+                  "LECTURE_REVIEW_DECISION_IDENTITY_MISMATCH", identity,
+                  "review decision identity does not re-derive from its stored payload")
+
+    if not _table_exists(connection, "lecture_approved_edit_decisions"):
+        return diagnostics
+
+    # `§7.4`'s creation rule is structural, so both directions are integrity questions: an
+    # approving decision must own exactly one approved snapshot, and a reject must own none. The
+    # UNIQUE(review_decision_id) column guards "at most one"; these guard the rest.
+    for identity, kind in connection.execute(
+        """
+        SELECT d.identity, d.decision_kind
+        FROM lecture_review_decisions d
+        LEFT JOIN lecture_approved_edit_decisions a ON a.review_decision_id = d.identity
+        WHERE (d.decision_kind IN ('accept', 'modify') AND a.identity IS NULL)
+           OR (d.decision_kind = 'reject' AND a.identity IS NOT NULL)
+        ORDER BY d.identity
+        """
+    ).fetchall():
+        _flag("lecture_review_decisions",
+              "LECTURE_REVIEW_APPROVAL_CARDINALITY_INVALID", identity,
+              f"a '{kind}' review decision does not own the approved edit decision the contract "
+              "requires (accept one, modify one, reject none)")
+
+    for (
+        identity, review_decision_id, candidate_id, approved_kind,
+        start, end, label, rationale, version,
+    ) in connection.execute(
+        """
+        SELECT identity, review_decision_id, candidate_id, approved_decision_kind,
+               approved_range_start, approved_range_end, approved_label,
+               approved_rationale, approved_contract_version
+        FROM lecture_approved_edit_decisions
+        ORDER BY identity
+        """
+    ).fetchall():
+        table = "lecture_approved_edit_decisions"
+        if version != 1:
+            _flag(table, "LECTURE_APPROVED_EDIT_DECISION_CONTRACT_VERSION_MISMATCH", identity,
+                  "approved edit decision records an unsupported contract version")
+        if approved_kind not in ("accept", "modify"):
+            _flag(table, "LECTURE_APPROVED_EDIT_DECISION_KIND_INVALID", identity,
+                  "approved edit decision kind is neither accept nor modify")
+        if not _CANONICAL_CANDIDATE_TYPE.fullmatch(label or ""):
+            _flag(table, "LECTURE_APPROVED_EDIT_DECISION_LABEL_MALFORMED", identity,
+                  "approved candidate type or label is not a canonical Application-owned token")
+        if not (rationale or "").strip():
+            _flag(table, "LECTURE_APPROVED_EDIT_DECISION_RATIONALE_EMPTY", identity,
+                  "approved rationale is empty")
+        if (
+            not isinstance(start, float)
+            or not isinstance(end, float)
+            or start != start
+            or end != end
+            or start in (float("inf"), float("-inf"))
+            or end in (float("inf"), float("-inf"))
+        ):
+            _flag(table, "LECTURE_APPROVED_EDIT_DECISION_RANGE_NOT_CANONICAL", identity,
+                  "approved range is not a finite canonical float")
+            continue
+        if start < 0 or end < 0 or start > end:
+            _flag(table, "LECTURE_APPROVED_EDIT_DECISION_RANGE_INVALID", identity,
+                  "approved range is negative or inverted")
+
+        # Identity re-derivation proves the whole canonical binding at once — contract kind and
+        # version, the originating decision, the referenced candidate, and the entire owned
+        # approved snapshot, including that each stored bound is the exact float that was hashed.
+        expected = "lecture-approved-edit-decision:" + hashlib.sha256(
+            json.dumps(
+                {
+                    "contract": "lecture_approved_edit_decision",
+                    "contract_version": 1,
+                    "review_decision": review_decision_id,
+                    "candidate": candidate_id,
+                    "approved_decision_kind": approved_kind,
+                    "approved_range_start": start,
+                    "approved_range_end": end,
+                    "approved_label": label,
+                    "approved_rationale": rationale,
+                },
+                ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        if identity != expected:
+            _flag(table, "LECTURE_APPROVED_EDIT_DECISION_IDENTITY_MISMATCH", identity,
+                  "approved edit decision identity does not re-derive from its stored payload")
+
+    return diagnostics
+
+
 def _check_raw_transcript_segments(connection: sqlite3.Connection) -> list[Diagnostic]:
     if not _table_exists(connection, "raw_transcript_segments"):
         return []
@@ -3233,6 +3425,7 @@ def validate_repository(connection: sqlite3.Connection) -> ValidationReport:
     diagnostics += _check_lecture_analysis_findings(connection)
     diagnostics += _check_lecture_analysis_segments(connection)
     diagnostics += _check_lecture_analysis_edit_candidates(connection)
+    diagnostics += _check_lecture_review_records(connection)
     diagnostics += _check_raw_transcript_segments(connection)
     diagnostics += _check_malformed_identities(connection)
 

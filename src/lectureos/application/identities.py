@@ -285,3 +285,22 @@ class LectureAnalysisEditCandidateId(OpaqueIdentity):
     Distinct from the legacy execution-coupled `EditCandidateId` (042 §9.1), which anchors to a
     legacy `AnalysisFinding` and requires a running unit execution and a `DomainResultReference`.
     """
+
+
+@dataclass(frozen=True, slots=True)
+class LectureReviewDecisionId(OpaqueIdentity):
+    """Effective-transcript generation Review Decision (043 §7.5 / PATCH-0033).
+
+    Distinct from the legacy execution-coupled `ReviewDecisionId` (043 §7.4), whose identity is
+    caller-owned and which requires a running unit execution, its own Domain Result identity, and a
+    per-admission `sequence`.
+    """
+
+
+@dataclass(frozen=True, slots=True)
+class LectureApprovedEditDecisionId(OpaqueIdentity):
+    """Effective-transcript generation Approved Edit Decision (043 §7.5 / PATCH-0033).
+
+    Distinct from the legacy execution-coupled `ApprovedDecisionId` (043 §7.4), which chains
+    directly to the legacy `ReviewDecision`'s Domain Result.
+    """
