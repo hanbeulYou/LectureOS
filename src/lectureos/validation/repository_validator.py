@@ -83,6 +83,7 @@ _INSPECTED_TABLES = (
     "lecture_analysis_input_admissions",
     "lecture_analysis_findings",
     "lecture_analysis_segments",
+    "lecture_analysis_edit_candidates",
 )
 _IDENTITY_TABLES = (
     "domain_result_references",
@@ -112,8 +113,10 @@ _IDENTITY_TABLES = (
     "lecture_analysis_input_admissions",
     "lecture_analysis_findings",
     "lecture_analysis_segments",
+    "lecture_analysis_edit_candidates",
 )
 _CANONICAL_FINDING_TYPE = re.compile(r"^[a-z][a-z0-9_]*$")
+_CANONICAL_CANDIDATE_TYPE = re.compile(r"^[a-z][a-z0-9_]*$")
 _APPROVING_KINDS = ("accept", "modify")
 
 
@@ -3008,6 +3011,117 @@ def _check_lecture_analysis_segments(connection: sqlite3.Connection) -> list[Dia
     return diagnostics
 
 
+def _check_lecture_analysis_edit_candidates(
+    connection: sqlite3.Connection,
+) -> list[Diagnostic]:
+    """Integrity of effective-generation Edit Candidates (042 §9.3 / GOAL-027, PATCH-0032).
+
+    Deliberately NOT flagged: a candidate whose anchor chain became superseded or whose intake's
+    current authority became ineligible; a historical candidate not currently selected; the absence
+    of a Review Decision or an export. Those are valid immutable history, never corruption. This
+    check is integrity-only and reads no filesystem, media, or provider.
+    """
+
+    if not _table_exists(connection, "lecture_analysis_edit_candidates"):
+        return []
+    diagnostics: list[Diagnostic] = []
+
+    def _flag(code: str, identity: str, message: str) -> None:
+        diagnostics.append(
+            Diagnostic(
+                code=code,
+                severity=Severity.ERROR,
+                location=f"lecture_analysis_edit_candidates:{identity}",
+                message=message,
+            )
+        )
+
+    # The anchor must exist as a CURRENT-generation Finding. The v50 foreign key already enforces
+    # that, so the leak probe below is defence-in-depth against a repository whose foreign keys
+    # were disabled or whose rows were edited out of band — it cannot fire on a normally written
+    # database, and it is not a substantive new guarantee.
+    if _table_exists(connection, "lecture_analysis_findings"):
+        for (identity,) in connection.execute(
+            """
+            SELECT c.identity
+            FROM lecture_analysis_edit_candidates c
+            LEFT JOIN lecture_analysis_findings f ON f.identity = c.finding_id
+            WHERE f.identity IS NULL
+            ORDER BY c.identity
+            """
+        ).fetchall():
+            _flag("LECTURE_ANALYSIS_EDIT_CANDIDATE_ANCHOR_MISSING", identity,
+                  "candidate anchor finding does not exist in the current generation")
+    if _table_exists(connection, "analysis_findings"):
+        for (identity,) in connection.execute(
+            """
+            SELECT c.identity
+            FROM lecture_analysis_edit_candidates c
+            JOIN analysis_findings l ON l.identity = c.finding_id
+            ORDER BY c.identity
+            """
+        ).fetchall():
+            _flag("LECTURE_ANALYSIS_EDIT_CANDIDATE_LEGACY_ANCHOR_LEAK", identity,
+                  "candidate anchor identity also names a legacy-generation analysis finding")
+
+    for identity, finding_id, candidate_type, start, end, rationale, version in (
+        connection.execute(
+            """
+            SELECT identity, finding_id, candidate_type, range_start, range_end,
+                   rationale, candidate_contract_version
+            FROM lecture_analysis_edit_candidates
+            ORDER BY identity
+            """
+        ).fetchall()
+    ):
+        if version != 1:
+            _flag("LECTURE_ANALYSIS_EDIT_CANDIDATE_CONTRACT_VERSION_MISMATCH", identity,
+                  "candidate records an unsupported contract version")
+        if not _CANONICAL_CANDIDATE_TYPE.fullmatch(candidate_type or ""):
+            _flag("LECTURE_ANALYSIS_EDIT_CANDIDATE_TYPE_MALFORMED", identity,
+                  "candidate type is not a canonical Application-owned token")
+        if not (rationale or "").strip():
+            _flag("LECTURE_ANALYSIS_EDIT_CANDIDATE_RATIONALE_EMPTY", identity,
+                  "candidate rationale is empty")
+        if (
+            not isinstance(start, float)
+            or not isinstance(end, float)
+            or start != start
+            or end != end
+            or start in (float("inf"), float("-inf"))
+            or end in (float("inf"), float("-inf"))
+        ):
+            _flag("LECTURE_ANALYSIS_EDIT_CANDIDATE_RANGE_NOT_CANONICAL", identity,
+                  "candidate range is not a finite canonical float")
+            continue
+        if start < 0 or end < 0 or start > end:
+            _flag("LECTURE_ANALYSIS_EDIT_CANDIDATE_RANGE_INVALID", identity,
+                  "candidate range is negative or inverted")
+
+        # Identity re-derivation proves the whole canonical binding at once — contract kind and
+        # version, anchor, type, canonical range, and rationale — including that the stored bound
+        # is the exact float that was hashed.
+        expected = "lecture-analysis-edit-candidate:" + hashlib.sha256(
+            json.dumps(
+                {
+                    "contract": "lecture_analysis_edit_candidate",
+                    "contract_version": 1,
+                    "finding": finding_id,
+                    "candidate_type": candidate_type,
+                    "range_start": start,
+                    "range_end": end,
+                    "rationale": rationale,
+                },
+                ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        if identity != expected:
+            _flag("LECTURE_ANALYSIS_EDIT_CANDIDATE_IDENTITY_MISMATCH", identity,
+                  "candidate identity does not re-derive from its stored payload")
+
+    return diagnostics
+
+
 def _check_raw_transcript_segments(connection: sqlite3.Connection) -> list[Diagnostic]:
     if not _table_exists(connection, "raw_transcript_segments"):
         return []
@@ -3118,6 +3232,7 @@ def validate_repository(connection: sqlite3.Connection) -> ValidationReport:
     diagnostics += _check_lecture_analysis_input_admissions(connection)
     diagnostics += _check_lecture_analysis_findings(connection)
     diagnostics += _check_lecture_analysis_segments(connection)
+    diagnostics += _check_lecture_analysis_edit_candidates(connection)
     diagnostics += _check_raw_transcript_segments(connection)
     diagnostics += _check_malformed_identities(connection)
 

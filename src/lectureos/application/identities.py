@@ -276,3 +276,12 @@ class LectureAnalysisSegmentId(OpaqueIdentity):
     Distinct from the legacy execution-coupled `LectureSegmentId` (042 §7.1), which anchors to
     an `EligibleAnalysisInput` and requires a running unit execution.
     """
+
+
+@dataclass(frozen=True, slots=True)
+class LectureAnalysisEditCandidateId(OpaqueIdentity):
+    """Effective-transcript generation Edit Candidate (042 §9.3 / PATCH-0032).
+
+    Distinct from the legacy execution-coupled `EditCandidateId` (042 §9.1), which anchors to a
+    legacy `AnalysisFinding` and requires a running unit execution and a `DomainResultReference`.
+    """

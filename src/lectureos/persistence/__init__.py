@@ -134,6 +134,10 @@ from .effective_srt_publication import (
     SQLiteEffectiveSrtPublicationCommandPersistence,
     SQLiteEffectiveSrtPublicationRepository,
 )
+from .lecture_analysis_edit_candidate import (
+    SQLiteLectureAnalysisEditCandidateCommandPersistence,
+    SQLiteLectureAnalysisEditCandidateRepository,
+)
 from .lecture_analysis_finding import (
     SQLiteLectureAnalysisFindingCommandPersistence,
     SQLiteLectureAnalysisFindingRepository,
@@ -271,6 +275,8 @@ __all__ = [
     "SQLiteEffectiveSrtDeliveryRepository",
     "SQLiteEffectiveSrtPublicationCommandPersistence",
     "SQLiteEffectiveSrtPublicationRepository",
+    "SQLiteLectureAnalysisEditCandidateCommandPersistence",
+    "SQLiteLectureAnalysisEditCandidateRepository",
     "SQLiteLectureAnalysisFindingCommandPersistence",
     "SQLiteLectureAnalysisFindingRepository",
     "SQLiteLectureAnalysisInputAdmissionCommandPersistence",

@@ -831,6 +831,35 @@ def compose_sqlite_lecture_analysis_finding_service(
     )
 
 
+def compose_sqlite_lecture_analysis_edit_candidate_service(
+    connection: sqlite3.Connection,
+) -> "LectureAnalysisEditCandidateService":
+    """Build effective-generation Edit Candidate admission on one caller connection (042 §9.3).
+
+    Every command resolves the anchoring §8.2 Analysis Finding and re-derives the standing of the
+    admission it hangs from through the released GOAL-025/GOAL-023 path — no authority resolver is
+    reimplemented — admitting only at `current`. One immutable canonical candidate is appended;
+    only `lecture_analysis_edit_candidates` is written and every upstream record is read-only. No
+    Lecture Segment is required or referenced, and no provider, AI, ProcessingRun, UnitExecution,
+    or DomainResult exists in this contract (PATCH-0032 C-3, C-7). The legacy execution-coupled
+    `edit_candidates` path is never touched (C-12).
+    """
+
+    from lectureos.application.lecture_analysis_edit_candidate import (
+        LectureAnalysisEditCandidateService,
+    )
+    from lectureos.persistence.lecture_analysis_edit_candidate import (
+        SQLiteLectureAnalysisEditCandidateCommandPersistence,
+        SQLiteLectureAnalysisEditCandidateRepository,
+    )
+
+    return LectureAnalysisEditCandidateService(
+        compose_sqlite_lecture_analysis_finding_service(connection),
+        SQLiteLectureAnalysisEditCandidateRepository(connection),
+        SQLiteLectureAnalysisEditCandidateCommandPersistence(connection),
+    )
+
+
 def compose_sqlite_lecture_analysis_segmentation_service(
     connection: sqlite3.Connection,
 ) -> "LectureAnalysisSegmentationService":
