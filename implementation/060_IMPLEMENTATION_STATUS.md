@@ -3065,3 +3065,82 @@ and the new module fails if a future code is added without being exercised or ac
 with a byte-stable golden prove the thirteen GOAL-027 scenarios (93 focused new tests). The complete
 2939-test suite passes; the subtitle pipeline, transcript contracts, GOAL-025 Findings, GOAL-026
 Segments, and all legacy generations are unchanged.
+## Review Foundation — Effective-Transcript Generation (First Slice, GOAL-028)
+
+- Blueprint: `docs/043` §7.5 + `PATCH-0033` (R-1…R-12, Confirmed), over the released GOAL-027 Edit
+  Candidate; the canonical `ReviewDecision` and `ApprovedEditDecision` record contract is inherited
+  unchanged from `docs/043` §7.4 / `PATCH-0014`
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema **v51** (two append-only tables
+  `lecture_review_decisions`, `lecture_approved_edit_decisions`)
+- Commit: `feat: add effective review foundation`
+- Immediate next milestone: `044` Export and the downstream consumption of this generation's
+  `ApprovedEditDecision` were deliberately left un-re-scoped by PATCH-0033, as was every `§15.4`
+  deferred item; the next step is a gate evaluation or a targeted PATCH, not an implementation Goal
+
+This milestone carries the current generation from an advisory Candidate to a recorded **human**
+decision. `LectureReviewApplicationService.admit_review_decision(...)` records one judgment against
+**exactly one** current-generation Edit Candidate (`042 §9.3`) and appends one immutable
+`ReviewDecision` plus — for `accept` and `modify` — exactly one immutable `ApprovedEditDecision`, both
+inside **one** `BEGIN IMMEDIATE` so a partially recorded admission cannot exist (R-11; a test injects
+a failure while writing the approval and asserts no decision row survives). Per R-3 the standing is
+re-derived at command time at the **root of the chain** (Review → Candidate → Finding → Admission)
+through the released GOAL-027/GOAL-025/GOAL-023 path — no resolver is reimplemented — and only
+`current` admits; a missing or malformed Candidate reference is refused before standing is evaluated,
+and the Finding and Admission identities are both refused as anchors. Per R-7 the inherited Source
+Media and Source Timeline provenance is secured **through the anchor chain** rather than duplicated,
+so neither row carries a media, timeline, admission, revision, DomainResult, run, or execution column.
+The closed kind `{accept, reject, modify}` is re-declared locally so the module keeps **no
+source-level dependency** on the legacy execution-coupled `edit_review` boundary — asserted over the
+module's `ast` import graph — while a second test pins it value-for-value against the released legacy
+enum so the two can never drift; matching is exact, so `Accept`, `ACCEPT`, `" accept"`, and `approve`
+are refused rather than coerced. `accept` inherits the Candidate's proposal verbatim as the approved
+snapshot and takes no approved arguments; `modify` requires the **complete** replacement (range,
+label, rationale) because Modify Ownership forbids a loose patch or delta; `reject` approves nothing
+and stays a durable, auditable decision. The original Candidate is never mutated, and `§7.4`'s
+"approved Candidate Type **or** approved edit label" is recorded as **one** owned column under the
+released open Application-owned key grammar rather than as two fields or a free-text alternative.
+
+**Ordinal (R-9): none stored, on either record.** `040 §18`'s per-anchor authority-history ordinal is
+a different concept, neither introduced nor denied, and stays `§15.4`-deferred. The recorded
+consequence is explicit and tested: a reversed judgment (`accept` → `reject` → `accept`) converges on
+the first identity, so two contradicting records coexist with no ordinal, no `previous` link, and no
+timestamp, and **this contract does not adjudicate them** — the validator deliberately does not flag
+the coexistence, and closing the gap needs a separate approved PATCH.
+
+**Conflict reachability: Option B per row, Option A per admission.** Every persisted canonical field
+of each record participates in that record's identity, so a divergent stored row is structurally
+unreachable and its guard is driven by a query stub. But the approved snapshot is canonical content of
+the *admission* that does not participate in the `ReviewDecision` identity — deliberately, because
+Modify Ownership makes the `ApprovedEditDecision` the sole authority for those values and hashing them
+into both records would duplicate them — so the same actor submitting a **differing** second `modify`
+reaches R-11's conflict branch through ordinary input and is refused with nothing written. The **human
+actor participates** in the decision identity as R-10 requires, reusing the released
+`HumanActorReference` precedent, so two people's identical-kind judgments stay distinct. Provenance is
+execution-free: **no ProcessingRun, UnitExecution, RUNNING state, or DomainResult** (asserted by an
+unchanged upstream DomainResult count), and R-6 goes one step beyond `042 §9.3` C-7 because `§7.4`'s
+requirement that each record own its Domain Result identity and chain them directly is unsatisfiable
+here — the `§9.3` Candidate creates none.
+
+Per R-12 the legacy `edit_review_decisions` and `approved_edit_decisions` relations are **not
+reused**, so persistence is two new additive v51 tables; the at-most-one-approval rule is expressed as
+`UNIQUE(review_decision_id)` because `§7.4` contract-backs it (the opposite in character to
+`042 §7.1`, which declines canonical-set uniqueness). Every released version v1..v50 chains
+single-step to v51 preserving all rows, a migration test asserts both legacy Review tables are
+byte-identical across the step, and the legacy execution-coupled contracts stay untouched at zero
+rows. Read-only validation gains fourteen integrity-only `LECTURE_REVIEW_*` and
+`LECTURE_APPROVED_EDIT_DECISION_*` checks: **seven** reached by a corruption test (both identity
+mismatches, anchor missing, approval cardinality invalid in both directions, malformed approved
+label, non-canonical approved range, and the cross-generation anchor leak) and **seven**
+schema-guarded defence-in-depth (both contract versions, unknown kind, missing actor, approved kind,
+empty approved rationale, invalid approved range) because a CHECK refuses the write first even with
+foreign keys disabled. The anchor-leak probe is deliberately in the first group, not the second:
+legacy `edit_candidates` declares no foreign key and its identity is caller-owned free text, so one
+identity string can name a row in both generations while the v51 foreign key still holds — the
+hash-derived prefix that normally separates them is an Application invariant, not a schema
+constraint. One CLI
+(`lectureos.lecture_review_cli` with `accept`/`reject`/`modify`/`show`/`status`/`list`) and a
+deterministic demo (`lectureos.lecture_review_demo`) with a byte-stable golden prove sixteen scenarios
+(129 focused new tests). The complete 3068-test suite passes; the subtitle pipeline, transcript
+contracts, GOAL-025 Findings, GOAL-026 Segments, GOAL-027 Candidates, and all legacy generations are
+unchanged.
