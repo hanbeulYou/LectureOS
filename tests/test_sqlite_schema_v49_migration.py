@@ -56,8 +56,9 @@ class SQLiteSchemaVersionFortyNineTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
 
-    def test_schema_version_is_forty_nine(self) -> None:
-        self.assertEqual(SQLITE_SCHEMA_VERSION, 49)
+    def test_v49_remains_a_supported_version(self) -> None:
+        self.assertIn(49, sqlite_lifecycle._SUPPORTED_SCHEMA_VERSIONS)
+        self.assertLessEqual(49, SQLITE_SCHEMA_VERSION)
 
     def test_fresh_database_initializes_with_v49_tables(self) -> None:
         connection = initialize_sqlite_database(self.database_path)
@@ -90,7 +91,8 @@ class SQLiteSchemaVersionFortyNineTests(unittest.TestCase):
             connection.close()
 
     def test_v49_no_op_migration_is_allowed(self) -> None:
-        initialize_sqlite_database(self.database_path).close()
+        create_legacy_database(self.database_path, 48)
+        migrate_sqlite_database(self.database_path, 49)
         migrate_sqlite_database(self.database_path, 49)
         connection = open_sqlite_database(self.database_path)
         try:
@@ -109,7 +111,7 @@ class SQLiteSchemaVersionFortyNineTests(unittest.TestCase):
     def test_unsupported_target_is_rejected(self) -> None:
         initialize_sqlite_database(self.database_path).close()
         with self.assertRaises(PersistenceError):
-            migrate_sqlite_database(self.database_path, 50)
+            migrate_sqlite_database(self.database_path, 51)
 
     def test_downgrade_is_rejected(self) -> None:
         initialize_sqlite_database(self.database_path).close()
