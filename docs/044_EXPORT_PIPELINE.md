@@ -1,11 +1,11 @@
 # 044_EXPORT_PIPELINE
 
 - Status: Draft
-- Version: Blueprint 0.7
-- Last Updated: 2026-07-24
+- Version: Blueprint 0.8
+- Last Updated: 2026-08-01
 - Depends On: `000_MANIFESTO.md`, `001_PRODUCT.md`, `002_FAQ.md`, `003_VISION.md`, `004_PRINCIPLES.md`, `020_PRODUCT_REQUIREMENTS.md`, `021_SYSTEM_CONTEXT.md`, `030_DATA_MODEL.md`, `031_ARCHITECTURE.md`, `040_TRANSCRIPT_PIPELINE.md`, `041_SUBTITLE_PIPELINE.md`, `042_LECTURE_INTELLIGENCE_PIPELINE.md`, `043_REVIEW_PIPELINE.md`
 - Referenced By:
-- Amended By: `patches/PATCH-0007-physical-materialization.md`, `patches/PATCH-0008-delivery-deferral.md`, `patches/PATCH-0015-edit-pipeline-export-application-foundation.md`, `patches/PATCH-0016-edit-export-assembly-scope.md`, `patches/PATCH-0017-edit-export-artifact-representation.md`, `patches/PATCH-0018-edit-export-json-serialization-and-local-materialization.md`
+- Amended By: `patches/PATCH-0007-physical-materialization.md`, `patches/PATCH-0008-delivery-deferral.md`, `patches/PATCH-0015-edit-pipeline-export-application-foundation.md`, `patches/PATCH-0016-edit-export-assembly-scope.md`, `patches/PATCH-0017-edit-export-artifact-representation.md`, `patches/PATCH-0018-edit-export-json-serialization-and-local-materialization.md`, `patches/PATCH-0035-effective-transcript-edit-export-admission-boundary.md`
 
 ## Purpose
 
@@ -410,6 +410,7 @@ Review Pipeline은 Human Decision과 Approved Edit Decision을 책임진다. Exp
 - Export는 Review Decision이나 승인 결과를 변경하지 않는다.
 - Source Timeline traceability와 provenance를 유지해야 한다.
 - 자동 컷 적용, 특정 NLE round trip과 실제 Rendering은 Export Pipeline 범위가 아니다.
+- effective-transcript generation의 Edit Export **admission 경계**는 `§23`(`patches/PATCH-0035`)에서 확정되었다: Edit Export 경계도 legacy execution-coupled generation과 effective-transcript generation의 **두 contract generation**으로 존재하며 `§19`~`§22`는 legacy 세대의 계약으로 변경 없이 유지된다(EA-1). 현행 세대에서 Assembly는 이 세대의 **`ApprovedEditDecision`(`043 §7.5`)을 직접** 모으고 `§19`의 표현 atom 단계는 재현되지 않는다 — `§19` D-2가 요구하는 Domain Result identity·execution provenance·per-admission ordinal이 `043 §7.5` R-6·R-9에 의해 이 세대에서 충족 불가능하고, 그 atom의 목적인 승인 snapshot 소유는 R-8이 확정한 대로 `ApprovedEditDecision`이 이미 수행하기 때문이다. `§20` A-1의 anchor cardinality와 방향은 그대로이며 바뀌는 것은 member 기록의 세대뿐이다(EA-2). **`§20` A-3이 유보한 membership 정책이 이 세대에 한해 해소되었다**: 하나의 Assembly는 그 Source Timeline의 **모든 export 적격 승인 편집**을 뜻하며 subset·filter·사용자 선택·ranking은 참여하지 않는다(EA-3). Export 적격성은 **현재 유효한 판단의 승인 + 단일 actor + 연쇄 뿌리 standing `current`**의 세 조건으로 정의되어 `043 §7.6` AH-10이 열어 둔 조건을 닫는다(EA-4). 다중 actor Conflict에 대해 Export는 **어떤 중재도 하지 않으며** AH-9가 파생하지 않는 곳에서 operative judgment를 파생하지 않는다(EA-5). Assembly 구성은 승인 행위가 아니고 Review가 Human Authority의 유일한 행사 지점으로 남는다(EA-6). membership은 **파생 관측**이며 Final Selection 기록·aggregate·flag는 존재하지 않는다(EA-7). 이 세대는 `ProcessingRun`·`UnitExecution`·RUNNING state·Domain Result 소유와 chaining을 요구하지 않고 provenance는 anchor 연쇄로 확보되며 `§20` A-8의 결정성과 replay-safety는 유지된다(EA-8). `PATCH-0034` 이전에 admit되어 이력 위치가 없는 판단은 적격하지 않으나 손상이 아니며 소급 backfill은 계속 금지된다(EA-9). 저장 형태는 strictly additive하고 legacy 관계는 재사용하지 않으며 identity·atomicity의 구체 구성은 구현에 위임된다(EA-10). **Edit Pipeline에 Final Selection이라는 제품 개념은 존재하지 않는다**(EA-11). `§21`·`§22`의 이 세대 연결, Conflict가 있는 timeline의 제품 동작, overlap 판정, 빈 scope 정책은 **재범위화되지 않았고 각각 별도의 승인된 PATCH를 요구한다**.
 
 ### 15.2 Working Assumption
 
@@ -424,6 +425,8 @@ Review Pipeline은 Human Decision과 Approved Edit Decision을 책임진다. Exp
 - 서로 다른 Representation 사이에서 동일한 승인 의미를 검증하는 기준은 무엇인가?
 - 외부 consumer가 표현할 수 없는 승인 의미를 발견했을 때 허용 가능한 처리 범위는 무엇인가?
 
+두 번째 질문("일부 승인 결과만 export할 때 Scope의 완전성…")에 대해: `§23` EA-3은 effective-transcript generation의 membership을 **총체(all current)**로 확정했으므로 그 세대에서는 부분 Scope 자체가 발생하지 않으며 이 질문이 제기되지 않는다. 질문은 **여전히 열린 상태**이고, 이후 어떤 세대에서든 subset 계약이 도입될 때 그때의 승인된 PATCH가 답한다. 나머지 세 질문은 그대로 열려 있다.
+
 ### 15.4 Deferred
 
 - 구체적인 export schema와 파일 형식
@@ -432,6 +435,8 @@ Review Pipeline은 Human Decision과 Approved Edit Decision을 책임진다. Exp
 - 자동 컷 적용과 편집 명령 생성
 - 외부 편집 완료본의 round trip
 - Rendering과 전달 구현
+
+이 목록은 그대로 유지된다. effective-transcript generation에 한해 `§23`(`patches/PATCH-0035`)이 확정한 것은 **Edit Export의 admission 경계**뿐이며, 구체적인 export schema·파일 형식·NLE 통합·자동 컷 적용·round trip·Rendering은 이 세대에서도 계속 deferred다. 여기에 더해 다음이 명시적으로 유보된다: `§21` Artifact와 `§22` 구체 serialization의 이 세대 연결, Conflict가 존재하는 Source Timeline에서 Export Admission의 제품 동작, overlap 판정과 결정 간 ordering semantics, 그리고 적격 member가 없는 scope의 처리 정책.
 
 ## 16. Non-Goals
 
@@ -635,6 +640,8 @@ v1에서 LectureOS는 다음을 소유하지 않는다: transport, download, upl
 
 **Ownership Boundary (Confirmed, A-3):** Assembly는 **coherent Export Scope의 존재만** 소유한다. Assembly는 scope-selection(membership) 정책을 소유하지 않는다. 즉 하나의 Assembly가 그 timeline의 모든 현재 승인 편집을 나타내는지, 명시적으로 선택된 일부를 나타내는지는 이 절이 고정하지 않는다(§3.7의 all-or-subset 이중성; §15.3의 완전성 질문). membership 정책은 독립적이고 여전히 열린 제품 결정으로 유보된다.
 
+**`§23`과의 관계 (Confirmed, PATCH-0035):** 위 유보는 **legacy execution-coupled generation에 대해 그대로 유효하다.** effective-transcript generation에 한해 `§23` EA-3이 그 유보를 해소한다 — 하나의 Assembly는 그 Source Timeline의 **모든 export 적격 승인 편집**을 뜻하며, `PATCH-0016`이 미결로 열거한 두 선택지("all current approved edits" 또는 "an explicit subset") 중 전자가 선택되고 후자는 채택되지 않는다. 그 세대에서 membership은 누군가가 **고르는** 것이 아니라 `§23` EA-4의 적격성 판정으로 **결정된다**. A-13이 "canonical 정책이 아니라 Goal 수준의 scope 경계"라고 한 caveat도 그 세대에 한해 해소되며, 그 밖의 A-13 deferred 항목과 A-1의 cross-timeline·cross-media 금지는 두 세대 모두에서 그대로다.
+
 **Upstream Relationship (Confirmed, A-4):** Assembly는 `ApprovedEditExportRepresentation` 기록을 **read-only**로 소비한다. 이를 변경·대체·재해석·재도출하지 않으며 새 승인 편집 의도를 만들지 않는다. `ApprovedEditDecision`은 승인 편집 의도에 대해, `ApprovedEditExportRepresentation`은 그 export 의미에 대해 authoritative로 남는다. Assembly는 오직 coherent grouping에 대해서만 authoritative하다.
 
 **Downstream Relationship (Confirmed, A-5):** serializer·Artifact·physical materialization·delivery·Export Package는 엄격히 downstream이며 이 절에서 정의하지 않는다. Assembly는 format-neutral하며 serialized·외부 표현을 만들지 않는다. 향후 serializer는 Assembly를 입력으로 소비하고 자신의 format/version 계약을 additively 도입하되 Assembly의 의미를 바꾸지 않는다.
@@ -726,6 +733,44 @@ v1에서 LectureOS는 다음을 소유하지 않는다: transport, download, upl
 **Deferred (이후 milestone, C-14):** 다른 구체 format(EDL·FCPXML·AAF·OTIO·CSV 등), 다중 format, serializer registry·plugin discovery, cross-format equivalence, Export Profile·Export Configuration, provider·NLE adapter, executable cut/delete/keep/edit 명령, source media에의 편집 적용, output-timeline transformation, rendering, 원격 upload·download·URL·object storage·delivery lifecycle, retry lifecycle, 직렬화 결과나 파일의 replacement·revision·history, 파생 Artifact/직렬화 결과의 DB 저장, 일반화된 package/bundle export, checksum 정책(안전 materialization에 불필요). 이들 deferred 개념을 위한 placeholder는 도입하지 않는다.
 
 **Canonical Invariants (Confirmed):** (1) 첫 구체 format은 `lectureos-edit-export-json` `v1`이며 NLE interchange format이 아니다. (2) 직렬화는 §21 Artifact의 완전한 승인 의미를 손실 없이 담는다. (3) edit 순서는 canonical member 순서를 보존하며 실행/timeline 순서가 아니다. (4) 직렬화는 결정적이다(UTF-8·LF·고정 필드 순서·비-ASCII 보존). (5) 표현 불가 값은 조용한 손실 없이 명시적 실패로 처리한다. (6) materialization은 원자적이며 실패 시 최종 부분 파일을 남기지 않는다. (7) 기본은 덮어쓰기 금지이고 collision은 명시적 실패이며 덮어쓰기는 명시 요청 시에만 수행한다. (8) 성공은 완전 파일이 durably 배치된 뒤에만 보고되고 최종 경로·format·version·byte 길이·encoding을 담는다. (9) 직렬화 문서는 서술적이며 실행 가능한 편집·timeline·NLE 의미가 없다. (10) serializer·materializer는 non-authoritative projection이며 승인 원본을 보존한다. (11) 결과는 파생·재생성 가능하며 동일 upstream에서 byte-동일하다. (12) 이 slice는 DB 저장·schema·migration을 도입하지 않고 `SQLITE_SCHEMA_VERSION`을 바꾸지 않는다. (13) 실제 실행 가능한 entry point가 존재하고 실패 시 명시적으로 실패한다. (14) deferred 개념은 placeholder를 도입하지 않는다.
+
+## 23. Effective-Transcript Generation — Edit Export Admission Boundary
+
+이 절은 `PATCH-0035`로 승인된 Architect Decision(EA-1…EA-11)을 기록한다. `043 §7.5`의 **Sections Not Re-scoped**와 `§7.6` AH-10이 "별도 결정"으로 남긴 것 — **이 세대의 `ApprovedEditDecision`을 `044` Export에 연결하는 계약** — 을 effective-transcript generation에 한해 확정한다. `§3`의 Export 개념과 `§19`·`§20`·`§21`·`§22`의 legacy 계약은 삭제·재작성·소급 해석되지 않는다. 이 절이 확정하는 것은 **Export admission 경계, 곧 무엇이 Assembly의 member가 되는가**이며 그 member로 Export가 어떤 제품 동작을 보이는가는 확정하지 않는다. 결정 번호에 `EA-` 접두사를 쓰는 것은 Export Admission을 다루기 때문이며 계약상 의미는 없다.
+
+**Scope and Instrument (Confirmed, EA-1):** 이 절은 **effective-transcript generation에만** 적용된다. `§19`·`§20`·`§21`·`§22`는 legacy execution-coupled generation의 계약으로 자기 세대에서 그대로 유효하며 그 기록은 유효한 역사로 보존된다. 두 세대는 영구히 구분 가능하고, 한 세대의 기록을 다른 세대의 Export 입력으로 교차 사용하지 않는다. **하나의 contract generation 안에는 정확히 하나의 canonical Edit Export admission 경계가 존재한다.**
+
+**Export Admission Anchor (Confirmed, EA-2):** 이 세대에서 Edit Export Assembly는 이 세대의 **`ApprovedEditDecision`(`043 §7.5`)을 직접** 모은다. `§19`의 `ApprovedEditExportRepresentation` 단계는 이 세대에서 **재현되지 않는다.** 이유는 두 가지다. 첫째, `§19` D-2의 최소 요구(자신의 Domain Result identity 소유, execution provenance, per-admission ordinal)와 D-8/D-9/D-10의 running unit execution·caller-owned identity는 `043 §7.5` R-6이 이 세대에서 **충족 불가능**하다고(이 세대의 Candidate는 Domain Result를 만들지 않으므로 소유할 것도 참조할 것도 없다), R-9가 **제품 의미가 없다**고 확정한 바로 그 항목들이다. 이를 문자 그대로 적용하면 `040 §18` H-10과 `041 §15` E6이 금지한 가짜 실행 기록과 합성 Domain Result를 만들어야 한다. 둘째, 그 atom의 목적인 승인 snapshot 소유(D-3)는 R-8이 확정한 대로 `ApprovedEditDecision`이 **이미** 수행하며, 이 세대는 `042 §8.2` D-2·`§9.3` C-8·`§7.5` R-7이 확립한 "anchor를 통해 상속하고 복제하지 않는다" 관용구를 따른다. `§20` A-1의 **cardinality와 방향은 그대로다** — Assembly는 정확히 하나의 Source Timeline에 anchor하고 그 timeline에 속한 승인 편집을 모으며 upstream은 **immutable·read-only**로 소비된다. 바뀌는 것은 member 자리를 차지하는 기록이 **어느 세대의 것인가**뿐이며, 이는 `§7.5` R-2가 anchor의 세대만 바꾼 것과 같은 관용구다. 이 절은 **새 aggregate를 만들지 않는다**: Assembly는 `§3.7`·`§20`이 이미 확립한 개념이며 여기서는 그 세대 범위만 정한다.
+
+**Membership Is All Current Approved Edits of One Source Timeline (Confirmed, EA-3):** `§20` A-3의 유보가 이 세대에 대해 **해소된다.** 하나의 Assembly는 그 하나의 Source Timeline에 속한 **모든 export 적격 승인 편집(EA-4)**을 뜻하며 그 밖의 것을 뜻하지 않는다. `PATCH-0016`이 미결로 열거한 두 선택지 중 **"all current approved edits"가 선택되고 "an explicit subset"은 채택되지 않는다.** 따라서 membership은 누군가가 **고르는** 것이 아니라 적격성 판정으로 **결정된다**. subset·filter·사용자 선택·ranking·priority는 참여하지 않는다. `§20` A-1의 cross-timeline·cross-media 집계 금지는 그대로다.
+
+**Export Eligibility (Confirmed, EA-4):** `043 §7.6` AH-10이 열어 둔 조건을 닫는다. 이 세대의 하나의 `ApprovedEditDecision`은 다음 **세 조건을 모두** 만족할 때 export 적격이다.
+
+- **(i) 현재 유효한 판단.** 그 Candidate의 **현재 유효한 판단**(`§7.6` AH-8에 따라 persist된 위치에서만 파생되며 저장되지 않고 latest-row heuristic이 아니다)이 소유한 승인이다. supersede된 판단의 승인은 **적격하지 않으며**, 그것은 유효한 immutable history로 남는다(`§7.5` R-5, `§7.6` AH-8).
+- **(ii) 단일 actor.** 그 Candidate에 대해 이력을 가진 actor가 **정확히 하나**여서 현재 유효한 판단이 파생된다(`§7.6` AH-9). EA-5를 함께 본다.
+- **(iii) current standing.** anchor 연쇄 뿌리의 파생 admission standing(`§7.5` R-3)이 **`current`**다. `superseded_by_authority_change`와 `current_authority_ineligible`은 export 부적격 사유다. released 3값 vocabulary를 **확장하지 않으며** 네 번째 값을 도입하지 않는다. 없거나 canonical 형식에 맞지 않는 참조는 standing 평가 이전에 거부된다. 부적격 연쇄의 **관측은 계속 허용되고 어떤 기록도 변경하지 않으며**(`§7.6` AH-10), superseded 연쇄는 결코 저장소 손상이 아니다(`040 §18` H-12 관용구).
+
+`reject`는 `ApprovedEditDecision`을 만들지 않으므로 구조적으로 이 판정의 대상이 아니다 — `§19` D-7의 규칙이 별도 filter 없이 그대로 보존된다.
+
+**Multi-actor Conflict Is Never Arbitrated (Confirmed, EA-5):** 하나의 Candidate가 둘 이상 actor의 authority 이력을 가지면 `§7.6` AH-9는 현재 유효한 판단을 **파생하지 않는다.** Export는 그것을 **해소하지 않는다**: actor 사이의 우선순위, 최신성(recency), 역할·권한 서열, 자동 merge, 자동 selection은 **금지되며**, AH-9가 파생하지 않는 곳에서 Export가 operative judgment를 파생할 수 없다. membership에는 추가 규칙이 필요하지 않다 — 그런 Candidate는 EA-4 (i)·(ii)를 만족하지 못해 member를 기여하지 않는다. `§15.3`(`043`)의 다중 사용자 질문에는 **답하지 않으며** 그 deferred 상태는 유지된다. 해소는 사람이 다시 판단하는 Review에 속한다. **이 절이 결정하지 않는 것:** Conflict가 존재하는 Source Timeline에서 Export Admission의 제품 동작 — Assembly를 admit하는지, 나머지 적격 편집만 admit하는지, 그 timeline의 admission을 거부하는지, 그리고 Conflict를 export 시점에 어떻게 드러내는지. `§3.12`(`043`)는 Review 안에서 Conflict 자체를 규율하며, export 시점의 처리는 아래 Deferred에 속한다.
+
+**No New Authority (Confirmed, EA-6):** Assembly를 구성하는 것은 **승인 행위가 아니다.** 사람의 결정을 만들지 않고, 재승인하지 않으며, 어떤 Review 기록도 변경·거부·filter·재해석·supersede하지 않는다(`§2.8`, `§13`; `043 §13`). **Review는 Human Authority가 행사되는 유일한 단계로 남는다.** 사람이 export를 촉발할 수 있으나 촉발은 권위를 행사하지 않는다 — admit되는 의미는 전적으로 Review에 이미 기록된 결정으로 결정된다. `ApprovedEditDecision`은 승인 편집 의도에 대한 **유일한 canonical authority**로 남는다(`043 §7.4` Modify Ownership, `§7.5` R-8, `§19` D-4).
+
+**Membership Is Derived, Never Selected or Stored as Selection (Confirmed, EA-7):** 이 세대에는 **Final Selection 기록·aggregate·단계·권위가 존재하지 않는다.** 적격성은 persist된 행에 대한 **파생 관측**이며 `§7.5` R-4와 `§7.6` AH-8의 관용구를 따른다: mutable current flag·stale flag·selection flag·lifecycle state·status 필드를 어디에도 도입하지 않으며 도입하는 방향을 금지한다. Assembly가 자신이 모은 승인 편집을 durable하게 기록하는 것은 **그 Assembly의 membership provenance**이며, 저장된 selection도 아니고 무엇이 승인되었는지에 대한 authority도 아니다.
+
+**Execution-Free Deterministic Provenance (Confirmed, EA-8):** 이 세대의 Edit Export admission은 `ProcessingRun`, `ProcessingUnit`, `UnitExecution`, RUNNING state, execution lifecycle, Domain Result identity 소유, Domain Result chaining을 **요구하지 않는다.** `§19` D-2·D-8·D-11과 `§20` A-9의 multi-upstream Domain Result lineage는 **legacy 세대의 요구**이며 그 세대 범위로 명시된다 — `§7.5` R-6이 기록한 대로 이 세대에는 소유하거나 참조할 Domain Result가 존재하지 않기 때문이다. 가짜 실행 기록·synthetic Processing Run·합성 RUNNING state·합성 Domain Result를 provenance로 사용하는 것은 **금지된다**(`040 §18` H-10, `041 §15` E6). `§20` A-8의 **결정성과 replay-safety는 그대로 유지된다**: 동일한 persist된 상태는 동일한 Assembly를 만들며 wall-clock과 무작위를 읽지 않는다. Source Media·Source Timeline provenance는 **사라지지 않고** anchor 연쇄 `ApprovedEditDecision → ReviewDecision → Edit Candidate(042 §9.3) → Analysis Finding(042 §8.2) → Lecture Analysis Input Admission → current applicable Corrected Revision → parent Raw Transcript → Source Timeline → Source Media`를 통해 확보된다(`§7.5` R-7). 조회 편의를 위해 일부를 denormalize할지는 구현 선택이며, 어떤 형태를 택하든 `§2.9` Source Timeline traceability는 유지되어야 한다.
+
+**Judgments Without a History Position (Confirmed, EA-9):** `PATCH-0034` 이전에 admit된 `ReviewDecision`은 authority 위치를 갖지 않을 수 있으며 그것은 **손상이 아니다**(`§7.6` AH-12). 그 경우 현재 유효한 판단이 파생되지 않으므로 그 승인은 EA-4 (i)에 의해 **export 적격이 아니다.** 이는 "기록된 authority 이력 없음"으로 보고되어야 하며 오류로도, "판단이 존재하지 않음"으로도 보고되어서는 안 된다. **이력 위치의 소급 backfill은 계속 금지되며**, export가 위치를 합성하는 계기가 되어서는 안 된다.
+
+**Persisted Representation (Confirmed, EA-10):** 이 절은 **의미**만 확정하고 물리적 저장 형태를 확정하지 않는다. 필요한 형태는 `041 §15` E1, `042 §8.2` D-11·`§7.2` S-12·`§9.3` C-12, `043 §7.5` R-12·`§7.6` AH-12의 선례를 따라 **strictly additive한 새 versioned representation**으로 도입한다. `§19`~`§22`의 legacy `edit_export_*` 관계는 **재사용하지 않으며** — 그 필수 legacy anchor와 실행 provenance는 EA-8이 금지한 값을 날조해야만 충족되므로 — 재해석·backfill·dual-write 없이 그대로 남고 released 행은 자신의 identity와 컬럼을 정확히 유지한다. identity 방향은 새로 만들지 않고 상속한다: **Application 소유**이며 immutable anchor에서 결정적으로 파생되고, provider 식별자·execution 식별자·`DomainResult`·UUID·timestamp·wall-clock·rowid·물리 경로·mutable currentness는 참여하지 않는다(`§7.5` R-10, `§7.6` AH-11). **정확한 hash 구성, conflict 분기 도달 가능성 회계, atomicity 경계는 구현 milestone에 위임한다**; 이 절은 자신의 identity·history·replay 계약을 저술하지 않는다.
+
+**Final Selection Does Not Exist (Confirmed, EA-11):** Edit Pipeline에 **Final Selection은 제품 개념으로 존재하지 않는다** — legacy 세대에도, 이 세대에도, 미래 기능으로도 아니다. `042 §9.3` C-13, `042`의 Deferred 목록, `042 §18`이 Export와 나란히 그 이름을 열거한 곳에서 그 라벨은 **만들어질 무엇도 지시하지 않으며**, 같은 절의 Export 부분만 실재하고 그것은 이 절이 범위화한다. 그 released 문장들은 **삭제되지 않고**, 개념이 조사된 뒤 존재하지 않는 것으로 판정되었다는 note가 기록된다. `041`의 Final Subtitle과 그 선택은 **다른 Pipeline의 계약**이며 전혀 영향받지 않는다 — 거기서는 상호배타적인 전체 문서 후보 중 정확히 하나가 승인 자막이 되지만, 승인 편집은 집합의 상호보완적 원소이고 그 operative judgment는 `§7.6`이 이미 Candidate 단위로 파생한다.
+
+**Sections Not Re-scoped (Confirmed):** 이 절은 `§19`·`§21`·`§22`, `§1`~`§18`, `043 §7.4`의 legacy 계약, `042`의 어떤 소절, `041`의 Final Subtitle 계약을 재범위화하지 않는다. 특히 `§21` Artifact와 `§22` 구체 serialization의 **이 세대 연결은 확정되지 않았다** — 그 released 문언은 legacy Assembly에 anchor하며, legacy 분기가 `§19`→`§20`→`§21`→`§22`를 각각 별도 PATCH로 확정한 것과 같이 각자 자기 세대 범위 결정을 요구한다. Export Profile·Export Configuration, 구체 export schema, 외부 파일 형식, serializer, provider·NLE adapter, 실행 가능한 편집 명령, output-timeline transformation, rendering, Artifact 생성, physical materialization, delivery, Export Package도 마찬가지로 재범위화되지 않는다.
+
+**Deferred (이후 milestone):** `§15.4`의 목록 전체가 그대로 유지되며, 여기에 다음이 **명시적으로** 더해진다. **(1) Conflict가 존재하는 Source Timeline에서 Export Admission의 제품 동작** — Assembly를 admit하는지, 나머지 적격 편집만 admit하는지, timeline의 admission을 거부하는지, Conflict를 export 시점에 드러내야 하는지. EA-5는 Export가 중재하지 않는다는 것과 conflicted Candidate가 member를 기여하지 않는다는 것만 확정하며, 그 결과 나타날 제품 동작은 확정하지 않는다. **(2) overlap 판정** — 승인 range가 겹치는 두 적격 승인 편집에 대해 merge·split·우선순위·거부 중 무엇이 필요한지는 `§19` D-15·`§20` A-13이 남긴 그대로다. 이 절은 **어떤 overlap 규칙도 도입하지 않는다**: EA-4의 적격성 판정은 overlap을 고려하지 않으므로 이 계약 아래에서 overlap 승인 편집을 배제하는 filter를 구현이 발명할 수 없다. 결정 간 ordering semantics도 함께 deferred이며, `§20` A-8이 이미 요구하는 결정적 구성은 EA-8이 유지하고 그 canonical member 순서는 EA-10이 **presentation 문제로 위임**한다 — 실행·timeline·overlap 순서가 아니다(`§22` C-3 관용구). **(3) 적격 member가 없는 scope의 처리** — 그 경우 zero-member Assembly인지 명시적 거부인지 그 밖인지. Conflict만 있는 timeline도 적격 member가 없는 상태에 이르므로 이 정책이 두 경우를 함께 규율하게 된다. 이 세 항목은 admission 경계 이후의 제품 정책이며 각각 별도의 승인된 PATCH를 요구한다. 구현은 이들 중 어느 하나를 임의로 선택해 확정할 수 없다 — 선택된 동작이 계약으로 역독되기 때문이다. 이들 deferred 개념을 위한 placeholder field·record·table·enum·interface는 도입하지 않는다.
+
+**Canonical Invariants (Confirmed):** (1) 이 절은 effective-transcript generation에만 적용되고 `§19`~`§22`의 legacy 계약과 기록은 불변이다. (2) 이 세대의 Assembly는 이 세대의 `ApprovedEditDecision`을 직접 모으고 `§19` atom 단계는 재현되지 않는다. (3) `§20` A-1의 anchor cardinality와 방향, cross-timeline·cross-media 금지는 그대로다. (4) membership은 그 Source Timeline의 모든 export 적격 승인 편집이며 subset·filter·사용자 선택·ranking은 없다. (5) export 적격성은 현재 유효한 판단의 승인·단일 actor·standing `current`의 세 조건이다. (6) supersede된 판단의 승인과 이력 위치 없는 판단은 적격하지 않으나 유효한 역사이며 손상이 아니다. (7) Export는 actor 사이를 중재하지 않으며 AH-9가 파생하지 않는 곳에서 operative judgment를 파생하지 않는다. (8) Assembly 구성은 승인 행위가 아니고 Review가 Human Authority의 유일한 행사 지점이다. (9) `ApprovedEditDecision`이 승인 편집 의도의 유일한 canonical authority로 남는다. (10) membership은 파생 관측이며 Final Selection 기록·aggregate·flag는 존재하지 않는다. (11) mutable current·stale·selection flag와 lifecycle state를 도입하지 않는다. (12) 실행 provenance와 Domain Result는 요구되지 않고 그 날조는 금지되며 결정성과 replay-safety는 유지된다. (13) Source Media·Source Timeline provenance는 anchor 연쇄로 확보되고 traceability는 유지된다. (14) 이력 위치의 소급 backfill은 금지된다. (15) 저장 형태는 strictly additive하고 legacy 관계는 재사용하지 않으며 released 행은 불변이다. (16) identity는 Application 소유·결정적이고 그 구성·atomicity는 구현에 위임된다. (17) Edit Pipeline에 Final Selection은 존재하지 않는다. (18) Conflict 상황의 제품 동작·overlap 판정·적격 member 없는 scope의 처리는 확정되지 않으며 구현이 임의로 선택할 수 없다. (19) `§21`·`§22`의 이 세대 연결은 별도 결정을 요구한다. (20) deferred 개념은 placeholder를 도입하지 않는다.
 
 ## Related Documents
 
