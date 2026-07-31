@@ -4,7 +4,7 @@
   "repository_validation": "healthy",
   "revision_1_id": "corrected-revision:9e30381e608da1ae98d9d4d66a66ac5434711d6e4d6e7552b678427b2cd51e40",
   "revision_2_id": "corrected-revision:10cfbcc0b9fa980a328975f76b98d35bb8ab67330c7559675e20975b5d2cf49b",
-  "schema_version": 51,
+  "schema_version": 52,
   "segment_1_id": "lecture-analysis-segment:373d09f0607ed8f80d5746602372dfdb7ee42d521395042d3c3aeadb1f7f44a2",
   "segment_2_id": "lecture-analysis-segment:a140073edb30c093b0424d6650605a5fd2fb810b9b0fe76b217d7ad234237f07",
   "segment_count": 5

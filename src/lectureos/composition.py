@@ -869,8 +869,11 @@ def compose_sqlite_lecture_review_service(
     admission at the root of its chain through the released GOAL-027/GOAL-025/GOAL-023 path — no
     authority resolver is reimplemented — admitting only at `current`. One immutable
     `ReviewDecision`, plus exactly one `ApprovedEditDecision` for accept and modify, is appended in
-    a single atomic transaction; only `lecture_review_decisions` and
-    `lecture_approved_edit_decisions` are written and every upstream record is read-only. No
+    a single atomic transaction together with the admission's authority-history position
+    (043 §7.6 / PATCH-0034); only `lecture_review_decisions`, `lecture_approved_edit_decisions`, and
+    `lecture_review_authority_positions` are written and every upstream record is read-only. The
+    current judgment of one (candidate, actor) scope is derived from the highest position and never
+    stored, and nothing is arbitrated across actors. No
     provider, AI, ProcessingRun, UnitExecution, RUNNING state, or DomainResult exists in this
     contract (PATCH-0033 R-6), and the legacy execution-coupled `edit_review_decisions` /
     `approved_edit_decisions` path is never touched (R-12).

@@ -1,4 +1,4 @@
-"""Runnable entry point for effective-generation Review admission (043 §7.5, GOAL-028).
+"""Runnable entry point for effective-generation Review (043 §7.5 + §7.6, GOAL-028/GOAL-029).
 
 One CLI over an existing repository (identities only — never media paths). A thin application
 boundary that records a human judgment and nothing else:
@@ -9,12 +9,17 @@ boundary that records a human judgment and nothing else:
 * ``modify`` — record a **complete** approved replacement (range, label, and rationale together);
 * ``show`` — one immutable `ReviewDecision` and the approved snapshot it owns, if any;
 * ``status`` — derived: does this decision's chain still bind the current authority?
-* ``list`` — every human judgment recorded against one Candidate, as coexisting history.
+* ``list`` — every human judgment recorded against one Candidate, as coexisting history;
+* ``history`` — one (Candidate, actor) authority history, oldest position first (043 §7.6);
+* ``current`` — derived: that scope's currently valid judgment and its approved snapshot;
+* ``candidate-authority`` — observe whether a Candidate-level current judgment is derivable at all.
 
 **Review ≠ edit application.** None of the three decisions executes anything: no cut, NLE operation,
-rendering, export, or automatic edit exists here, and no Review Session, Review Item, revision,
-withdrawal, or current-selection exists either. A decision whose chain later becomes superseded
-remains valid immutable history, and no status or selection state is stored.
+rendering, export, or automatic edit exists here, and no Review Session, Review Item, withdrawal, or
+revocation exists either. A decision whose chain later becomes superseded remains valid immutable
+history, and no status, currentness, or selection state is stored — the current judgment of a
+(Candidate, actor) scope is **derived** from the append-only authority history. Across actors nothing
+is arbitrated: several people's judgments are surfaced as a conflict, never ranked.
 
 The canonical admission is owned by the Application layer — this CLI is an interface over it and
 never writes a canonical record itself.
@@ -31,6 +36,12 @@ Invocation (src layout)::
     PYTHONPATH=src python3 -m lectureos.lecture_review_cli show --decision <id> --database <db>
     PYTHONPATH=src python3 -m lectureos.lecture_review_cli status --decision <id> --database <db>
     PYTHONPATH=src python3 -m lectureos.lecture_review_cli list --candidate <id> --database <db>
+    PYTHONPATH=src python3 -m lectureos.lecture_review_cli history --candidate <id> \
+        --actor <human-actor> --database <db>
+    PYTHONPATH=src python3 -m lectureos.lecture_review_cli current --candidate <id> \
+        --actor <human-actor> --database <db>
+    PYTHONPATH=src python3 -m lectureos.lecture_review_cli candidate-authority --candidate <id> \
+        --database <db>
 """
 
 from __future__ import annotations
@@ -52,12 +63,14 @@ from lectureos.application.lecture_analysis_input_admission import (
 from lectureos.application.lecture_analysis_input_eligibility import (
     LectureAnalysisInputEligibilityError,
 )
+from lectureos.application.lecture_review_authority import LectureReviewAuthorityError
 from lectureos.application.lecture_review_decision import LectureReviewError
 from lectureos.composition import compose_sqlite_lecture_review_service
 from lectureos.persistence import PersistenceError, open_sqlite_database
 
 _NOT_PART = (
     "edit application: not part of this contract",
+    "cross-actor arbitration: not part of this contract",
     "review session, review item, and review history model: not part of this contract",
     "revision, withdrawal, and current-selection: not part of this contract",
     "export: not part of this contract",
@@ -107,6 +120,17 @@ def _run_decision(args) -> int:
         connection.close()
     print(f"{result.outcome.value} review decision")
     _print_decision(result.decision, result.approved)
+    print(f"{result.position_outcome.value} authority position")
+    print(f"authority position: {result.position.identity.value}")
+    print(f"authority sequence: {result.position.sequence}")
+    print(
+        "supersedes: "
+        + (
+            "none (first judgment of this scope)"
+            if result.position.previous_position_id is None
+            else result.position.previous_position_id.value
+        )
+    )
     print(
         "the anchor chain's authority standing was re-derived at command time; both records are "
         "immutable — later authority changes never mutate them, and nothing was executed"
@@ -168,6 +192,73 @@ def _run_list(args) -> int:
     return 0
 
 
+def _run_history(args) -> int:
+    connection, service = _service(args)
+    try:
+        positions = service.authority_history(args.candidate, args.actor)
+    finally:
+        connection.close()
+    print(f"authority history for {args.candidate} / {args.actor}: {len(positions)}")
+    for position in positions:
+        marker = "current" if position is positions[-1] else "superseded"
+        print(
+            f"  [{position.sequence}] {marker} decision={position.review_decision_id.value} "
+            f"({position.identity.value})"
+        )
+    print(
+        "every position is valid immutable history; the current judgment is the highest sequence "
+        "and is derived, never stored"
+    )
+    return 0
+
+
+def _run_current(args) -> int:
+    connection, service = _service(args)
+    try:
+        current = service.current_review(args.candidate, args.actor)
+    finally:
+        connection.close()
+    if current is None:
+        print(f"no recorded authority history for {args.candidate} / {args.actor}")
+        print(
+            "absence of a position is not corruption and does not mean no judgment exists: "
+            "judgments admitted before this contract carry no position and are never backfilled"
+        )
+        return 0
+    print(f"current judgment for {args.candidate} / {args.actor}")
+    print(f"authority sequence: {current.sequence}")
+    print(f"superseded judgments: {current.superseded_count}")
+    _print_decision(current.decision, current.approved)
+    return 0
+
+
+def _run_candidate_authority(args) -> int:
+    connection, service = _service(args)
+    try:
+        observation = service.observe_candidate_authority(args.candidate)
+    finally:
+        connection.close()
+    print(f"candidate: {observation.candidate_id.value}")
+    print(f"authority status: {observation.status.value}")
+    print(f"actors with history: {len(observation.actors)}")
+    for actor in observation.actors:
+        print(f"  {actor.value}")
+    if observation.current is not None:
+        print(f"current judgment: {observation.current.decision.decision_kind.value}")
+        print(f"current review decision: {observation.current.decision.identity.value}")
+    elif observation.is_conflict:
+        print("current judgment: none — several people have judged this candidate")
+        print(
+            "this is a review conflict to be surfaced, not resolved: no priority among actors, no "
+            "recency across actors, and no role ranking exists in this contract"
+        )
+    else:
+        print("current judgment: none — no authority history is recorded")
+    for line in _NOT_PART:
+        print(line)
+    return 0
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python3 -m lectureos.lecture_review_cli",
@@ -176,8 +267,11 @@ def _parser() -> argparse.ArgumentParser:
             "one immutable identity-owning ReviewDecision per exact canonical judgment, anchored "
             "to a current-generation Edit Candidate whose analysis input admission is CURRENT, "
             "with exactly one ApprovedEditDecision for accept and modify and none for reject, "
-            "admitted atomically with idempotent replay. No edit is executed and no provider, AI, "
-            "ProcessingRun, UnitExecution, DomainResult, review session, revision, or export "
+            "admitted atomically with idempotent replay, together with the admission's "
+            "authority-history position (043 §7.6 / PATCH-0034). The current judgment of one "
+            "(candidate, actor) scope is derived from the highest position and never stored; "
+            "across actors nothing is arbitrated. No edit is executed and no provider, AI, "
+            "ProcessingRun, UnitExecution, DomainResult, review session, withdrawal, or export "
             "exists in this contract. Accepts identities, never media paths."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -251,6 +345,28 @@ def _parser() -> argparse.ArgumentParser:
                      metavar="LECTURE_ANALYSIS_EDIT_CANDIDATE_ID")
     _database(lst)
     lst.set_defaults(func=_run_list)
+
+    for name, func, help_text in (
+        ("history", _run_history,
+         "show one (candidate, actor) authority history, oldest position first"),
+        ("current", _run_current,
+         "derive that scope's currently valid judgment and its approved snapshot"),
+    ):
+        sub = subparsers.add_parser(name, help=help_text)
+        sub.add_argument("--candidate", required=True,
+                         metavar="LECTURE_ANALYSIS_EDIT_CANDIDATE_ID")
+        sub.add_argument("--actor", required=True, metavar="HUMAN_ACTOR")
+        _database(sub)
+        sub.set_defaults(func=func)
+
+    observe = subparsers.add_parser(
+        "candidate-authority",
+        help="observe whether a candidate-level current judgment is derivable at all",
+    )
+    observe.add_argument("--candidate", required=True,
+                         metavar="LECTURE_ANALYSIS_EDIT_CANDIDATE_ID")
+    _database(observe)
+    observe.set_defaults(func=_run_candidate_authority)
     return parser
 
 
@@ -260,6 +376,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return args.func(args)
     except (
         LectureReviewError,
+        LectureReviewAuthorityError,
         LectureAnalysisEditCandidateError,
         LectureAnalysisFindingError,
         LectureAnalysisInputAdmissionError,

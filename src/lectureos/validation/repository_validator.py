@@ -86,6 +86,7 @@ _INSPECTED_TABLES = (
     "lecture_analysis_edit_candidates",
     "lecture_review_decisions",
     "lecture_approved_edit_decisions",
+    "lecture_review_authority_positions",
 )
 _IDENTITY_TABLES = (
     "domain_result_references",
@@ -118,6 +119,7 @@ _IDENTITY_TABLES = (
     "lecture_analysis_edit_candidates",
     "lecture_review_decisions",
     "lecture_approved_edit_decisions",
+    "lecture_review_authority_positions",
 )
 _CANONICAL_FINDING_TYPE = re.compile(r"^[a-z][a-z0-9_]*$")
 _CANONICAL_CANDIDATE_TYPE = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -3314,6 +3316,129 @@ def _check_lecture_review_records(connection: sqlite3.Connection) -> list[Diagno
     return diagnostics
 
 
+def _check_lecture_review_authority_positions(
+    connection: sqlite3.Connection,
+) -> list[Diagnostic]:
+    """Integrity of effective-generation Review authority history (043 §7.6 / GOAL-029, PATCH-0034).
+
+    Deliberately NOT flagged: a `ReviewDecision` that carries **no** position — AH-12 declares that
+    valid and prohibits retroactive backfill, so absence means "no recorded authority history", never
+    corruption; several positions referencing one decision (that is the reversal case AH-6 exists to
+    allow); a superseded position; several actors holding contradictory histories on one Candidate
+    (AH-9 makes that a surfaced Conflict, not a defect). Integrity-only: reads no filesystem, media,
+    or provider.
+    """
+
+    if not _table_exists(connection, "lecture_review_authority_positions"):
+        return []
+    diagnostics: list[Diagnostic] = []
+
+    def _flag(code: str, identity: str, message: str) -> None:
+        diagnostics.append(
+            Diagnostic(
+                code=code,
+                severity=Severity.ERROR,
+                location=f"lecture_review_authority_positions:{identity}",
+                message=message,
+            )
+        )
+
+    # The v52 foreign keys already enforce that both references resolve, so these two probes are
+    # defence-in-depth against a repository written with foreign keys disabled.
+    if _table_exists(connection, "lecture_review_decisions"):
+        for (identity,) in connection.execute(
+            """
+            SELECT p.identity
+            FROM lecture_review_authority_positions p
+            LEFT JOIN lecture_review_decisions d ON d.identity = p.review_decision_id
+            WHERE d.identity IS NULL
+            ORDER BY p.identity
+            """
+        ).fetchall():
+            _flag("LECTURE_REVIEW_AUTHORITY_POSITION_DECISION_MISSING", identity,
+                  "authority position references a review decision that does not exist")
+
+        # The position's scope must be the scope of the judgment it records. A position pointing at
+        # another Candidate's or another person's decision would silently move authority between
+        # scopes, so this is a real guard rather than a restatement of the foreign key.
+        for identity, candidate_id, actor, decision_candidate, decision_actor in (
+            connection.execute(
+                """
+                SELECT p.identity, p.candidate_id, p.actor, d.candidate_id, d.actor
+                FROM lecture_review_authority_positions p
+                JOIN lecture_review_decisions d ON d.identity = p.review_decision_id
+                WHERE d.candidate_id <> p.candidate_id OR d.actor <> p.actor
+                ORDER BY p.identity
+                """
+            ).fetchall()
+        ):
+            _flag("LECTURE_REVIEW_AUTHORITY_POSITION_SCOPE_MISMATCH", identity,
+                  "authority position records a decision from a different candidate or actor "
+                  f"(position scope {candidate_id}/{actor}, decision scope "
+                  f"{decision_candidate}/{decision_actor})")
+
+    rows = connection.execute(
+        """
+        SELECT identity, candidate_id, actor, sequence, previous_position_id,
+               position_contract_version
+        FROM lecture_review_authority_positions
+        ORDER BY candidate_id, actor, sequence
+        """
+    ).fetchall()
+
+    scopes: dict[tuple[str, str], list[tuple]] = {}
+    by_identity = {row[0]: row for row in rows}
+    for row in rows:
+        identity, candidate_id, actor, sequence, previous, version = row
+        scopes.setdefault((candidate_id, actor), []).append(row)
+        if version != 1:
+            _flag("LECTURE_REVIEW_AUTHORITY_POSITION_CONTRACT_VERSION_MISMATCH", identity,
+                  "authority position records an unsupported contract version")
+
+        # Identity re-derivation proves the whole canonical binding at once: the contract kind and
+        # version (the generation provenance) and the immutable scope plus position. The referenced
+        # decision deliberately does NOT participate (AH-11 Option A), which is why the scope probe
+        # above exists separately.
+        expected = "lecture-review-authority-position:" + hashlib.sha256(
+            json.dumps(
+                {
+                    "contract": "lecture_review_authority_position",
+                    "contract_version": 1,
+                    "candidate": candidate_id,
+                    "actor": actor,
+                    "sequence": sequence,
+                },
+                ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        if identity != expected:
+            _flag("LECTURE_REVIEW_AUTHORITY_POSITION_IDENTITY_MISMATCH", identity,
+                  "authority position identity does not re-derive from its stored scope "
+                  "and position")
+
+        # The supersession chain must walk back exactly one position inside the same scope (AH-6).
+        if previous is not None:
+            parent = by_identity.get(previous)
+            if (
+                parent is None
+                or parent[1] != candidate_id
+                or parent[2] != actor
+                or parent[3] != sequence - 1
+            ):
+                _flag("LECTURE_REVIEW_AUTHORITY_PREVIOUS_LINK_INVALID", identity,
+                      "authority position does not supersede the immediately preceding position "
+                      "of its own scope")
+
+    for (candidate_id, actor), scope_rows in scopes.items():
+        sequences = sorted(row[3] for row in scope_rows)
+        if sequences != list(range(len(sequences))):
+            _flag("LECTURE_REVIEW_AUTHORITY_SEQUENCE_NONCONTIGUOUS", scope_rows[0][0],
+                  f"authority history of {candidate_id}/{actor} is not a contiguous 0..n-1 "
+                  "sequence")
+
+    return diagnostics
+
+
 def _check_raw_transcript_segments(connection: sqlite3.Connection) -> list[Diagnostic]:
     if not _table_exists(connection, "raw_transcript_segments"):
         return []
@@ -3426,6 +3551,7 @@ def validate_repository(connection: sqlite3.Connection) -> ValidationReport:
     diagnostics += _check_lecture_analysis_segments(connection)
     diagnostics += _check_lecture_analysis_edit_candidates(connection)
     diagnostics += _check_lecture_review_records(connection)
+    diagnostics += _check_lecture_review_authority_positions(connection)
     diagnostics += _check_raw_transcript_segments(connection)
     diagnostics += _check_malformed_identities(connection)
 

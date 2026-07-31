@@ -44,12 +44,14 @@ Timeline provenance still applies; only its *form* changes. It is secured throug
 applicable corrected revision → parent raw transcript → Source Timeline → Source Media`, so neither
 record duplicates it as a column.
 
-**No canonical ordinal (R-9).** Neither record stores a per-admission `sequence`. `040 §18`'s
-per-anchor authority-history ordinal is a different concept and is neither introduced nor denied
-here; it stays deferred (`§15.4`). Consequence, recorded deliberately: when a person reverses a
-judgment (`accept` → `reject` → `accept`), the third submission converges on the first identity and
-two contradicting records coexist as history. This contract does not adjudicate which is operative,
-and `list_for_candidate` deliberately exposes only that they coexist.
+**No canonical ordinal on either record (R-9).** Neither record stores a per-admission `sequence`.
+The reversal consequence R-9 recorded — `accept` → `reject` → `accept` converges on the first
+identity, leaving two contradicting records — is **no longer unadjudicated**: `043 §7.6`
+(PATCH-0034, GOAL-029) adds an append-only **authority history** in a separate record, so the same
+three submissions occupy three history positions over two converged decisions and the current
+judgment is derived from the highest position. R-9 itself is unchanged: the per-admission ordinal
+still does not exist, and neither canonical record gained a column. See
+`application/lecture_review_authority.py`.
 
 **Identity, reachability, and replay (R-10, R-11).**
 
@@ -95,6 +97,18 @@ from .lecture_analysis_edit_candidate import (
     require_canonical_candidate_type,
 )
 from .lecture_analysis_input_admission import AdmissionAuthorityMatch
+from .lecture_review_authority import (
+    AuthorityPositionOutcome,
+    AuthorityPositionPlan,
+    CandidateAuthorityObservation,
+    CandidateAuthorityStatus,
+    CurrentReviewAuthority,
+    LectureReviewAuthorityError,
+    LectureReviewAuthorityPosition,
+    ReviewAuthorityConflictError,
+    plan_authority_position,
+    require_authority_actor,
+)
 
 LECTURE_REVIEW_DECISION_IDENTITY_PREFIX = "lecture-review-decision"
 LECTURE_APPROVED_EDIT_DECISION_IDENTITY_PREFIX = "lecture-approved-edit-decision"
@@ -463,12 +477,19 @@ class LectureApprovedEditDecision:
 
 @dataclass(frozen=True, slots=True)
 class ReviewAdmissionResult:
-    """One Review command outcome: the records, the outcome, and the anchor observed."""
+    """One Review command outcome: the records, the outcomes, and the anchor observed.
+
+    `outcome` describes the canonical `ReviewDecision`; `position_outcome` describes this
+    admission's authority-history position. They differ exactly when a judgment converges on an
+    existing decision while still opening a new position — the reversal case (`043 §7.6` AH-6).
+    """
 
     decision: LectureReviewDecision
     approved: LectureApprovedEditDecision | None
     outcome: ReviewOutcome
     candidate: LectureAnalysisEditCandidate
+    position: LectureReviewAuthorityPosition
+    position_outcome: AuthorityPositionOutcome
 
 
 class ReviewQuery(Protocol):
@@ -478,6 +499,12 @@ class ReviewQuery(Protocol):
 
     def list_decisions_for_candidate(self, candidate_id) -> tuple: ...
 
+    def head_position(self, candidate_id, actor): ...
+
+    def list_positions(self, candidate_id, actor) -> tuple: ...
+
+    def actors_with_history(self, candidate_id) -> tuple: ...
+
 
 class AtomicReviewPersistence(Protocol):
     def persist_review(
@@ -485,6 +512,7 @@ class AtomicReviewPersistence(Protocol):
         *,
         decision: LectureReviewDecision,
         approved: LectureApprovedEditDecision | None,
+        position: LectureReviewAuthorityPosition | None = None,
     ) -> None: ...
 
 
@@ -571,22 +599,52 @@ class LectureReviewApplicationService:
             approved_rationale=approved_rationale,
         )
 
+        plan = self._plan_position(candidate.identity, actor_reference, decision.identity)
+
         existing = self._reviews.get_decision(decision.identity)
         if existing is not None:
-            return self._reuse(existing, decision, approved, candidate)
+            return self._reuse(existing, decision, approved, candidate, plan)
         try:
-            self._persistence.persist_review(decision=decision, approved=approved)
+            self._persistence.persist_review(
+                decision=decision,
+                approved=approved,
+                position=plan.position if plan.appends else None,
+            )
         except PersistenceIdentityCollisionError:
-            # A near-concurrent identical command won the insert; converge on its records.
+            # A near-concurrent command won the insert; converge on the persisted records or refuse
+            # explicitly if it recorded something semantically different (R-11, AH-11).
             resolved = self._reviews.get_decision(decision.identity)
             if resolved is not None:
-                return self._reuse(resolved, decision, approved, candidate)
+                return self._reuse(
+                    resolved,
+                    decision,
+                    approved,
+                    candidate,
+                    self._plan_position(
+                        candidate.identity, actor_reference, decision.identity
+                    ),
+                )
             raise
         return ReviewAdmissionResult(
             decision=decision,
             approved=approved,
             outcome=ReviewOutcome.RECORDED,
             candidate=candidate,
+            position=plan.position,
+            position_outcome=plan.outcome,
+        )
+
+    def _plan_position(
+        self,
+        candidate_id: LectureAnalysisEditCandidateId,
+        actor: HumanActorReference,
+        decision_id: LectureReviewDecisionId,
+    ) -> AuthorityPositionPlan:
+        """AH-7 over this scope's persisted head — never a row count or insertion order."""
+
+        head = self._reviews.head_position(candidate_id, actor.value)
+        return plan_authority_position(
+            candidate_id=candidate_id, actor=actor, decision_id=decision_id, head=head
         )
 
     def _build_approved(
@@ -672,6 +730,7 @@ class LectureReviewApplicationService:
         expected: LectureReviewDecision,
         approved: LectureApprovedEditDecision | None,
         candidate: LectureAnalysisEditCandidate,
+        plan: AuthorityPositionPlan,
     ) -> ReviewAdmissionResult:
         """Converge on an identical canonical judgment; refuse a divergent one (R-11).
 
@@ -714,12 +773,49 @@ class LectureReviewApplicationService:
                 "decision owns at most one approved edit decision and revising a human judgment "
                 "is not part of this contract, so nothing is written"
             )
+        position, position_outcome = self._settle_position(existing, plan)
         return ReviewAdmissionResult(
             decision=existing,
             approved=stored_approved,
             outcome=ReviewOutcome.REUSED,
             candidate=candidate,
+            position=position,
+            position_outcome=position_outcome,
         )
+
+    def _settle_position(
+        self, decision: LectureReviewDecision, plan: AuthorityPositionPlan
+    ) -> tuple[LectureReviewAuthorityPosition, AuthorityPositionOutcome]:
+        """Open a new history position for a converged judgment when the head differs (AH-6, AH-7).
+
+        This is the reversal case: `accept` → `reject` → `accept` converges on the first decision
+        while opening position 2, so several positions reference one decision. If the head already
+        records this judgment nothing is written.
+        """
+
+        if not plan.appends:
+            return plan.position, plan.outcome
+        try:
+            self._persistence.persist_review(
+                decision=decision, approved=None, position=plan.position
+            )
+        except PersistenceIdentityCollisionError as collision:
+            # A concurrent append took this position (AH-11 Option A): converge if it recorded the
+            # same judgment, refuse explicitly otherwise. Nothing is ever overwritten.
+            stored = self._reviews.head_position(
+                plan.position.candidate_id, plan.position.actor.value
+            )
+            if (
+                stored is not None
+                and stored.identity == plan.position.identity
+                and stored.review_decision_id == plan.position.review_decision_id
+            ):
+                return stored, AuthorityPositionOutcome.REUSED
+            raise ReviewAuthorityConflictError(
+                "a different review authority position already occupies this place in the "
+                "history; it is never overwritten"
+            ) from collision
+        return plan.position, AuthorityPositionOutcome.RECORDED
 
     # -- queries (derived; never mutate history) -------------------------------------------------
 
@@ -743,6 +839,103 @@ class LectureReviewApplicationService:
 
         return self._reviews.list_decisions_for_candidate(
             _require_anchor_identity(candidate_id)
+        )
+
+    # -- authority history (043 §7.6; derived only, never stored) --------------------------------
+
+    def authority_history(
+        self, candidate_id: str, actor: str
+    ) -> tuple[LectureReviewAuthorityPosition, ...]:
+        """One (Candidate, actor) scope's full history, oldest position first (AH-6).
+
+        Every position is valid immutable history; the earlier ones are superseded, never deleted.
+        """
+
+        identity = _require_anchor_identity(candidate_id)
+        return self._reviews.list_positions(
+            identity, require_authority_actor(actor).value
+        )
+
+    def current_review(self, candidate_id: str, actor: str) -> CurrentReviewAuthority | None:
+        """The current judgment of one (Candidate, actor) scope — derived, never stored (AH-8).
+
+        `None` means no authority history is recorded for that scope. That is **not** an error and
+        not "no judgment exists": a `ReviewDecision` admitted before this contract carries no
+        position, and AH-12 declares that absence valid while prohibiting retroactive backfill.
+        """
+
+        identity = _require_anchor_identity(candidate_id)
+        reference = require_authority_actor(actor)
+        head = self._reviews.head_position(identity, reference.value)
+        return None if head is None else self._resolve_current(head)
+
+    def _resolve_current(
+        self, head: LectureReviewAuthorityPosition
+    ) -> CurrentReviewAuthority:
+        decision = self._reviews.get_decision(head.review_decision_id)
+        if decision is None:
+            raise LectureReviewAuthorityError(
+                "review authority position references a missing review decision "
+                "(repository integrity failure)"
+            )
+        return CurrentReviewAuthority(
+            candidate_id=head.candidate_id,
+            actor=head.actor,
+            position=head,
+            decision=decision,
+            approved=self._reviews.get_approved_for_decision(decision.identity),
+        )
+
+    def current_approved(
+        self, candidate_id: str, actor: str
+    ) -> LectureApprovedEditDecision | None:
+        """The approved snapshot of one scope's current judgment, if that judgment approved one.
+
+        `None` covers two different facts — no recorded history, or a current judgment of `reject`
+        — so callers that must distinguish them read `current_review` instead. Being current is
+        **not** Export eligibility (AH-10).
+        """
+
+        current = self.current_review(candidate_id, actor)
+        return None if current is None else current.approved
+
+    def observe_candidate_authority(
+        self, candidate_id: str
+    ) -> CandidateAuthorityObservation:
+        """Observe, never arbitrate (AH-9).
+
+        One actor with history → that actor's current judgment. Two or more → a `§3.12` Review
+        Conflict and **no** current judgment: this contract defines no priority among actors, no
+        recency across actors, and no role ranking, and it does not answer `§15.3`'s open question.
+        """
+
+        identity = _require_anchor_identity(candidate_id)
+        actors = self._reviews.actors_with_history(identity)
+        references = tuple(HumanActorReference(actor) for actor in actors)
+        if not actors:
+            return CandidateAuthorityObservation(
+                candidate_id=identity,
+                status=CandidateAuthorityStatus.NO_HISTORY,
+                actors=(),
+                current=None,
+            )
+        if len(actors) > 1:
+            return CandidateAuthorityObservation(
+                candidate_id=identity,
+                status=CandidateAuthorityStatus.CROSS_ACTOR_CONFLICT,
+                actors=references,
+                current=None,
+            )
+        head = self._reviews.head_position(identity, actors[0])
+        if head is None:  # pragma: no cover - an actor is listed only because a position exists
+            raise LectureReviewAuthorityError(
+                "review authority history is inconsistent (repository integrity failure)"
+            )
+        return CandidateAuthorityObservation(
+            candidate_id=identity,
+            status=CandidateAuthorityStatus.SINGLE_ACTOR,
+            actors=references,
+            current=self._resolve_current(head),
         )
 
     def anchor_status(
@@ -772,12 +965,19 @@ __all__ = [
     "REVIEW_DECISION_CONTRACT_KIND",
     "REVIEW_DECISION_CONTRACT_VERSION",
     "AtomicReviewPersistence",
+    "AuthorityPositionOutcome",
+    "CandidateAuthorityObservation",
+    "CandidateAuthorityStatus",
+    "CurrentReviewAuthority",
     "LectureApprovedEditDecision",
     "LectureReviewApplicationService",
     "LectureReviewDecision",
     "LectureReviewError",
     "ReviewAdmissionResult",
+    "LectureReviewAuthorityError",
+    "LectureReviewAuthorityPosition",
     "ReviewAnchorNotAdmissibleError",
+    "ReviewAuthorityConflictError",
     "ReviewApprovalConflictError",
     "ReviewConflictError",
     "ReviewDecisionKind",

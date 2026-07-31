@@ -298,6 +298,16 @@ class LectureReviewDecisionId(OpaqueIdentity):
 
 
 @dataclass(frozen=True, slots=True)
+class LectureReviewAuthorityPositionId(OpaqueIdentity):
+    """One position in an effective-generation Review authority history (043 §7.6 / PATCH-0034).
+
+    Scoped to one (Edit Candidate, human actor) pair. Distinct from the `ReviewDecision` it
+    references: several positions may reference the same decision, which is what makes a reversed
+    judgment representable.
+    """
+
+
+@dataclass(frozen=True, slots=True)
 class LectureApprovedEditDecisionId(OpaqueIdentity):
     """Effective-transcript generation Approved Edit Decision (043 §7.5 / PATCH-0033).
 
