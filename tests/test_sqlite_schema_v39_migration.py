@@ -21,7 +21,7 @@ V39_TABLES = {
 
 _ADDITION_BLOCKS = tuple(
     (level, getattr(sqlite_lifecycle, f"_V{level}_ADDITION_STATEMENTS"))
-    for level in range(2, 51)
+    for level in range(2, 52)
 )
 
 
@@ -109,7 +109,7 @@ class SQLiteSchemaVersionThirtyNineTests(unittest.TestCase):
     def test_unsupported_target_is_rejected(self) -> None:
         initialize_sqlite_database(self.database_path).close()
         with self.assertRaises(PersistenceError):
-            migrate_sqlite_database(self.database_path, 52)
+            migrate_sqlite_database(self.database_path, 53)
 
     def test_repository_rejects_pre_v39_schema(self) -> None:
         create_legacy_database(self.database_path, 38)

@@ -489,6 +489,15 @@ class ReplayAndConflictTests(_Chain):
             def list_decisions_for_candidate(self, candidate_id):
                 return ()
 
+            def head_position(self, candidate_id, actor):
+                return None
+
+            def list_positions(self, candidate_id, actor):
+                return ()
+
+            def actors_with_history(self, candidate_id):
+                return ()
+
         service = LectureReviewApplicationService(
             self.candidate_service,
             _Stub(),
@@ -515,6 +524,15 @@ class ReplayAndConflictTests(_Chain):
                 return other.approved
 
             def list_decisions_for_candidate(self, candidate_id):
+                return ()
+
+            def head_position(self, candidate_id, actor):
+                return None
+
+            def list_positions(self, candidate_id, actor):
+                return ()
+
+            def actors_with_history(self, candidate_id):
                 return ()
 
         service = LectureReviewApplicationService(
@@ -702,14 +720,16 @@ class PersistenceContractTests(_Chain):
         """A failure while writing the approval must leave no decision row behind."""
 
         class _Failing(SQLiteLectureReviewCommandPersistence):
-            def persist_review(self, *, decision, approved):
+            def persist_review(self, *, decision, approved, position=None):
                 broken = None
                 if approved is not None:
                     broken = object.__new__(type(approved))
                     for field in type(approved).__slots__:
                         object.__setattr__(broken, field, getattr(approved, field))
                     object.__setattr__(broken, "approved_label", None)
-                super().persist_review(decision=decision, approved=broken)
+                super().persist_review(
+                    decision=decision, approved=broken, position=position
+                )
 
         service = LectureReviewApplicationService(
             self.candidate_service,

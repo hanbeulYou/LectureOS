@@ -1,11 +1,11 @@
 """Repository-validator diagnostics for the effective-generation analysis graph.
 
 Covers the integrity checks added by GOAL-025 (Analysis Finding), GOAL-026 (Lecture Segmentation),
-GOAL-027 (Edit Candidate), and GOAL-028 (Review). Those checks previously had **no** test at all in any of the three
-milestones, which is why a defect in one of them — a probe whose condition the schema's own foreign
-key already makes unreachable — was only caught by manual review. Each check here is driven by a
-targeted corruption injected with foreign keys disabled, plus the healthy and
-historical-but-superseded baselines that must never be flagged.
+GOAL-027 (Edit Candidate), GOAL-028 (Review), and GOAL-029 (Review authority history). The first
+three milestones shipped their checks with **no** test at all, which is why a defect in one of them
+— a probe whose condition the schema's own foreign key already makes unreachable — was only caught
+by manual review. Each check here is driven by a targeted corruption injected with foreign keys
+disabled, plus the healthy and historical-but-superseded baselines that must never be flagged.
 """
 
 import sqlite3
@@ -15,6 +15,13 @@ from pathlib import Path
 
 from lectureos.application.correction_candidate_admission import (
     build_correction_candidate_input,
+)
+from lectureos.application.lecture_review_authority import (
+    derive_authority_position_identity,
+)
+from lectureos.application.lecture_review_decision import (
+    ReviewDecisionKind,
+    derive_review_decision_identity,
 )
 from lectureos.application.provider_transcript_admission import (
     build_provider_transcript_document,
@@ -37,6 +44,7 @@ from lectureos.composition import (
 from lectureos.persistence import initialize_sqlite_database
 from lectureos.persistence.raw_transcripts import SQLiteRawTranscriptRepository
 from lectureos.persistence.transcript_segments import SQLiteTranscriptSegmentRepository
+from lectureos.review.identities import HumanActorReference
 from lectureos.validation import validate_database
 
 
@@ -433,10 +441,154 @@ class AnalysisGraphValidatorTests(unittest.TestCase):
         health, codes = self._codes()
         self.assertEqual(health, "healthy", codes)
 
+    # -- Review authority history checks (GOAL-029) -------------------------------------------
+
+    def _position_id(self, sequence, actor="reviewer:lee"):
+        return derive_authority_position_identity(
+            self.candidate.identity, HumanActorReference(actor), sequence
+        ).value
+
+    def _other_actor_decision(self, actor="reviewer:park"):
+        """A valid `reject` record for a second person — no approval, so nothing else flags."""
+
+        identity = derive_review_decision_identity(
+            self.candidate.identity, ReviewDecisionKind.REJECT, HumanActorReference(actor)
+        ).value
+        self._corrupt(
+            "INSERT INTO lecture_review_decisions VALUES (?, ?, 'reject', ?, 1)",
+            (identity, self.candidate.identity.value, actor),
+        )
+        return identity
+
+    def test_the_recorded_authority_history_is_healthy(self):
+        """setUp's accept → reject is two positions in one (candidate, actor) history."""
+
+        health, codes = self._codes()
+        self.assertEqual(health, "healthy", codes)
+        connection = sqlite3.connect(self.database, isolation_level=None)
+        try:
+            self.assertEqual(
+                connection.execute(
+                    "SELECT sequence, review_decision_id FROM "
+                    "lecture_review_authority_positions ORDER BY sequence"
+                ).fetchall(),
+                [(0, self.accepted.decision.identity.value),
+                 (1, self.rejected.decision.identity.value)],
+            )
+        finally:
+            connection.close()
+
+    def test_authority_position_identity_mismatch_is_flagged(self):
+        self._corrupt(
+            "UPDATE lecture_review_authority_positions SET identity = ? WHERE sequence = 1",
+            ("lecture-review-authority-position:" + "9" * 64,),
+        )
+        self._assert_flags("LECTURE_REVIEW_AUTHORITY_POSITION_IDENTITY_MISMATCH")
+
+    def test_authority_position_referencing_a_missing_decision_is_flagged(self):
+        self._corrupt(
+            "UPDATE lecture_review_authority_positions SET review_decision_id = ? "
+            "WHERE sequence = 1",
+            ("lecture-review-decision:" + "9" * 64,),
+        )
+        self._assert_flags("LECTURE_REVIEW_AUTHORITY_POSITION_DECISION_MISSING")
+
+    def test_a_position_recording_another_persons_judgment_is_flagged(self):
+        """The scope probe is a real guard: the foreign key only requires the row to exist."""
+
+        self._corrupt(
+            "UPDATE lecture_review_authority_positions SET review_decision_id = ? "
+            "WHERE sequence = 1",
+            (self._other_actor_decision(),),
+        )
+        self._assert_flags("LECTURE_REVIEW_AUTHORITY_POSITION_SCOPE_MISMATCH")
+
+    def test_a_previous_link_outside_its_own_scope_is_flagged(self):
+        self._corrupt(
+            "UPDATE lecture_review_authority_positions SET previous_position_id = ? "
+            "WHERE sequence = 1",
+            ("lecture-review-authority-position:" + "9" * 64,),
+        )
+        self._assert_flags("LECTURE_REVIEW_AUTHORITY_PREVIOUS_LINK_INVALID")
+
+    def test_a_history_with_a_hole_in_its_sequence_is_flagged(self):
+        self._corrupt(
+            "DELETE FROM lecture_review_authority_positions WHERE sequence = 0"
+        )
+        self._assert_flags("LECTURE_REVIEW_AUTHORITY_SEQUENCE_NONCONTIGUOUS")
+
+    def test_a_judgment_without_any_position_is_never_flagged(self):
+        """AH-12: absence means 'no recorded authority history', never corruption."""
+
+        self._corrupt("DELETE FROM lecture_review_authority_positions")
+        health, codes = self._codes()
+        self.assertEqual(health, "healthy", codes)
+
+    def test_several_positions_referencing_one_decision_are_never_corruption(self):
+        """AH-6's reversal case: position 0 and position 2 hold the same `accept`."""
+
+        self._corrupt(
+            "INSERT INTO lecture_review_authority_positions VALUES (?, ?, ?, 2, ?, ?, 1)",
+            (self._position_id(2), self.candidate.identity.value, "reviewer:lee",
+             self.accepted.decision.identity.value, self._position_id(1)),
+        )
+        health, codes = self._codes()
+        self.assertEqual(health, "healthy", codes)
+
+    def test_contradictory_cross_actor_histories_are_never_corruption(self):
+        """AH-9 makes that a surfaced Conflict, not a repository defect."""
+
+        decision = self._other_actor_decision()
+        self._corrupt(
+            "INSERT INTO lecture_review_authority_positions VALUES (?, ?, ?, 0, ?, NULL, 1)",
+            (self._position_id(0, "reviewer:park"), self.candidate.identity.value,
+             "reviewer:park", decision),
+        )
+        health, codes = self._codes()
+        self.assertEqual(health, "healthy", codes)
+
+    def test_a_superseded_chain_never_flags_its_authority_history(self):
+        self.connection = sqlite3.connect(self.database, isolation_level=None)
+        self.connection.execute("PRAGMA foreign_keys = ON")
+        self.selection = compose_sqlite_corrected_revision_selection_service(
+            self.connection
+        )
+        self._revise("c3", "교정 3")
+        self.connection.close()
+        health, codes = self._codes()
+        self.assertEqual(health, "healthy", codes)
+
+    def test_the_authority_schema_refuses_these_corruptions_outright(self):
+        """Defence-in-depth accounting: a CHECK refuses the write before any validator runs."""
+
+        cases = (
+            ("position contract version",
+             "UPDATE lecture_review_authority_positions SET position_contract_version = 2"),
+            ("blank actor",
+             "UPDATE lecture_review_authority_positions SET actor = '   '"),
+            ("negative sequence",
+             "UPDATE lecture_review_authority_positions SET sequence = -1 "
+             "WHERE sequence = 0"),
+            ("first position superseding something",
+             "UPDATE lecture_review_authority_positions SET previous_position_id = "
+             "'lecture-review-authority-position:x' WHERE sequence = 0"),
+            ("later position without a previous link",
+             "UPDATE lecture_review_authority_positions SET previous_position_id = NULL "
+             "WHERE sequence = 1"),
+            ("self-superseding position",
+             "UPDATE lecture_review_authority_positions SET previous_position_id = identity"),
+        )
+        for label, statement in cases:
+            with self.subTest(case=label):
+                with self.assertRaises(sqlite3.IntegrityError):
+                    self._corrupt(statement)
+        health, codes = self._codes()
+        self.assertEqual(health, "healthy", codes)
+
     def test_every_new_analysis_diagnostic_code_is_either_reached_or_schema_guarded(self):
         """Guard against a silently dead diagnostic.
 
-        Each code added by GOAL-025/026/027/028 must be either exercised by a corruption test in
+        Each code added by GOAL-025/026/027/028/029 must be either exercised by a corruption test in
         this module or explicitly accounted for as schema-guarded / defence-in-depth. The list
         below is the accounting; adding a code without updating it fails this test.
         """
@@ -467,6 +619,11 @@ class AnalysisGraphValidatorTests(unittest.TestCase):
             "LECTURE_APPROVED_EDIT_DECISION_LABEL_MALFORMED",
             "LECTURE_APPROVED_EDIT_DECISION_RANGE_NOT_CANONICAL",
             "LECTURE_REVIEW_DECISION_LEGACY_ANCHOR_LEAK",
+            "LECTURE_REVIEW_AUTHORITY_POSITION_IDENTITY_MISMATCH",
+            "LECTURE_REVIEW_AUTHORITY_POSITION_DECISION_MISSING",
+            "LECTURE_REVIEW_AUTHORITY_POSITION_SCOPE_MISMATCH",
+            "LECTURE_REVIEW_AUTHORITY_PREVIOUS_LINK_INVALID",
+            "LECTURE_REVIEW_AUTHORITY_SEQUENCE_NONCONTIGUOUS",
         }
         schema_guarded = {
             "LECTURE_ANALYSIS_EDIT_CANDIDATE_CONTRACT_VERSION_MISMATCH",
@@ -489,6 +646,7 @@ class AnalysisGraphValidatorTests(unittest.TestCase):
             "LECTURE_APPROVED_EDIT_DECISION_KIND_INVALID",
             "LECTURE_APPROVED_EDIT_DECISION_RATIONALE_EMPTY",
             "LECTURE_APPROVED_EDIT_DECISION_RANGE_INVALID",
+            "LECTURE_REVIEW_AUTHORITY_POSITION_CONTRACT_VERSION_MISMATCH",
         }
         self.assertEqual(
             declared - reached_by_test - schema_guarded,
