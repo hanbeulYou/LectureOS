@@ -114,6 +114,14 @@ with no ordinal, no `previous` link, and no timestamp. This contract does not ad
 authority-history contract analogous to `040 §18` H-5/H-6; the released legacy path has the identical
 gap because its `sequence` is a constant.
 
+**Closed for kind reversal (PATCH-0034, GOAL-029).** That separate PATCH now exists: `043 §7.6` adds
+an append-only authority history in a **separate** record, so the reversal above is three history
+positions over two converged decisions and the current judgment is derived per (Candidate, actor).
+Nothing on this page changes — neither record gained a column, the per-admission ordinal still does
+not exist, and `list_for_candidate` still adjudicates nothing. A same-kind resubmission with
+different approved values stays R-11's explicit conflict. See
+`implementation/118_LECTURE_REVIEW_AUTHORITY_HISTORY.md`.
+
 ## Identity (R-10)
 
 - `lecture-review-decision:<sha256(contract kind/version, candidate, decision kind, actor)>`

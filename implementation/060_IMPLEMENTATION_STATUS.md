@@ -3144,3 +3144,99 @@ deterministic demo (`lectureos.lecture_review_demo`) with a byte-stable golden p
 (129 focused new tests). The complete 3068-test suite passes; the subtitle pipeline, transcript
 contracts, GOAL-025 Findings, GOAL-026 Segments, GOAL-027 Candidates, and all legacy generations are
 unchanged.
+
+## Review Authority History and Current Selection — Effective-Transcript Generation (GOAL-029)
+
+- Blueprint: `docs/043` §7.6 + `PATCH-0034` (AH-1…AH-12, Confirmed), over the released GOAL-028
+  Review records; `docs/043` §7.4's legacy contract and §7.5 R-1…R-12 are inherited unchanged
+- Status: **COMPLETE**
+- Selected persistence: additive SQLite schema **v52** (one append-only table
+  `lecture_review_authority_positions`)
+- Commits: `feat: add effective review authority history`, `test: cover effective review authority
+  history`, `docs: document effective review authority history`
+- Immediate next milestone: none is unblocked by this contract. Cross-actor arbitration (`§15.3`), a
+  Candidate-level single winner, the same-kind/different-approval history, withdrawal and revocation,
+  and linking this generation's `ApprovedEditDecision` to `044` Export were all explicitly left
+  un-re-scoped by PATCH-0034; each needs its own gate evaluation or targeted PATCH
+
+This milestone answers the one question `§7.5` R-9 deliberately left open. Because R-9 stores no
+ordinal and R-4 forbids any field that could express currentness, a reversed judgment
+(`accept` → `reject` → `accept`) converged on the first identity and left two contradicting records
+with **no ordinal, no `previous` link, and no timestamp**, and no contract said which was operative.
+`§7.6` closes that for **kind reversal** by adding an append-only authority history in a **separate**
+canonical record: `lecture_review_authority_positions`. The two released records gain **nothing** —
+no ordinal, no `previous` link, no status column (test-asserted) — because R-10's identity
+composition is already released, so folding a `sequence` into it would change the identity **value**
+of every existing row and mutate released meaning.
+
+**Scope is per (Candidate, actor) (AH-6)**, which follows from R-10 keeping the human actor in the
+decision identity: `sequence` is contiguous from 0 within a scope, `sequence = 0` ⟺ no previous, no
+self-reference, and `(candidate, actor, sequence)` is unique. **One `ReviewDecision` may occupy
+several positions** — the reversal above is three positions over two converged decisions, with
+positions 0 and 2 referencing the same `accept` — so a per-decision uniqueness constraint on the
+relation is **prohibited**, and both the schema (no `UNIQUE`, no index on `review_decision_id`) and
+the validator (which never flags reuse) are tested against that prohibition.
+
+**Append rule (AH-7)** is a pure function of that scope's persisted head: no history → `sequence` 0;
+the head already records this decision → reuse and write nothing; a different decision → append at
+`sequence + 1` superseding the head. The `sequence + 1` derivation is authorized only here and is not
+what R-9 prohibits — the per-admission ordinal still does not exist — while row counts, wall-clock,
+insertion order, rowid, and any ordinal derived from anything but that exact head stay prohibited.
+**Current is derived, never stored (AH-8)**: the highest `sequence`, read from persisted rows, with
+superseded positions kept as valid immutable history that is never deleted, rewritten, or re-numbered.
+
+**Cross-actor: observation, never arbitration (AH-9).** One actor with history yields that actor's
+current judgment as the Candidate's; two or more yield **no** current judgment and a `§3.12` Review
+Conflict that is surfaced and never auto-resolved. No priority among actors, no recency across
+actors, and no role ranking exists in the implementation, and `§15.3`'s open multi-user question is
+**declined, not answered**. Per-actor currents stay derivable during the conflict so an interface can
+show a person the difference. Appending requires R-3 standing to be `current`; observing does not, and
+a superseded chain is never corruption. Being current is **not** Export eligibility (AH-10).
+
+**Identity (AH-11): Option A, genuinely reachable.**
+`lecture-review-authority-position:<sha256(contract kind/version, candidate, actor, sequence)>`
+follows the released `040 §18` H-7 shape; the referenced decision and the previous link are persisted
+canonical facts that do **not** participate. Two near-concurrent appends therefore derive the **same**
+identity with different content through ordinary input: identical referenced decisions converge on
+the stored position, and a different one is refused as `ReviewAuthorityConflictError` with nothing
+overwritten. The semantic-equality check is kept regardless. The compare in the compare-and-append is
+the `UNIQUE (candidate_id, actor, sequence)` constraint evaluated **inside** the transaction, not a
+read-then-write window.
+
+**Atomicity has two enforcement points at two different times (AH-12), and both are implemented.**
+Write-time: the decision, its optional approval, and its position share one `BEGIN IMMEDIATE`, so no
+admission made under this contract can produce a positionless judgment (a test injects a failure
+while writing the position and asserts nothing survives; the reversal path writes the position alone
+and leaves the recorded decision and approval untouched). Read-time: a judgment admitted **before**
+this contract may carry no position, and that is **not** corruption — `current_review` returns `None`,
+the CLI says so in words, the validator never flags it, retroactive backfill is prohibited, and the
+next admission for that scope starts at `sequence` 0. The converse shape is structurally impossible
+because the `ReviewDecision` reference is mandatory.
+
+Persistence is one new additive v52 table with FKs to the Candidate, the decision, and itself, plus
+CHECKs for a non-blank actor, a non-negative sequence, the `sequence = 0 ⟺ no previous` rule, no
+self-supersession, and the contract version; it copies **no** referenced payload and carries no
+status, currentness, wall-clock, execution, or `DomainResult` column. Every released version v1..v51
+chains single-step to v52 preserving all rows, and a migration test asserts the released Review
+relations and both legacy Review relations are byte-identical across the step with the new table
+empty. The Review persistence module's required schema version rises from v51 to v52, which is
+contract-driven: AH-12's write-time obligation is inexpressible on a v51 database, and the supported
+single-step migration restores availability without touching a released row.
+
+Read-only validation gains six integrity-only `LECTURE_REVIEW_AUTHORITY_*` codes: **five** reached by
+a corruption test (position identity mismatch, missing referenced decision, a position recording
+another scope's judgment, an invalid previous link, a non-contiguous sequence) and **one**
+schema-guarded defence-in-depth (contract version). The scope probe is deliberately in the first
+group — the foreign key only requires the decision to exist, so a position could otherwise point at
+another person's judgment and silently move authority between scopes. Never flagged: a positionless
+judgment, several positions referencing one decision, a superseded position, and contradictory
+cross-actor histories.
+
+A CLI (`lectureos.lecture_review_cli` gains `history`, `current`, and `candidate-authority`, and every
+judgment now prints its position, sequence, and what it supersedes) and a deterministic demo
+(`lectureos.lecture_review_authority_demo`) with a byte-stable golden prove fifteen scenarios (124
+focused new tests). The complete 3192-test suite passes; the subtitle pipeline, transcript contracts,
+GOAL-025 Findings, GOAL-026 Segments, GOAL-027 Candidates, the GOAL-028 Review records, and all legacy
+generations are unchanged. The GOAL-028 atomicity test was repaired in passing: its persistence stub
+had not been updated for the new keyword argument and had stopped exercising the rollback path it
+names.
