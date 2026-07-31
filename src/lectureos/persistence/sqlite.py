@@ -7,8 +7,8 @@ from pathlib import Path
 
 from .errors import PersistenceError, UnsupportedSchemaVersionError
 
-SQLITE_SCHEMA_VERSION = 52
-_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52)
+SQLITE_SCHEMA_VERSION = 53
+_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53)
 
 _V1_TABLE_STATEMENTS = (
     """CREATE TABLE schema_metadata (
@@ -1698,6 +1698,25 @@ _V51_ADDITION_STATEMENTS = (
 )""",
 )
 
+_V53_ADDITION_STATEMENTS = (
+    """CREATE TABLE lecture_edit_export_assemblies (
+    identity TEXT PRIMARY KEY,
+    source_timeline_id TEXT NOT NULL CHECK (length(trim(source_timeline_id)) > 0),
+    assembly_contract_version INTEGER NOT NULL
+        CHECK (assembly_contract_version = 1)
+)""",
+    """CREATE TABLE lecture_edit_export_assembly_members (
+    assembly_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    approved_edit_decision_id TEXT NOT NULL,
+    PRIMARY KEY (assembly_id, ordinal),
+    UNIQUE (assembly_id, approved_edit_decision_id),
+    FOREIGN KEY (assembly_id) REFERENCES lecture_edit_export_assemblies(identity),
+    FOREIGN KEY (approved_edit_decision_id)
+        REFERENCES lecture_approved_edit_decisions(identity)
+)""",
+)
+
 _V52_ADDITION_STATEMENTS = (
     """CREATE TABLE lecture_review_authority_positions (
     identity TEXT PRIMARY KEY,
@@ -3075,6 +3094,20 @@ _V52_EXPECTED_COLUMNS = {
     ),
 }
 
+_V53_EXPECTED_COLUMNS = {
+    **_V52_EXPECTED_COLUMNS,
+    "lecture_edit_export_assemblies": (
+        ("identity", "TEXT", 0, 1),
+        ("source_timeline_id", "TEXT", 1, 0),
+        ("assembly_contract_version", "INTEGER", 1, 0),
+    ),
+    "lecture_edit_export_assembly_members": (
+        ("assembly_id", "TEXT", 1, 1),
+        ("ordinal", "INTEGER", 1, 2),
+        ("approved_edit_decision_id", "TEXT", 1, 0),
+    ),
+}
+
 def initialize_sqlite_database(database_path: str | Path) -> sqlite3.Connection:
     """Create the latest schema for a new path; validate existing databases."""
 
@@ -3113,7 +3146,7 @@ def migrate_sqlite_database(
 ) -> None:
     """Explicitly perform one approved migration step or validate a no-op target."""
 
-    if target_version not in (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52):
+    if target_version not in (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53):
         raise PersistenceError(f"unsupported SQLite migration target: {target_version}")
     path = _validate_database_path(database_path)
     if not path.is_file():
@@ -3276,6 +3309,9 @@ def migrate_sqlite_database(
         if current_version == 51 and target_version == 52:
             _migrate_v51_to_v52(connection)
             return
+        if current_version == 52 and target_version == 53:
+            _migrate_v52_to_v53(connection)
+            return
         raise PersistenceError(
             f"unsupported SQLite migration: {current_version} to {target_version}"
         )
@@ -3375,6 +3411,7 @@ def _initialize_latest_schema(connection: sqlite3.Connection) -> None:
             *_V50_ADDITION_STATEMENTS,
             *_V51_ADDITION_STATEMENTS,
             *_V52_ADDITION_STATEMENTS,
+            *_V53_ADDITION_STATEMENTS,
         ):
             connection.execute(statement)
         connection.execute(
@@ -4039,6 +4076,31 @@ def _migrate_v36_to_v37(connection: sqlite3.Connection) -> None:
         raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
 
 
+def _migrate_v52_to_v53(connection: sqlite3.Connection) -> None:
+    """v52 → v53: strictly additive (044 §23 EA-10).
+
+    Adds only the two Edit Export Assembly relations. No released row is altered, re-keyed,
+    backfilled, dual-written, or reinterpreted — neither this generation's Review relations nor the
+    legacy `edit_export_*` family, which EA-10 keeps out of reuse entirely.
+    """
+
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        for statement in _V53_ADDITION_STATEMENTS:
+            connection.execute(statement)
+        connection.execute(
+            "UPDATE schema_metadata SET version = 53 WHERE singleton = 1"
+        )
+        _validate_initialized_connection(connection)
+        _commit(connection)
+    except PersistenceError:
+        _rollback(connection)
+        raise
+    except sqlite3.Error as error:
+        _rollback(connection)
+        raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
+
+
 def _migrate_v51_to_v52(connection: sqlite3.Connection) -> None:
     try:
         connection.execute("BEGIN IMMEDIATE")
@@ -4393,6 +4455,7 @@ def _validate_schema_shape(connection: sqlite3.Connection, version: int) -> None
         50: _V50_EXPECTED_COLUMNS,
         51: _V51_EXPECTED_COLUMNS,
         52: _V52_EXPECTED_COLUMNS,
+        53: _V53_EXPECTED_COLUMNS,
     }[version]
     for table, expected in expected_columns.items():
         actual = tuple(

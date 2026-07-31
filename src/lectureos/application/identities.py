@@ -314,3 +314,14 @@ class LectureApprovedEditDecisionId(OpaqueIdentity):
     Distinct from the legacy execution-coupled `ApprovedDecisionId` (043 §7.4), which chains
     directly to the legacy `ReviewDecision`'s Domain Result.
     """
+
+
+@dataclass(frozen=True, slots=True)
+class LectureEditExportAssemblyId(OpaqueIdentity):
+    """Effective-transcript generation Edit Export Assembly (044 §23 / PATCH-0035).
+
+    Distinct from the legacy execution-coupled `EditExportAssemblyId` (044 §20), which gathers
+    `ApprovedEditExportRepresentation` atoms and owns a Domain Result with multi-upstream lineage.
+    EA-2 does not reproduce that atom stage, so this Assembly gathers `ApprovedEditDecision` records
+    directly and owns no execution or Domain Result provenance (EA-8).
+    """

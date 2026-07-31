@@ -3439,6 +3439,95 @@ def _check_lecture_review_authority_positions(
     return diagnostics
 
 
+def _check_lecture_edit_export_assemblies(
+    connection: sqlite3.Connection,
+) -> list[Diagnostic]:
+    """Integrity of effective-generation Edit Export Assemblies (044 §23 / GOAL-030, PATCH-0035).
+
+    Deliberately NOT flagged: several assemblies on one Source Timeline with different membership —
+    membership is derived and total (EA-3), so an upstream authority change legitimately makes a
+    later assembly gather a different set, and this contract defines no currentness among them; an
+    assembly whose member's chain has since lost current standing, or whose member's judgment has
+    since been superseded — the assembly records what was eligible when it was admitted and is never
+    rewritten (EA-4, `043 §7.5` R-5); one approved edit appearing in several assemblies; a Source
+    Timeline with no assembly at all. Integrity-only: reads no filesystem, media, or provider.
+    """
+
+    if not _table_exists(connection, "lecture_edit_export_assemblies"):
+        return []
+    diagnostics: list[Diagnostic] = []
+
+    def _flag(code: str, identity: str, message: str) -> None:
+        diagnostics.append(
+            Diagnostic(
+                code=code,
+                severity=Severity.ERROR,
+                location=f"lecture_edit_export_assemblies:{identity}",
+                message=message,
+            )
+        )
+
+    from lectureos.application.identities import LectureApprovedEditDecisionId
+    from lectureos.application.lecture_edit_export_assembly import (
+        EDIT_EXPORT_ASSEMBLY_CONTRACT_VERSION,
+        derive_edit_export_assembly_identity,
+    )
+    from lectureos.execution.identities import SourceTimelineId
+
+    members: dict[str, list[tuple[int, str]]] = {}
+    if _table_exists(connection, "lecture_edit_export_assembly_members"):
+        for assembly_id, ordinal, decision_id in connection.execute(
+            "SELECT assembly_id, ordinal, approved_edit_decision_id "
+            "FROM lecture_edit_export_assembly_members ORDER BY assembly_id, ordinal"
+        ).fetchall():
+            members.setdefault(assembly_id, []).append((int(ordinal), decision_id))
+
+    # The v53 foreign key already enforces that every member resolves; this probe is
+    # defence-in-depth against a repository written with foreign keys disabled.
+    if _table_exists(connection, "lecture_approved_edit_decisions"):
+        for (assembly_id,) in connection.execute(
+            """
+            SELECT DISTINCT m.assembly_id
+            FROM lecture_edit_export_assembly_members m
+            LEFT JOIN lecture_approved_edit_decisions a
+                ON a.identity = m.approved_edit_decision_id
+            WHERE a.identity IS NULL
+            ORDER BY m.assembly_id
+            """
+        ).fetchall():
+            _flag("LECTURE_EDIT_EXPORT_ASSEMBLY_MEMBER_MISSING", assembly_id,
+                  "assembly references an approved edit decision that does not exist")
+
+    for identity, source_timeline_id, version in connection.execute(
+        "SELECT identity, source_timeline_id, assembly_contract_version "
+        "FROM lecture_edit_export_assemblies ORDER BY identity"
+    ).fetchall():
+        rows = members.get(identity, [])
+        if version != EDIT_EXPORT_ASSEMBLY_CONTRACT_VERSION:
+            _flag("LECTURE_EDIT_EXPORT_ASSEMBLY_CONTRACT_VERSION_MISMATCH", identity,
+                  "assembly records an unsupported contract version")
+            continue
+        if not rows:
+            _flag("LECTURE_EDIT_EXPORT_ASSEMBLY_EMPTY", identity,
+                  "assembly carries no member; a partially recorded assembly would understate "
+                  "the approved scope")
+            continue
+        ordinals = [ordinal for ordinal, _ in rows]
+        if ordinals != list(range(len(rows))):
+            _flag("LECTURE_EDIT_EXPORT_ASSEMBLY_ORDINAL_NONCONTIGUOUS", identity,
+                  "assembly member ordinals are not a contiguous 0..n-1 sequence")
+            continue
+        expected = derive_edit_export_assembly_identity(
+            SourceTimelineId(source_timeline_id),
+            tuple(LectureApprovedEditDecisionId(value) for _, value in rows),
+        )
+        if expected.value != identity:
+            _flag("LECTURE_EDIT_EXPORT_ASSEMBLY_IDENTITY_MISMATCH", identity,
+                  "assembly identity does not re-derive from its Source Timeline and membership")
+
+    return diagnostics
+
+
 def _check_raw_transcript_segments(connection: sqlite3.Connection) -> list[Diagnostic]:
     if not _table_exists(connection, "raw_transcript_segments"):
         return []
@@ -3552,6 +3641,7 @@ def validate_repository(connection: sqlite3.Connection) -> ValidationReport:
     diagnostics += _check_lecture_analysis_edit_candidates(connection)
     diagnostics += _check_lecture_review_records(connection)
     diagnostics += _check_lecture_review_authority_positions(connection)
+    diagnostics += _check_lecture_edit_export_assemblies(connection)
     diagnostics += _check_raw_transcript_segments(connection)
     diagnostics += _check_malformed_identities(connection)
 

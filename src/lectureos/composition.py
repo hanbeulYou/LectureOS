@@ -894,6 +894,39 @@ def compose_sqlite_lecture_review_service(
     )
 
 
+def compose_sqlite_lecture_edit_export_assembly_service(
+    connection: sqlite3.Connection,
+) -> "LectureEditExportAssemblyService":
+    """Build effective-generation Edit Export Assembly admission on one connection (044 §23).
+
+    Concrete construction only. The scope repository resolves which §9.3 Edit Candidates belong to
+    one Source Timeline through the released anchor chain; the released Review service supplies the
+    derived current operative judgment (043 §7.6 AH-8/AH-9) and the chain standing (§7.5 R-3), so no
+    authority or standing resolver is reimplemented here. Membership is the timeline's complete
+    export-eligible set (EA-3/EA-4), derived and never stored as a selection (EA-7); only
+    `lecture_edit_export_assemblies` and `lecture_edit_export_assembly_members` are written and every
+    upstream record is read-only. No provider, AI, ProcessingRun, UnitExecution, RUNNING state, or
+    DomainResult exists in this contract (EA-8), no Artifact or serializer is built (§23 Sections Not
+    Re-scoped), and the legacy `edit_export_*` family is never touched (EA-10).
+    """
+
+    from lectureos.application.lecture_edit_export_assembly import (
+        LectureEditExportAssemblyService,
+    )
+    from lectureos.persistence.lecture_edit_export_assembly import (
+        SQLiteEditExportAssemblyCommandPersistence,
+        SQLiteEditExportAssemblyRepository,
+        SQLiteEditExportScopeRepository,
+    )
+
+    return LectureEditExportAssemblyService(
+        review_service=compose_sqlite_lecture_review_service(connection),
+        scope_query=SQLiteEditExportScopeRepository(connection),
+        assembly_query=SQLiteEditExportAssemblyRepository(connection),
+        persistence=SQLiteEditExportAssemblyCommandPersistence(connection),
+    )
+
+
 def compose_sqlite_lecture_analysis_segmentation_service(
     connection: sqlite3.Connection,
 ) -> "LectureAnalysisSegmentationService":
