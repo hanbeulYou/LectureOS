@@ -1,0 +1,138 @@
+"""CLI tests for the Edit Export Assembly (044 §23, GOAL-030)."""
+
+import contextlib
+import io
+import unittest
+
+from lectureos import lecture_edit_export_cli
+from lectureos.persistence.raw_transcripts import SQLiteRawTranscriptRepository
+
+from test_lecture_review_authority_service import _ACTOR, _OTHER_ACTOR, _Chain
+
+
+def _run(*argv):
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        code = lecture_edit_export_cli.main(list(argv))
+    return code, out.getvalue(), err.getvalue()
+
+
+class LectureEditExportCliTests(_Chain):
+    def setUp(self):
+        super().setUp()
+        self.timeline = (
+            SQLiteRawTranscriptRepository(self.connection)
+            .get(self.raw.raw_transcript_id)
+            .source_timeline_id
+        ).value
+        # The CLI opens its own connection; release the write lock held by the fixture.
+        self.connection.commit()
+
+    def _scope(self):
+        return _run("scope", "--source-timeline", self.timeline, "--database", str(self.database))
+
+    def _assemble(self):
+        return _run(
+            "assemble", "--source-timeline", self.timeline, "--database", str(self.database)
+        )
+
+    def test_scope_reports_why_a_candidate_is_not_eligible(self) -> None:
+        code, out, _ = self._scope()
+        self.assertEqual(code, 0)
+        self.assertIn("no_recorded_authority", out)
+        self.assertIn("does NOT mean no judgment exists", out)
+        self.assertIn("export-eligible members: 0", out)
+        self.assertIn("this observation is derived and stored nothing", out)
+
+    def test_scope_states_what_is_not_part_of_this_contract(self) -> None:
+        _, out, _ = self._scope()
+        self.assertIn("artifact, serializer, and export file: not part of this contract", out)
+        self.assertIn("selection and final selection: not part of this pipeline at all", out)
+        self.assertIn("overlap adjudication: not part of this contract", out)
+
+    def test_assemble_records_the_complete_eligible_scope(self) -> None:
+        self._judge()
+        self.connection.commit()
+        code, out, _ = self._assemble()
+        self.assertEqual(code, 0)
+        self.assertIn("admitted edit export assembly", out)
+        self.assertIn("members: 1", out)
+        self.assertIn("no human authority was exercised", out)
+        self.assertIn("never a selection", out)
+
+    def test_assemble_replays_idempotently(self) -> None:
+        self._judge()
+        self.connection.commit()
+        self._assemble()
+        code, out, _ = self._assemble()
+        self.assertEqual(code, 0)
+        self.assertIn("reused edit export assembly", out)
+
+    def test_assemble_stops_on_an_undecided_policy_and_says_why(self) -> None:
+        code, out, err = self._assemble()
+        self.assertEqual(code, 1)
+        self.assertIn("no export-eligible approved edit", err)
+        self.assertIn("contract gap, not a product refusal", err)
+
+    def test_a_cross_actor_conflict_stops_assemble_but_not_scope(self) -> None:
+        self._judge()
+        self._judge(actor=_OTHER_ACTOR, decision_kind="reject")
+        self.connection.commit()
+        code, out, _ = self._scope()
+        self.assertEqual(code, 0)
+        self.assertIn("cross_actor_conflict", out)
+        self.assertIn("never arbitrated", out)
+        self.assertIn("cross-actor review conflicts: 1", out)
+        code, _, err = self._assemble()
+        self.assertEqual(code, 1)
+        self.assertIn("cross-actor Review Conflict", err)
+        self.assertIn(_ACTOR, err)
+
+    def test_show_prints_the_membership_and_its_order_caveat(self) -> None:
+        self._judge()
+        self.connection.commit()
+        _, out, _ = self._assemble()
+        identity = [
+            line.split(": ", 1)[1]
+            for line in out.splitlines()
+            if line.startswith("edit export assembly: ")
+        ][0]
+        code, shown, _ = _run(
+            "show", "--assembly", identity, "--database", str(self.database)
+        )
+        self.assertEqual(code, 0)
+        self.assertIn(identity, shown)
+        self.assertIn("deterministic presentation only", shown)
+
+    def test_show_reports_an_unknown_assembly_without_crashing(self) -> None:
+        code, out, _ = _run(
+            "show",
+            "--assembly",
+            "lecture-edit-export-assembly:" + "f" * 64,
+            "--database",
+            str(self.database),
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("no such edit export assembly", out)
+
+    def test_history_explains_why_several_assemblies_may_coexist(self) -> None:
+        self._judge()
+        self.connection.commit()
+        self._assemble()
+        code, out, _ = _run(
+            "history", "--source-timeline", self.timeline, "--database", str(self.database)
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("recorded assemblies: 1", out)
+        self.assertIn("no recorded assembly is ever", out)
+
+    def test_a_malformed_identity_is_reported_as_an_error(self) -> None:
+        code, _, err = _run(
+            "show", "--assembly", "nonsense", "--database", str(self.database)
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("malformed", err)
+
+
+if __name__ == "__main__":
+    unittest.main()
