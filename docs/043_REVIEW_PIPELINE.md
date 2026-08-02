@@ -341,7 +341,7 @@ Transcript 또는 Subtitle에 대한 Modify는 해당 Pipeline이 반영할 변�
 
 **`044 §23`과의 관계 (Confirmed, PATCH-0035):** 위 문단이 "별도의 generation 범위 결정이 필요하다"고 남겨 둔 결정 중 **이 세대의 `ApprovedEditDecision`을 `044` Export에 연결하는 계약**은 `044 §23`(EA-1…EA-11)이 승인된 PATCH로 확정한다. 그 절이 확정하는 것은 **Export admission 경계뿐**이다: 이 세대의 Assembly가 `ApprovedEditDecision`을 직접 모으고 `§19` atom 단계를 재현하지 않는다는 것(EA-2), membership이 그 Source Timeline의 모든 export 적격 승인 편집이라는 것(EA-3), 그리고 적격성이 현재 유효한 판단의 승인·단일 actor·standing `current`라는 것(EA-4)이다. **`044 §21`·`§22`는 여전히 재범위화되지 않았고** 각각 별도 결정을 요구한다. 이 소절의 R-1…R-12는 그대로 유지되며 `044 §23`은 그중 어느 것도 변경하지 않는다.
 
-**Deferred (이후 milestone):** `§15.4`의 deferred 목록 전체가 그대로 유지되며, 여기에 이 세대의 Export 연결과 `ApprovedEditDecision`의 downstream 소비가 더해진다. 이들 중 어느 것도 이 소절이 확정한 admission 경계의 전제가 아니므로 effective-transcript Review Foundation 구현을 막지 않는다. *(후속 기록: 여기 더해진 "이 세대의 Export 연결" 중 **admission 경계**는 `044 §23`(`patches/PATCH-0035`)이 확정했다. `044 §21` Artifact와 `§22` serialization의 이 세대 연결은 그대로 deferred다.)* *(후속 기록, `PATCH-0036`: 그중 **`§21` Artifact의 이 세대 연결**도 `044 §24`(AR-1…AR-11)가 확정했다. `§22` 구체 serialization과 materialization의 이 세대 연결만 deferred로 남는다.)*
+**Deferred (이후 milestone):** `§15.4`의 deferred 목록 전체가 그대로 유지되며, 여기에 이 세대의 Export 연결과 `ApprovedEditDecision`의 downstream 소비가 더해진다. 이들 중 어느 것도 이 소절이 확정한 admission 경계의 전제가 아니므로 effective-transcript Review Foundation 구현을 막지 않는다. *(후속 기록: 여기 더해진 "이 세대의 Export 연결" 중 **admission 경계**는 `044 §23`(`patches/PATCH-0035`)이 확정했다. `044 §21` Artifact와 `§22` serialization의 이 세대 연결은 그대로 deferred다.)* *(후속 기록, `PATCH-0036`: 그중 **`§21` Artifact의 이 세대 연결**도 `044 §24`(AR-1…AR-11)가 확정했다. `§22` 구체 serialization과 materialization의 이 세대 연결만 deferred로 남는다.)* *(후속 기록, `PATCH-0037`: 그 마지막 항목도 `044 §25`(S-1…S-11)가 확정했다. 이로써 이 세대 승인 기록의 `044` Export 연결은 계약 수준에서 완결된다.)*
 
 ### 7.6 Effective-Transcript Generation — Review Authority History and Current Selection
 
@@ -384,6 +384,8 @@ Transcript 또는 Subtitle에 대한 Modify는 해당 Pipeline이 반영할 변�
 *(후속 기록, `PATCH-0035`: 위 목록의 마지막 항목 "이 세대 승인 기록의 `044` Export 연결" 중 **admission 경계**는 `044 §23`(EA-1…EA-11)이 확정했다 — AH-8의 파생 current와 AH-9의 단일-actor 조건이 `§7.5` R-3의 standing과 함께 `044 §23` EA-4의 export 적격성을 이룬다. 나머지는 그대로 deferred다: `044 §21` Artifact와 `§22` serialization의 이 세대 연결, 다중 actor 사이의 authority 해석(`§15.3`), 같은 kind·다른 승인 내용의 이력 표현, withdrawal과 revocation. 여기에 더해 `044 §23`이 자기 Deferred로 남긴 것 — Conflict가 존재하는 timeline에서 Export Admission의 제품 동작, overlap 판정, 적격 member 없는 scope의 처리 — 도 이 소절이 확정하지 않는다.)*
 
 *(후속 기록, `PATCH-0036`: 위에서 "나머지는 그대로 deferred"로 남겼던 것 중 **`044 §21` Artifact의 이 세대 연결**은 `044 §24`가 확정했다 — Artifact는 정확히 하나의 `§23` Assembly에서 파생되고, 적격성·standing·authority·Conflict를 **재평가하지 않으며**, `§23`이 미결로 둔 세 정책을 되열지 않는다(AR-8). **`044 §22`의 이 세대 연결**과 나머지 항목 — 다중 actor 사이의 authority 해석(`§15.3`), 같은 kind·다른 승인 내용의 이력 표현, withdrawal과 revocation — 은 그대로 deferred다.)*
+
+*(후속 기록, `PATCH-0037`: **`044 §22`의 이 세대 연결**은 `044 §25`가 확정했다 — 하나의 concrete JSON format, legacy와 구별되는 format identity, 결정적 직렬화, 그리고 C-6·C-7·C-8을 그대로 상속한 local materialization이다. 승인 행위는 일어나지 않고 적격성·standing·authority·Conflict는 재평가되지 않는다(S-11). 나머지 항목 — 다중 actor 사이의 authority 해석(`§15.3`), 같은 kind·다른 승인 내용의 이력 표현, withdrawal과 revocation — 은 그대로 deferred이며, `044 §23`이 미결로 둔 세 정책도 그대로다.)*
 
 ## 8. Review Explainability
 
