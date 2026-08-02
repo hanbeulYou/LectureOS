@@ -303,6 +303,8 @@ V1의 Artifact 또는 외부 표현은 다음을 포함할 수 있다.
 - 기계가 읽을 수 있는 외부 전달 결과
 - Processing Status와 Diagnostic의 외부 표현
 
+Edit-Pipeline Artifact의 계약은 contract generation마다 다르다. effective-transcript generation에 대해서는 `044_EXPORT_PIPELINE.md §24`(`patches/PATCH-0036`)가 확정한다 — 하나의 Artifact는 정확히 하나의 `§23` Edit Export Assembly에서 파생되어 그 Assembly의 완전한 승인 편집 의미를 **canonical external representation**으로 제시하고, derived·regenerable·non-authoritative이며, 실행 provenance와 Domain Result를 갖지 않고, 그 파생은 승인 행위가 아니며 적격성·authority를 재평가하지 않는다. 구체 문법·serializer·외부 파일은 그 절이 정의하지 않는다. legacy 세대의 Artifact 계약은 `§21`에 그대로 남는다.
+
 Artifact는 가능한 경우 다시 생성할 수 있어야 하며, 그 손실이 Source Media, 사용자 결정 또는 승인 결과의 손실을 의미해서는 안 된다. 사람이 읽을 수 있는 형식과 기계가 읽을 수 있는 형식의 구체적인 schema는 정의하지 않는다.
 
 FCPXML은 V1 Artifact가 아니다. 외부 편집 완료본과 그 round trip도 V1에서 LectureOS Artifact로 확정하지 않는다.
