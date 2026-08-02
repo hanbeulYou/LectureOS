@@ -48,7 +48,7 @@ class LectureEditExportCliTests(_ExportCliChain):
 
     def test_scope_states_what_is_not_part_of_this_contract(self) -> None:
         _, out, _ = self._scope()
-        self.assertIn("serializer and export file: not part of this contract", out)
+        self.assertIn("other concrete formats: not part of this contract", out)
         self.assertIn("selection and final selection: not part of this pipeline at all", out)
         self.assertIn("overlap adjudication: not part of this contract", out)
 
@@ -169,7 +169,7 @@ class LectureEditExportArtifactCliTests(_ExportCliChain):
         self.assertIn(
             "no eligibility, standing, authority, or conflict was re-evaluated", out
         )
-        self.assertIn("serializer and export file: not part of this contract", out)
+        self.assertIn("other concrete formats: not part of this contract", out)
 
     def test_artifact_derivation_converges(self) -> None:
         assembly, (_, first, _) = self._artifact_of()
@@ -188,6 +188,123 @@ class LectureEditExportArtifactCliTests(_ExportCliChain):
         )
         self.assertEqual(code, 1)
         self.assertIn("unknown edit export assembly", err)
+
+
+class LectureEditExportSerializationCliTests(_ExportCliChain):
+    """`serialize` and `materialize` (044 §25)."""
+
+    def setUp(self):
+        super().setUp()
+        import tempfile, pathlib
+        self.workspace = tempfile.TemporaryDirectory()
+        self.out = pathlib.Path(self.workspace.name)
+
+    def tearDown(self):
+        self.workspace.cleanup()
+        super().tearDown()
+
+    def _assembly_id(self):
+        self._judge()
+        self.connection.commit()
+        _, out, _ = self._assemble()
+        return [
+            line.split(": ", 1)[1]
+            for line in out.splitlines()
+            if line.startswith("edit export assembly: ")
+        ][0]
+
+    def test_serialize_prints_the_format_identity_and_payload(self) -> None:
+        assembly = self._assembly_id()
+        code, out, _ = _run(
+            "serialize", "--assembly", assembly, "--database", str(self.database)
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("format: lectureos-lecture-edit-export-json", out)
+        self.assertIn("format version: v1", out)
+        self.assertIn(
+            "media type: application/vnd.lectureos.lecture-edit-export+json", out
+        )
+        self.assertIn('"source_approved_edit_decision_id"', out)
+        self.assertNotIn('"source_media_id"', out)
+        self.assertIn("distinct from the legacy lectureos-edit-export-json", out)
+        self.assertIn("nothing was written and nothing was stored", out)
+
+    def test_serialize_is_byte_stable(self) -> None:
+        assembly = self._assembly_id()
+        _, first, _ = _run(
+            "serialize", "--assembly", assembly, "--database", str(self.database)
+        )
+        _, second, _ = _run(
+            "serialize", "--assembly", assembly, "--database", str(self.database)
+        )
+        self.assertEqual(first, second)
+
+    def test_materialize_places_a_file_and_reports_it(self) -> None:
+        assembly = self._assembly_id()
+        destination = self.out / "nested" / "edits.json"
+        code, out, _ = _run(
+            "materialize",
+            "--assembly",
+            assembly,
+            "--destination",
+            str(destination),
+            "--database",
+            str(self.database),
+        )
+        self.assertEqual(code, 0)
+        self.assertIn(f"materialized: {destination}", out)
+        self.assertIn("supplied by the caller", out)
+        self.assertIn("the write was atomic", out)
+        self.assertTrue(destination.is_file())
+        self.assertTrue(destination.read_text().endswith("\n"))
+
+    def test_materialize_refuses_a_colliding_destination(self) -> None:
+        assembly = self._assembly_id()
+        destination = self.out / "edits.json"
+        destination.write_bytes(b"other\n")
+        code, _, err = _run(
+            "materialize",
+            "--assembly",
+            assembly,
+            "--destination",
+            str(destination),
+            "--database",
+            str(self.database),
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("refusing to overwrite", err)
+        self.assertEqual(destination.read_bytes(), b"other\n")
+
+    def test_materialize_overwrites_only_when_asked(self) -> None:
+        assembly = self._assembly_id()
+        destination = self.out / "edits.json"
+        destination.write_bytes(b"other\n")
+        code, _, _ = _run(
+            "materialize",
+            "--assembly",
+            assembly,
+            "--destination",
+            str(destination),
+            "--overwrite",
+            "--database",
+            str(self.database),
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("lectureos-lecture-edit-export-json", destination.read_text())
+
+    def test_materialize_refuses_a_relative_destination(self) -> None:
+        assembly = self._assembly_id()
+        code, _, err = _run(
+            "materialize",
+            "--assembly",
+            assembly,
+            "--destination",
+            "relative/edits.json",
+            "--database",
+            str(self.database),
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("absolute path", err)
 
 
 if __name__ == "__main__":
