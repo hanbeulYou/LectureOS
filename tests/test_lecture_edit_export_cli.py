@@ -17,7 +17,7 @@ def _run(*argv):
     return code, out.getvalue(), err.getvalue()
 
 
-class LectureEditExportCliTests(_Chain):
+class _ExportCliChain(_Chain):
     def setUp(self):
         super().setUp()
         self.timeline = (
@@ -36,6 +36,8 @@ class LectureEditExportCliTests(_Chain):
             "assemble", "--source-timeline", self.timeline, "--database", str(self.database)
         )
 
+
+class LectureEditExportCliTests(_ExportCliChain):
     def test_scope_reports_why_a_candidate_is_not_eligible(self) -> None:
         code, out, _ = self._scope()
         self.assertEqual(code, 0)
@@ -46,7 +48,7 @@ class LectureEditExportCliTests(_Chain):
 
     def test_scope_states_what_is_not_part_of_this_contract(self) -> None:
         _, out, _ = self._scope()
-        self.assertIn("artifact, serializer, and export file: not part of this contract", out)
+        self.assertIn("serializer and export file: not part of this contract", out)
         self.assertIn("selection and final selection: not part of this pipeline at all", out)
         self.assertIn("overlap adjudication: not part of this contract", out)
 
@@ -132,6 +134,60 @@ class LectureEditExportCliTests(_Chain):
         )
         self.assertEqual(code, 1)
         self.assertIn("malformed", err)
+
+
+class LectureEditExportArtifactCliTests(_ExportCliChain):
+    """`artifact` — the canonical external representation, never stored (044 §24)."""
+
+    def _artifact_of(self):
+        self._judge()
+        self.connection.commit()
+        _, out, _ = self._assemble()
+        identity = [
+            line.split(": ", 1)[1]
+            for line in out.splitlines()
+            if line.startswith("edit export assembly: ")
+        ][0]
+        return identity, _run(
+            "artifact", "--assembly", identity, "--database", str(self.database)
+        )
+
+    def test_artifact_presents_the_approved_meaning(self) -> None:
+        assembly, (code, out, _) = self._artifact_of()
+        self.assertEqual(code, 0)
+        self.assertIn("edit export artifact: lecture-edit-export-artifact:", out)
+        self.assertIn(f"source assembly: {assembly}", out)
+        self.assertIn("presented edits: 1", out)
+        self.assertIn("accept by reviewer:lee", out)
+        self.assertIn("source timeline range:", out)
+
+    def test_artifact_states_what_it_is_not(self) -> None:
+        _, (_, out, _) = self._artifact_of()
+        self.assertIn("never output-timeline coordinates", out)
+        self.assertIn("carries no executable edit meaning", out)
+        self.assertIn("derived, regenerable, and not stored", out)
+        self.assertIn(
+            "no eligibility, standing, authority, or conflict was re-evaluated", out
+        )
+        self.assertIn("serializer and export file: not part of this contract", out)
+
+    def test_artifact_derivation_converges(self) -> None:
+        assembly, (_, first, _) = self._artifact_of()
+        _, second, _ = _run(
+            "artifact", "--assembly", assembly, "--database", str(self.database)
+        )
+        self.assertEqual(first, second)
+
+    def test_an_unknown_assembly_is_an_error(self) -> None:
+        code, _, err = _run(
+            "artifact",
+            "--assembly",
+            "lecture-edit-export-assembly:" + "f" * 64,
+            "--database",
+            str(self.database),
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("unknown edit export assembly", err)
 
 
 if __name__ == "__main__":
