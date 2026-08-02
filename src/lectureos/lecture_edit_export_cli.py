@@ -7,7 +7,9 @@ One CLI over an existing repository (identities only — never media paths):
 * ``assemble`` — record one immutable Assembly for that timeline's **complete** eligible scope;
 * ``show`` — one recorded Assembly and its ordered membership;
 * ``history`` — every Assembly recorded for one timeline;
-* ``artifact`` — derive one Assembly's canonical external representation (044 §24).
+* ``artifact`` — derive one Assembly's canonical external representation (044 §24);
+* ``serialize`` — project that representation into LectureOS Lecture Edit Export JSON v1 (044 §25);
+* ``materialize`` — place the serialized payload at a caller-supplied local destination (044 §25).
 
 **Assembling approves nothing (EA-6).** Review remains the only place Human Authority is exercised;
 this command records which already-approved edits belong together and changes no Review record.
@@ -21,8 +23,14 @@ Conflict (AR-8): membership was fixed when the Assembly was admitted, so an Asse
 were later superseded still yields a correct Artifact. Deriving one approves nothing, writes nothing,
 and is not persisted — it is regenerable from the Assembly on demand (AR-9, AR-11).
 
-**Nothing downstream exists here.** No serializer, concrete syntax, file, output timeline, package,
-download, URL, provider, NLE, Export Profile, or Export Configuration is produced.
+``serialize`` and ``materialize`` are non-authoritative projections (S-11): they approve nothing,
+change no upstream record, and never add, drop, or reinterpret an approved value. Serialization is
+deterministic — the same Artifact always yields the same bytes — and the file is **not** the
+Artifact's identity: no path, name, URL, time, or filesystem metadata participates in any identity
+(S-6). Neither the payload nor the file outcome is stored in the database (S-10).
+
+**Nothing downstream exists here.** No second format, output timeline, package, download, URL,
+provider, NLE adapter, Export Profile, Export Configuration, or publication is produced.
 
 ``assemble`` stops without acting in the two situations `044 §23` leaves undecided — a cross-actor
 Review Conflict on the timeline, or a scope with no eligible member. That stop is a **contract gap,
@@ -41,6 +49,10 @@ Invocation (src layout)::
         --source-timeline <id> --database <db>
     PYTHONPATH=src python3 -m lectureos.lecture_edit_export_cli artifact \\
         --assembly <id> --database <db>
+    PYTHONPATH=src python3 -m lectureos.lecture_edit_export_cli serialize \\
+        --assembly <id> --database <db>
+    PYTHONPATH=src python3 -m lectureos.lecture_edit_export_cli materialize \\
+        --assembly <id> --destination <absolute path> [--overwrite] --database <db>
 """
 
 from __future__ import annotations
@@ -55,19 +67,27 @@ from lectureos.application.lecture_analysis_edit_candidate import (
 from lectureos.application.lecture_edit_export_artifact import (
     LectureEditExportArtifactError,
 )
+from lectureos.application.lecture_edit_export_materialization import (
+    LectureEditExportMaterializationError,
+)
+from lectureos.application.lecture_edit_export_serialization import (
+    LectureEditExportSerializationError,
+    serialize_lecture_edit_export_json,
+)
 from lectureos.application.lecture_edit_export_assembly import (
     LectureEditExportAssemblyError,
 )
 from lectureos.application.lecture_review_authority import LectureReviewAuthorityError
 from lectureos.application.lecture_review_decision import LectureReviewError
 from lectureos.composition import (
+    compose_lecture_edit_export_materialization_service,
     compose_sqlite_lecture_edit_export_artifact_service,
     compose_sqlite_lecture_edit_export_assembly_service,
 )
 from lectureos.persistence import PersistenceError, open_sqlite_database
 
 _NOT_PART = (
-    "serializer and export file: not part of this contract",
+    "other concrete formats: not part of this contract",
     "export profile and configuration: not part of this contract",
     "selection and final selection: not part of this pipeline at all",
     "overlap adjudication: not part of this contract",
@@ -238,6 +258,63 @@ def _run_artifact(args) -> int:
     return 0
 
 
+def _derive(args):
+    connection = open_sqlite_database(args.database)
+    try:
+        return compose_sqlite_lecture_edit_export_artifact_service(
+            connection
+        ).derive_artifact(args.assembly)
+    finally:
+        connection.close()
+
+
+def _print_format(serialized) -> None:
+    print(f"format: {serialized.format}")
+    print(f"format version: {serialized.version}")
+    print(f"media type: {serialized.media_type}")
+    print(f"encoding: {serialized.encoding}")
+    print(f"byte length: {serialized.byte_length}")
+
+
+def _run_serialize(args) -> int:
+    serialized = serialize_lecture_edit_export_json(_derive(args))
+    _print_format(serialized)
+    print("--- payload ---")
+    print(serialized.payload, end="")
+    print("--- end payload ---")
+    print(
+        "this format identity is distinct from the legacy lectureos-edit-export-json: the payload "
+        "shape differs and neither generation supersedes the other"
+    )
+    print("deterministic: the same assembly always yields these exact bytes")
+    print("nothing was written and nothing was stored")
+    for line in _NOT_PART:
+        print(line)
+    return 0
+
+
+def _run_materialize(args) -> int:
+    result = compose_lecture_edit_export_materialization_service().materialize_artifact(
+        artifact=_derive(args),
+        destination=args.destination,
+        overwrite=args.overwrite,
+    )
+    print(f"materialized: {result.final_path}")
+    _print_format(result)
+    print(
+        "the destination was supplied by the caller; this contract chooses no path, and the file "
+        "is not the artifact's identity"
+    )
+    print(
+        "the write was atomic: on failure no partial file is left at the final path; identical "
+        "bytes are an idempotent success and different bytes are refused unless --overwrite"
+    )
+    print("nothing was stored in the database, and no approval was made")
+    for line in _NOT_PART:
+        print(line)
+    return 0
+
+
 def _database(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--database", required=True, metavar="SQLITE_PATH")
 
@@ -291,6 +368,32 @@ def _parser() -> argparse.ArgumentParser:
     )
     _database(artifact)
     artifact.set_defaults(func=_run_artifact)
+
+    serialize = subparsers.add_parser(
+        "serialize",
+        help="project one assembly's artifact into LectureOS Lecture Edit Export JSON v1",
+    )
+    serialize.add_argument(
+        "--assembly", required=True, metavar="LECTURE_EDIT_EXPORT_ASSEMBLY_ID"
+    )
+    _database(serialize)
+    serialize.set_defaults(func=_run_serialize)
+
+    materialize = subparsers.add_parser(
+        "materialize",
+        help="place the serialized payload at a caller-supplied local destination",
+    )
+    materialize.add_argument(
+        "--assembly", required=True, metavar="LECTURE_EDIT_EXPORT_ASSEMBLY_ID"
+    )
+    materialize.add_argument("--destination", required=True, metavar="ABSOLUTE_PATH")
+    materialize.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="atomically replace an existing regular file holding different bytes",
+    )
+    _database(materialize)
+    materialize.set_defaults(func=_run_materialize)
     return parser
 
 
@@ -299,6 +402,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         return args.func(args)
     except (
+        LectureEditExportSerializationError,
+        LectureEditExportMaterializationError,
         LectureEditExportArtifactError,
         LectureEditExportAssemblyError,
         LectureReviewError,

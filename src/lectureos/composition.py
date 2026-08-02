@@ -963,6 +963,31 @@ def compose_sqlite_lecture_edit_export_artifact_service(
     )
 
 
+def compose_lecture_edit_export_materialization_service() -> (
+    "LectureEditExportMaterializationService"
+):
+    """Build effective-generation Edit Export local materialization (044 §25 S-7).
+
+    Concrete construction only. Takes no database connection: neither the serialized payload nor the
+    physical-file outcome is persisted (S-10), and the §24 Artifact is not required to be stored in
+    order to reach a file. The caller supplies the destination — this wiring chooses no path — and
+    the writer inherits C-6/C-7/C-8 unchanged: atomic placement, no partial file, idempotent
+    identical bytes, explicit collision, explicit-request-only overwrite, foreign-object safety.
+
+    No serializer registry, provider adapter, NLE adapter, Export Profile, Export Configuration,
+    package, upload, or URL exists here, and the legacy `edit_export_*` modules are never imported.
+    """
+
+    from lectureos.application.lecture_edit_export_materialization import (
+        LectureEditExportMaterializationService,
+    )
+    from lectureos.infrastructure.local_lecture_edit_export_file_writer import (
+        LocalLectureEditExportFileWriter,
+    )
+
+    return LectureEditExportMaterializationService(LocalLectureEditExportFileWriter())
+
+
 def compose_sqlite_lecture_analysis_segmentation_service(
     connection: sqlite3.Connection,
 ) -> "LectureAnalysisSegmentationService":
