@@ -317,6 +317,16 @@ class LectureApprovedEditDecisionId(OpaqueIdentity):
 
 
 @dataclass(frozen=True, slots=True)
+class LectureEditExportArtifactId(OpaqueIdentity):
+    """Effective-transcript generation Edit Export Artifact (044 §24 / PATCH-0036).
+
+    Distinct from the legacy `EditExportArtifactId` (044 §21), which is caller-owned. AR-7 keeps
+    caller-owned identity with the legacy generation: this one is Application-owned and derived
+    deterministically from its source Assembly, so canonical derivation converges.
+    """
+
+
+@dataclass(frozen=True, slots=True)
 class LectureEditExportAssemblyId(OpaqueIdentity):
     """Effective-transcript generation Edit Export Assembly (044 §23 / PATCH-0035).
 

@@ -6,7 +6,8 @@ One CLI over an existing repository (identities only — never media paths):
   eligibility and, for the eligible ones, the approved edit that would become a member;
 * ``assemble`` — record one immutable Assembly for that timeline's **complete** eligible scope;
 * ``show`` — one recorded Assembly and its ordered membership;
-* ``history`` — every Assembly recorded for one timeline.
+* ``history`` — every Assembly recorded for one timeline;
+* ``artifact`` — derive one Assembly's canonical external representation (044 §24).
 
 **Assembling approves nothing (EA-6).** Review remains the only place Human Authority is exercised;
 this command records which already-approved edits belong together and changes no Review record.
@@ -14,7 +15,13 @@ Membership is derived and total (EA-3) — there is no subset, filter, selection
 and export eligibility is the conjunction of a current operative judgment, a single actor holding
 authority history, and a `current` chain standing (EA-4).
 
-**Nothing downstream exists here.** No Artifact, serializer, file, output timeline, package,
+``artifact`` presents the Assembly's complete approved meaning as the canonical **external
+representation** — *what* is communicated. It re-evaluates no eligibility, standing, authority, or
+Conflict (AR-8): membership was fixed when the Assembly was admitted, so an Assembly whose members
+were later superseded still yields a correct Artifact. Deriving one approves nothing, writes nothing,
+and is not persisted — it is regenerable from the Assembly on demand (AR-9, AR-11).
+
+**Nothing downstream exists here.** No serializer, concrete syntax, file, output timeline, package,
 download, URL, provider, NLE, Export Profile, or Export Configuration is produced.
 
 ``assemble`` stops without acting in the two situations `044 §23` leaves undecided — a cross-actor
@@ -32,6 +39,8 @@ Invocation (src layout)::
         --assembly <id> --database <db>
     PYTHONPATH=src python3 -m lectureos.lecture_edit_export_cli history \\
         --source-timeline <id> --database <db>
+    PYTHONPATH=src python3 -m lectureos.lecture_edit_export_cli artifact \\
+        --assembly <id> --database <db>
 """
 
 from __future__ import annotations
@@ -43,16 +52,22 @@ from typing import Sequence
 from lectureos.application.lecture_analysis_edit_candidate import (
     LectureAnalysisEditCandidateError,
 )
+from lectureos.application.lecture_edit_export_artifact import (
+    LectureEditExportArtifactError,
+)
 from lectureos.application.lecture_edit_export_assembly import (
     LectureEditExportAssemblyError,
 )
 from lectureos.application.lecture_review_authority import LectureReviewAuthorityError
 from lectureos.application.lecture_review_decision import LectureReviewError
-from lectureos.composition import compose_sqlite_lecture_edit_export_assembly_service
+from lectureos.composition import (
+    compose_sqlite_lecture_edit_export_artifact_service,
+    compose_sqlite_lecture_edit_export_assembly_service,
+)
 from lectureos.persistence import PersistenceError, open_sqlite_database
 
 _NOT_PART = (
-    "artifact, serializer, and export file: not part of this contract",
+    "serializer and export file: not part of this contract",
     "export profile and configuration: not part of this contract",
     "selection and final selection: not part of this pipeline at all",
     "overlap adjudication: not part of this contract",
@@ -185,6 +200,44 @@ def _run_history(args) -> int:
     return 0
 
 
+def _run_artifact(args) -> int:
+    connection = open_sqlite_database(args.database)
+    try:
+        artifact = compose_sqlite_lecture_edit_export_artifact_service(
+            connection
+        ).derive_artifact(args.assembly)
+    finally:
+        connection.close()
+    print(f"edit export artifact: {artifact.identity.value}")
+    print(f"source assembly: {artifact.source_assembly_id.value}")
+    print(f"source timeline: {artifact.source_timeline_id.value}")
+    print(f"artifact contract version: {artifact.artifact_contract_version}")
+    print(f"presented edits: {len(artifact.entries)}")
+    for entry in artifact.entries:
+        print(f"  [{entry.ordinal}] {entry.decision_kind.value} by {entry.actor.value}")
+        print(
+            f"      source timeline range: {entry.approved_range_start} -> "
+            f"{entry.approved_range_end}"
+        )
+        print(f"      approved candidate type or label: {entry.approved_label}")
+        print(f"      approved rationale: {entry.approved_rationale}")
+        print(
+            f"      approved edit decision: {entry.source_approved_edit_decision_id.value}"
+        )
+    print(
+        "ranges are Source Timeline ranges, never output-timeline coordinates; this "
+        "representation is descriptive and carries no executable edit meaning"
+    )
+    print(
+        "derived, regenerable, and not stored: nothing was written, and re-deriving from the same "
+        "assembly yields the same artifact"
+    )
+    print("no eligibility, standing, authority, or conflict was re-evaluated")
+    for line in _NOT_PART:
+        print(line)
+    return 0
+
+
 def _database(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--database", required=True, metavar="SQLITE_PATH")
 
@@ -228,6 +281,16 @@ def _parser() -> argparse.ArgumentParser:
     )
     _database(history)
     history.set_defaults(func=_run_history)
+
+    artifact = subparsers.add_parser(
+        "artifact",
+        help="derive one assembly's canonical external representation (never stored)",
+    )
+    artifact.add_argument(
+        "--assembly", required=True, metavar="LECTURE_EDIT_EXPORT_ASSEMBLY_ID"
+    )
+    _database(artifact)
+    artifact.set_defaults(func=_run_artifact)
     return parser
 
 
@@ -236,6 +299,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         return args.func(args)
     except (
+        LectureEditExportArtifactError,
         LectureEditExportAssemblyError,
         LectureReviewError,
         LectureReviewAuthorityError,

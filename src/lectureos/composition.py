@@ -927,6 +927,42 @@ def compose_sqlite_lecture_edit_export_assembly_service(
     )
 
 
+def compose_sqlite_lecture_edit_export_artifact_service(
+    connection: sqlite3.Connection,
+) -> "LectureEditExportArtifactService":
+    """Build effective-generation Edit Export Artifact derivation on one connection (044 §24).
+
+    Concrete construction only, and **read-only**: the released GOAL-030 assembly repository supplies
+    the one source Assembly, the released GOAL-028 Review repository supplies the approved snapshot
+    and the human actor that the Artifact presents, and the scope repository supplies the timeline's
+    candidates for the lineage check §21 B-11 requires. Nothing is written — the Artifact is derived,
+    regenerable, and non-authoritative (AR-9), and AR-11 requires no durable representation, so no
+    table, migration, or validator code exists for it and `SQLITE_SCHEMA_VERSION` stays 53.
+
+    No eligibility, standing, authority, or Conflict is re-evaluated (AR-8); no provider, AI,
+    ProcessingRun, UnitExecution, RUNNING state, or DomainResult exists (AR-5); no serializer,
+    format, file, Export Profile, or Export Configuration is built (AR-10); and the legacy
+    `edit_export_*` family is never touched (AR-11).
+    """
+
+    from lectureos.application.lecture_edit_export_artifact import (
+        LectureEditExportArtifactService,
+    )
+    from lectureos.persistence.lecture_edit_export_assembly import (
+        SQLiteEditExportAssemblyRepository,
+        SQLiteEditExportScopeRepository,
+    )
+    from lectureos.persistence.lecture_review_decision import (
+        SQLiteLectureReviewRepository,
+    )
+
+    return LectureEditExportArtifactService(
+        assembly_query=SQLiteEditExportAssemblyRepository(connection),
+        decision_query=SQLiteLectureReviewRepository(connection),
+        scope_query=SQLiteEditExportScopeRepository(connection),
+    )
+
+
 def compose_sqlite_lecture_analysis_segmentation_service(
     connection: sqlite3.Connection,
 ) -> "LectureAnalysisSegmentationService":
