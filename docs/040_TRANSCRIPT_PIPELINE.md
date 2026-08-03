@@ -536,7 +536,12 @@ Transcript를 덮어쓰지 않는다").
 **Timing Semantics (Confirmed, A-10):** segment는 `start`·`end`를 **초(seconds)** 단위 finite 값으로 가지며
 `start >= 0`, `end > start`(zero-length span 거부)이고 Source Media에서 파생된 결정적 source timeline
 (`source-timeline:<source_media_id>`)에 정렬된다. segment는 `start` 비내림차순으로 제출되어야 하고 겹치지 않아야 한다
-(`segment[i].end <= segment[i+1].start`; 경계가 맞닿는 것은 허용).
+(`segment[i].end <= segment[i+1].start`; 경계가 맞닿는 것은 허용). 이 비교는 부동소수점 **표현**이 아니라
+**시각(instant)** 에 대한 것이다(`PATCH-0039` T-1): 표현 오차만큼만 다른 두 경계값은 같은 시각을 가리키므로 이미
+허용된 "맞닿음"이며, adjacency는 `segment[i+1].start >= segment[i].end - ε`(ε = `1e-6`초)로 판정한다(T-2). ε는
+adjacency 비교에만 적용되고 segment 내부에는 적용되지 않는다 — `start >= 0`과 `end > start`(zero-length 거부)는
+정확 비교로 유지된다(T-3). ε는 admission 판정에만 관여하며 제출된 값은 **그대로** 보존된다: 어떤 timestamp도
+snap·반올림·정규화·재작성되지 않고, `content_fingerprint`·identity·anchor에 ε는 참여하지 않는다(T-4, T-5).
 
 **Text Semantics (Confirmed, A-11):** segment text는 필수이며 공백만으로 이루어질 수 없고 제출된 그대로 **정확히
 보존**된다(trim·정규화·재배치 없음). 비ASCII/한국어 text는 그대로 보존된다.
@@ -565,7 +570,8 @@ provenance를 담으며 내부 RUNNING execution을 요구하지 않는다. (4) 
 (5) canonical Raw Transcript는 provider 결과와 별개의 identity를 가진다. (6) 모든 identity는 anchor에서 결정적으로
 파생된다. (7) 하나의 intake는 여러 provider 결과를, 하나의 provider 결과는 하나의 canonical Raw Transcript를 가진다.
 (8) admission은 content_fingerprint로 idempotent하다. (9) 같은 anchor·다른 payload는 conflict로 거부된다. (10) timing은
-초 단위이며 `end > start`, 비겹침, 비내림차순이다. (11) text는 정확히 보존되고 빈 결과는 거부된다. (12) 실패는 부분
+초 단위이며 `end > start`(정확 비교), 비겹침, 비내림차순이다 — 비겹침은 표현 오차 ε(`1e-6`초) 안에서 맞닿는 경계를
+포함하며(`PATCH-0039`), 제출된 값은 변경되지 않는다. (11) text는 정확히 보존되고 빈 결과는 거부된다. (12) 실패는 부분
 상태를 남기지 않고 Source Media·intake를 변경하지 않는다. (13) 기존 Transcript·execution 계약이 우선한다. (14) deferred
 개념의 placeholder는 도입하지 않는다.
 
