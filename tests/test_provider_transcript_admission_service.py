@@ -133,6 +133,76 @@ class DocumentValidationTests(unittest.TestCase):
         )
         self.assertEqual(len(document.segments), 2)
 
+    def test_representation_noise_boundary_admitted(self):
+        """PATCH-0039 T-1: boundaries differing only by float noise denote one instant.
+
+        These are the exact values a real 2h02m faster-whisper large-v3 result submitted; the
+        engine derives the two boundaries through different floating-point paths.
+        """
+
+        document = _document(
+            segments=[
+                {"start": 3127.34, "end": 3129.1000000000004, "text": "여기 55번"},
+                {"start": 3129.1, "end": 3133.42, "text": "일단 B2는 그냥 읽고 넘어갈거고"},
+            ]
+        )
+        self.assertLess(document.segments[1].start, document.segments[0].end)
+
+    def test_representation_noise_boundary_is_preserved_verbatim(self):
+        """PATCH-0039 T-4: tolerance admits, it never adjusts the submitted values."""
+
+        document = _document(
+            segments=[
+                {"start": 3127.34, "end": 3129.1000000000004, "text": "a"},
+                {"start": 3129.1, "end": 3133.42, "text": "b"},
+            ]
+        )
+        self.assertEqual(document.segments[0].end, 3129.1000000000004)
+        self.assertEqual(document.segments[1].start, 3129.1)
+
+    def test_overlap_just_beyond_tolerance_rejected(self):
+        """PATCH-0039 T-2: past the tolerance it is a real overlap again."""
+
+        with self.assertRaises(ProviderTranscriptAdmissionError):
+            _document(
+                segments=[
+                    {"start": 0.0, "end": 2.0, "text": "a"},
+                    {"start": 2.0 - 1.1e-6, "end": 4.0, "text": "b"},
+                ]
+            )
+
+    def test_millisecond_overlap_still_rejected(self):
+        """PATCH-0039 T-6: the tolerance never reaches the released SRT millisecond grid."""
+
+        with self.assertRaises(ProviderTranscriptAdmissionError):
+            _document(
+                segments=[
+                    {"start": 0.0, "end": 2.0, "text": "a"},
+                    {"start": 1.999, "end": 4.0, "text": "b"},
+                ]
+            )
+
+    def test_tolerance_does_not_admit_zero_length_segment(self):
+        """PATCH-0039 T-3: the tolerance is confined to adjacency, never inside a segment."""
+
+        with self.assertRaises(ProviderTranscriptAdmissionError):
+            _document(segments=[{"start": 2.0, "end": 2.0, "text": "a"}])
+
+    def test_tolerance_does_not_admit_inverted_segment_within_tolerance(self):
+        """PATCH-0039 T-3: ``end > start`` stays an exact comparison."""
+
+        with self.assertRaises(ProviderTranscriptAdmissionError):
+            _document(segments=[{"start": 2.0, "end": 2.0 - 1e-9, "text": "a"}])
+
+    def test_tolerance_does_not_admit_out_of_order_segments(self):
+        with self.assertRaises(ProviderTranscriptAdmissionError):
+            _document(
+                segments=[
+                    {"start": 10.0, "end": 12.0, "text": "a"},
+                    {"start": 0.0, "end": 2.0, "text": "b"},
+                ]
+            )
+
     def test_blank_provider_rejected(self):
         with self.assertRaises(ProviderTranscriptAdmissionError):
             _document(provider="  ")
