@@ -23,7 +23,10 @@ Key contract (040 §14):
 * Admission is idempotent by content (a SHA-256 fingerprint over the full payload); re-admitting the same anchor
   with a different payload is a conflict and is rejected without mutation.
 * Timing is in seconds with ``end > start``, non-overlapping and non-decreasing; text is preserved exactly; an
-  empty (zero-segment) result is rejected.
+  empty (zero-segment) result is rejected. Non-overlap is judged between **instants**, not float
+  representations (PATCH-0039): adjacent boundaries within ``TIMING_BOUNDARY_TOLERANCE_SECONDS`` are the
+  touching case A-10 already allows. Submitted values are never adjusted, and the tolerance participates in no
+  identity or fingerprint.
 """
 
 from __future__ import annotations
@@ -71,6 +74,15 @@ _EXTERNAL_ASR_RUN_PREFIX = "external-asr-run"
 _EXTERNAL_ASR_EXECUTION_PREFIX = "external-asr-execution"
 _TRANSCRIPT_SEGMENT_PREFIX = "transcript-segment"
 _SOURCE_TIMELINE_PREFIX = "source-timeline"
+
+# 040 §14 A-10 / PATCH-0039 T-2: adjacent segment boundaries are compared as instants, so a
+# neighbouring start may precede the previous end by at most this much and still count as touching.
+# One microsecond sits ~5 orders of magnitude above float64 representation noise even for ten-hour
+# media (ULP ~7.3e-12 s at t = 36000 s) and ~3 orders below the released SRT millisecond grid, so a
+# real overlap capable of changing any downstream artifact is never admitted by it (T-6). It governs
+# admission only — no submitted timestamp is ever adjusted, and it participates in no identity,
+# fingerprint, or anchor (T-4, T-5).
+TIMING_BOUNDARY_TOLERANCE_SECONDS = 1e-6
 
 # A canonical Source Media intake identity is 'transcript-source-intake:<algorithm>:<64 hex digest>'.
 _CANONICAL_INTAKE_ID = re.compile(
@@ -163,9 +175,15 @@ class ProviderTranscriptDocument:
                 "provider result must contain at least one segment (empty results are rejected)"
             )
         # Segments must be non-decreasing in start and non-overlapping (touching boundaries allowed).
+        # A-10 compares instants, not float representations (PATCH-0039 T-1): boundaries that differ
+        # only by representation noise denote one instant and are touching, so adjacency is judged
+        # within TIMING_BOUNDARY_TOLERANCE_SECONDS. The submitted values are never adjusted (T-4).
         previous_end: float | None = None
         for segment in self.segments:
-            if previous_end is not None and segment.start < previous_end:
+            if (
+                previous_end is not None
+                and segment.start < previous_end - TIMING_BOUNDARY_TOLERANCE_SECONDS
+            ):
                 raise ProviderTranscriptAdmissionError(
                     "segments must be ordered by start and must not overlap"
                 )

@@ -215,6 +215,7 @@ from .transcript_source_intake import (
 )
 from .provider_transcript_admission import (
     ASR_TRANSCRIPTION_CAPABILITY,
+    TIMING_BOUNDARY_TOLERANCE_SECONDS,
     AtomicProviderTranscriptAdmissionPersistence,
     ProviderTranscriptAdmission,
     ProviderTranscriptAdmissionConflictError,
@@ -759,6 +760,7 @@ __all__ = [
     "TranscriptSourceIntakeResult",
     "TranscriptSourceIntakeService",
     "ASR_TRANSCRIPTION_CAPABILITY",
+    "TIMING_BOUNDARY_TOLERANCE_SECONDS",
     "AtomicProviderTranscriptAdmissionPersistence",
     "ProviderTranscriptAdmission",
     "ProviderTranscriptAdmissionConflictError",
