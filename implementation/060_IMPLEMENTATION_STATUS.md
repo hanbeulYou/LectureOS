@@ -3240,3 +3240,57 @@ GOAL-025 Findings, GOAL-026 Segments, GOAL-027 Candidates, the GOAL-028 Review r
 generations are unchanged. The GOAL-028 atomicity test was repaired in passing: its persistence stub
 had not been updated for the new keyword argument and had stopped exercising the rollback path it
 names.
+
+## Provider Transcript Admission Timing Boundary Representation Tolerance (PATCH-0039)
+
+- Blueprint: `docs/040` §14 A-10 + Canonical Invariant (10), amended by `PATCH-0039` (T-1…T-7, Confirmed)
+- Status: **COMPLETE**
+- Selected persistence: none — schema remains **v53**, no migration, no new record, no new identity
+- Commits: `docs: define provider transcript admission timing representation tolerance boundary`,
+  `feat: admit representation-noise transcript segment boundaries`, `test: cover transcript segment boundary
+  representation tolerance`, `docs: document transcript segment boundary representation tolerance`
+- Immediate next milestone: none is unblocked by this contract
+
+This slice resolves a verified defect found by end-to-end validation against real classroom media
+(`7355.85 s`, `32,391,572,455` bytes, `faster-whisper` `large-v3`, `language=ko`, CPU `int8`). The engine
+produced 2564 segments in 85.5 minutes and `local_asr_cli` then exited `1` with *"segments must be ordered by
+start and must not overlap"*, leaving the repository unchanged and the whole transcription discarded.
+
+Three adjacent boundaries were responsible, all with the identical shape
+`end = 3129.1000000000004` against `start = 3129.1` — a delta of `-4.547473508864641e-13`, identical at all
+three. Each pair denotes **one instant**: the engine derives a segment's `end` and the next segment's `start`
+through different floating-point paths (`chunk_offset + tick × 0.02`) and the results differ in the last
+representable bits. The defect is **scale-dependent**: 2257 of this result's 2563 adjacent boundaries (88%) sit
+within `1e-6 s` of touching, and three landed on the rejecting side of an exact comparison. The released M1
+validation passed only because a 96-second result has 37 boundaries.
+
+No implementation-level fix existed. `§14` A-10 stated the rule as an exact inequality over submitted values,
+and `§15` L-6 forbids the adapter from adjusting the timing it submits — two Confirmed decisions with the
+defect pinned between them, which is why `PATCH-0039` amends A-10 rather than code alone changing behaviour.
+
+The implementation is one named constant and one comparison at the `§14` boundary:
+`TIMING_BOUNDARY_TOLERANCE_SECONDS = 1e-6`, with adjacency admitting when
+`segment[i+1].start >= segment[i].end - ε`. Per T-3 the tolerance is confined to that comparison — `start >= 0`
+and `end > start` remain exact, so a zero-length or inverted segment is still refused (both tested), and per
+T-4 no submitted timestamp is snapped, rounded, or rewritten. Per T-5 `content_fingerprint`, identity, and
+anchor derivation are untouched, so documents differing by representation noise remain distinct payloads and
+A-8/A-9 idempotency and conflict behaviour are unchanged. Because the change only **widens** what is
+admissible, every previously admissible document stays admissible with identical identities.
+
+Verification used the real captured engine output. The **un-normalized** 2564-segment result — containing all
+three rejected boundaries verbatim — was admitted and driven through raw selection, Raw fallback, the
+consumption binding, effective subtitle generation (2564 cues), review preparation, an Accept decision, Final
+Selection, the SRT artifact, and physical materialization (189,386 bytes), and read-only validation reported
+`healthy` over 5143 objects with zero errors and zero warnings. In the materialized SRT the three noise
+boundaries render as **identical** millisecond timestamps (`00:52:09,100`, `00:56:30,640`, `01:07:01,960` each
+appearing as one cue's end and the next cue's start), confirming the discrepancy is unobservable at every
+level that matters. Nine focused tests cover the boundary (including the three real values), the verbatim
+preservation guarantee, an overlap just past the tolerance, a millisecond overlap, a zero-length segment, an
+inverted segment within the tolerance, and out-of-order segments. The complete 3336-test suite passes.
+
+`PATCH-0039` explicitly leaves three observed concerns un-re-scoped, each needing its own gate evaluation:
+`§15` L-10 still discards a complete transcription on rejection (85.5 minutes lost in this run) because the
+adapter writes nothing before admission; the engine invocation sets no `vad_filter` and leaves
+`condition_on_previous_text` at library default, which produced hallucinated fragments and a four-fold
+repetition loop across a 195-second instructor-absent region; and replacement characters (`U+FFFD`, four
+occurrences) in engine output reach downstream artifacts verbatim under A-11.

@@ -36,6 +36,14 @@ intake?**
 - Segments carry `start`/`end` in **seconds** (finite, `start >= 0`, `end > start` — zero-length spans rejected),
   must be non-decreasing in `start` and non-overlapping (touching boundaries allowed), and `text` is required,
   non-blank, and preserved exactly (Korean/non-ASCII preserved). An **empty** (zero-segment) result is rejected.
+- Non-overlap is judged between **instants**, not float representations (`PATCH-0039`). Adjacency admits when
+  `segment[i+1].start >= segment[i].end - TIMING_BOUNDARY_TOLERANCE_SECONDS` (`1e-6` s): a provider that derives
+  a segment's `end` and the next segment's `start` through different floating-point paths emits values that
+  differ in the last bits while denoting one instant, and that is the touching case A-10 already allows. The
+  tolerance is confined to the adjacency comparison — `start >= 0` and `end > start` stay exact, so it never
+  admits a zero-length or inverted segment, and at `1e-6` s it never reaches the released SRT millisecond grid.
+  It governs **admission only**: submitted timestamps are persisted verbatim, and it participates in no
+  identity, `content_fingerprint`, or anchor.
 
 ## Identity, idempotency, and conflict
 
