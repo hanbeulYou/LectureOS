@@ -210,6 +210,10 @@ Findings recorded without recommendation:
   23 and 60 segments. `§15` L-8's reuse-before-rerun rule already anticipates ASR non-determinism,
   so no released contract is violated, but it means no configuration can be evaluated from a single
   run.
+- Reproducibility follows the VAD, not the conditioning. Both `vad_filter=True` variants returned
+  **bit-identical** output across runs — same segment count, same text, same timestamps — while both
+  `vad_filter=False` variants did not (23/60 and 30/33). The silent regions are what drive the
+  decoder into temperature fallback, and removing them removes the sampling.
 - Both `condition_on_previous_text=False` variants recovered `사군자` and `메란 국죽`, which the
   baseline did not — the same terminology class the M1 record flagged and the correction candidate
   targeted.
