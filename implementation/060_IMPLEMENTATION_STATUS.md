@@ -3294,3 +3294,26 @@ adapter writes nothing before admission; the engine invocation sets no `vad_filt
 `condition_on_previous_text` at library default, which produced hallucinated fragments and a four-fold
 repetition loop across a 195-second instructor-absent region; and replacement characters (`U+FFFD`, four
 occurrences) in engine output reach downstream artifacts verbatim under A-11.
+
+## Full-Length Real Media End-to-End Validation
+
+- Record: `122_FULL_LENGTH_REAL_MEDIA_E2E_VALIDATION.md`
+- Status: **COMPLETE** — validation only; no contract, schema, migration, or default changed
+- Input: 7355.845 s / 32,391,572,455 byte classroom lecture, `faster-whisper` `large-v3`, `language=ko`
+
+The first end-to-end validation at production length, superseding the M1 record's 96-second scope as
+the reference for pipeline behaviour on real media. Media Import through Edit Export completed and
+three independently built repositories validate `healthy` at schema v53. After `PATCH-0039` the
+released `local_asr_cli` path completes with no normalization, hand-editing, or alternate entry
+point, and the stored result was confirmed to contain boundaries the pre-patch rule would have
+rejected. Every stage after ASR runs in under one second at 2564-cue scale; the pipeline's cost at
+this length is entirely the ASR execution.
+
+Three defects remain open, all recorded as explicit `PATCH-0039` non-goals and none resolved here:
+complete transcription loss on rejection (High, operational, `§15` L-10); hallucination and
+repetition on silent regions reaching the published SRT (High, correctness, `§15` engine
+invocation); and `U+FFFD` passthrough (Low, cosmetic, correct under `§14` A-11). A 4-way
+`vad_filter` / `condition_on_previous_text` diagnostic was recorded as evidence for the second; it
+found that the two parameters trade real-speech loss against hallucination reduction and that the
+current default is not reproducible across runs, so no default was changed and the question remains
+open for an Architect Decision.
