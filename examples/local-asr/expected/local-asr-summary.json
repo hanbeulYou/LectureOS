@@ -1,9 +1,9 @@
 {
-  "admission_id": "provider-transcript-admission:6ae3f3acef3a74e4229ae8a9dbe13bdd93cbc6b4233359fc4aa6b96cab52ab40",
-  "content_fingerprint": "bf1bb76211741a35369ff7b7ad13dfd44035d44686a023bbd842765a169a9778",
+  "admission_id": "provider-transcript-admission:e5d0a6d80917d113df2461c1fcda605824fad2e11b2e859080f6eb671c761b45",
+  "content_fingerprint": "63dbf5f99275732ac8f18b9d9d2be9759eff5c71085bafd860c1f3408a07bfc8",
   "intake_id": "transcript-source-intake:sha256:7be6a9582ff6c7bd4e66c052dc634a38b88909402f2fb330d663000d7f2079a5",
   "media_id": "sha256:7be6a9582ff6c7bd4e66c052dc634a38b88909402f2fb330d663000d7f2079a5",
-  "provider_transcript_result_id": "provider-transcript-result:6ae3f3acef3a74e4229ae8a9dbe13bdd93cbc6b4233359fc4aa6b96cab52ab40",
-  "raw_transcript_id": "raw-transcript:6ae3f3acef3a74e4229ae8a9dbe13bdd93cbc6b4233359fc4aa6b96cab52ab40",
+  "provider_transcript_result_id": "provider-transcript-result:e5d0a6d80917d113df2461c1fcda605824fad2e11b2e859080f6eb671c761b45",
+  "raw_transcript_id": "raw-transcript:e5d0a6d80917d113df2461c1fcda605824fad2e11b2e859080f6eb671c761b45",
   "segment_count": 3
 }

@@ -42,6 +42,11 @@ DEFAULT_DEVICE = "cpu"
 DEFAULT_COMPUTE_TYPE = "int8"
 _PROVIDER_RESULT_REF_PREFIX = "local-asr"
 
+# 040 §15 L-7 / PATCH-0040 P-4: the reference grammar is versioned. v1
+# (`local-asr:model=…:lang=…:media=…`) is released, stays valid and readable, and is never generated
+# again; v2 additionally carries the approved provider configuration.
+PROVIDER_RESULT_REF_VERSION = "v2"
+
 
 class LocalAsrError(Exception):
     """Base class for local ASR execution failures (operational, not repository corruption)."""
@@ -73,6 +78,38 @@ class LocalAsrEngineError(LocalAsrError):
 
 class LocalAsrOutputError(LocalAsrError):
     """The engine produced output that is not admissible as a provider-neutral document."""
+
+
+@dataclass(frozen=True, slots=True)
+class LocalAsrProviderConfiguration:
+    """The engine decoding parameters LectureOS declares rather than inherits (040 §15 L-15).
+
+    Application owns these because they change the emitted text and therefore the canonical Raw Transcript
+    (PATCH-0040 P-1). Only the parameters this contract actually decides are represented — this is deliberately
+    not a general settings framework, and a parameter absent here is one LectureOS has taken no position on and
+    leaves to the engine.
+
+    ``condition_on_previous_text=False`` is the approved production value (P-2). It configures the provider
+    **before** it decodes; it is never a filter over what the provider returned (P-7).
+    """
+
+    condition_on_previous_text: bool = False
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.condition_on_previous_text, bool):
+            raise LocalAsrError("condition_on_previous_text must be a boolean")
+
+    @property
+    def reference_fragment(self) -> str:
+        """This configuration's contribution to the versioned provider-result reference (L-7)."""
+
+        return f"cond_prev_text={'true' if self.condition_on_previous_text else 'false'}"
+
+
+# 040 §15 L-15 / PATCH-0040 P-2: the sole approved production configuration. There is deliberately no
+# CLI flag, environment variable, or configuration file that selects a different value — an override is
+# the bypass P-1 exists to prevent. Diagnostic exploration happens outside this path and admits nothing.
+APPROVED_LOCAL_ASR_CONFIGURATION = LocalAsrProviderConfiguration(condition_on_previous_text=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,22 +178,34 @@ class LocalAsrEngineRunner(Protocol):
         language: str | None,
         device: str,
         compute_type: str,
+        condition_on_previous_text: bool,
     ) -> LocalAsrResult: ...
 
 
 def derive_provider_result_ref(
-    source_media_id: SourceMediaId, model: str, language: str | None
+    source_media_id: SourceMediaId,
+    model: str,
+    language: str | None,
+    configuration: LocalAsrProviderConfiguration = APPROVED_LOCAL_ASR_CONFIGURATION,
 ) -> str:
-    """Deterministic provider-result reference for a local ASR execution.
+    """Deterministic, versioned provider-result reference for a local ASR execution (040 §15 L-7).
 
-    Encodes the semantic execution request — model, requested language, and source content identity — so distinct
-    model/language/source produce distinct admission anchors. Device/compute-type are operational performance
-    settings, not semantic identity, and are intentionally excluded.
+    Encodes the semantic execution request — model, requested language, the approved provider configuration, and
+    source content identity — so a distinct model, language, configuration, or source produces a distinct
+    admission anchor. Device/compute-type stay excluded: they serve the same request faster without changing the
+    emitted text, whereas the configuration changes the text and therefore the canonical Raw Transcript
+    (PATCH-0040 P-3).
+
+    This emits **v2** only. Released v1 references stay valid and readable, are never rewritten or re-derived,
+    and are never re-interpreted as carrying a configuration they do not state (P-4). An intake holding a v1
+    admission therefore will not match a v2 anchor, so L-8 reuse does not fire and a second Raw Transcript is
+    admitted — permitted by §14 A-7, with §16 Selection deciding which is authoritative (P-5).
     """
 
     return (
-        f"{_PROVIDER_RESULT_REF_PREFIX}:model={model}:"
-        f"lang={language or 'auto'}:media={source_media_id.value}"
+        f"{_PROVIDER_RESULT_REF_PREFIX}:{PROVIDER_RESULT_REF_VERSION}:model={model}:"
+        f"lang={language or 'auto'}:{configuration.reference_fragment}:"
+        f"media={source_media_id.value}"
     )
 
 
@@ -173,6 +222,7 @@ class LocalAsrTranscriptionService:
         engine_runner: LocalAsrEngineRunner,
         *,
         provider: str = FASTER_WHISPER_PROVIDER,
+        configuration: LocalAsrProviderConfiguration = APPROVED_LOCAL_ASR_CONFIGURATION,
     ) -> None:
         self._intakes = intake_query
         self._source_media = source_media_query
@@ -181,6 +231,17 @@ class LocalAsrTranscriptionService:
         self._source_verifier = source_verifier
         self._engine = engine_runner
         self._provider = provider
+        self._configuration = configuration
+
+    @property
+    def configuration(self) -> LocalAsrProviderConfiguration:
+        """The provider configuration every execution through this service uses (040 §15 L-15).
+
+        It is fixed at construction, not per call, so no caller can select a different value on the production
+        path. Tests that must exercise identity separation build a second service explicitly.
+        """
+
+        return self._configuration
 
     def transcribe(
         self,
@@ -211,7 +272,9 @@ class LocalAsrTranscriptionService:
                 "unknown source media: the intake references a missing Source Media record"
             )
 
-        provider_result_ref = derive_provider_result_ref(source_media_id, model, language)
+        provider_result_ref = derive_provider_result_ref(
+            source_media_id, model, language, self._configuration
+        )
 
         # Reuse-before-rerun: if an equivalent result was already admitted, return it WITHOUT running the engine
         # (ordinary ASR non-determinism would otherwise conflict on replay).
@@ -234,6 +297,7 @@ class LocalAsrTranscriptionService:
             language=language,
             device=device,
             compute_type=compute_type,
+            condition_on_previous_text=self._configuration.condition_on_previous_text,
         )
 
         document = self._to_document(result, model, provider_result_ref)
@@ -269,9 +333,11 @@ class LocalAsrTranscriptionService:
 
 
 __all__ = [
+    "APPROVED_LOCAL_ASR_CONFIGURATION",
     "DEFAULT_COMPUTE_TYPE",
     "DEFAULT_DEVICE",
     "FASTER_WHISPER_PROVIDER",
+    "PROVIDER_RESULT_REF_VERSION",
     "LocalAsrDependencyError",
     "LocalAsrEngineError",
     "LocalAsrEngineRunner",
@@ -279,6 +345,7 @@ __all__ = [
     "LocalAsrIntakeError",
     "LocalAsrModelError",
     "LocalAsrOutputError",
+    "LocalAsrProviderConfiguration",
     "LocalAsrResult",
     "LocalAsrSegment",
     "LocalAsrSourceChangedError",

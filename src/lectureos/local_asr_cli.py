@@ -22,6 +22,7 @@ import sys
 from typing import Sequence
 
 from lectureos.application.local_asr_transcription import (
+    APPROVED_LOCAL_ASR_CONFIGURATION,
     LocalAsrError,
     LocalAsrTranscriptionResult,
 )
@@ -149,6 +150,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"provider transcript result: {admission.provider_transcript_result_id.value}")
     print(f"canonical raw transcript: {admission.raw_transcript_id.value}")
     print(f"provider/model: {admission.provider_reference}/{admission.provider_model}")
+    print(f"provider result reference: {admission.provider_result_ref}")
+    print(
+        "provider configuration: condition_on_previous_text="
+        f"{APPROVED_LOCAL_ASR_CONFIGURATION.condition_on_previous_text} "
+        "(approved; vad_filter not enabled)"
+    )
     print(f"segments: {admission.segment_count}")
     print(f"real ASR execution occurred: {'yes' if result.executed else 'no (reused prior admission)'}")
     return 0

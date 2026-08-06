@@ -8,9 +8,14 @@ installed; its absence surfaces as an explicit `LocalAsrDependencyError`. A miss
 and their text preserved verbatim; the detected/used language is captured truthfully. It makes no shell call and
 constructs no command string (there is no subprocess), so there is no shell-injection surface.
 
+The decoding parameters LectureOS has an opinion about are **declared by Application and passed explicitly**
+(040 §15 L-15 / PATCH-0040 P-1), so an upstream change to the library's defaults cannot alter LectureOS
+behaviour. `vad_filter` and every VAD setting are deliberately absent: L-16 declines them because the measured
+behaviour deletes real speech and produces unusable segment durations.
+
 The `model_factory` seam lets tests drive the exact invocation shape (model/device/compute-type propagation,
-segment/text extraction, error translation) with a fake model, without the real dependency or a downloaded
-model.
+configuration propagation, segment/text extraction, error translation) with a fake model, without the real
+dependency or a downloaded model.
 """
 
 from __future__ import annotations
@@ -27,7 +32,8 @@ from lectureos.application.local_asr_transcription import (
     LocalAsrSegment,
 )
 
-# A factory that builds an engine model exposing ``transcribe(media_path, language=...) -> (segments, info)``.
+# A factory that builds an engine model exposing
+# ``transcribe(media_path, language=..., condition_on_previous_text=...) -> (segments, info)``.
 ModelFactory = Callable[[str, str, str], object]
 
 
@@ -61,6 +67,7 @@ class FasterWhisperEngineRunner:
         language: str | None,
         device: str,
         compute_type: str,
+        condition_on_previous_text: bool,
     ) -> LocalAsrResult:
         factory = self._factory()
         try:
@@ -73,7 +80,15 @@ class FasterWhisperEngineRunner:
             ) from error
 
         try:
-            segments_iter, info = engine_model.transcribe(media_path, language=language)
+            # 040 §15 L-15 / PATCH-0040 P-1: the Application-declared configuration is passed explicitly, so an
+            # upstream change to the library's default cannot alter LectureOS behaviour. No VAD parameter is
+            # passed here — L-16 declines `vad_filter` and every VAD setting, and adding one would be a
+            # contract change, not a tuning decision.
+            segments_iter, info = engine_model.transcribe(
+                media_path,
+                language=language,
+                condition_on_previous_text=condition_on_previous_text,
+            )
             segments = tuple(
                 LocalAsrSegment(
                     start=float(segment.start),

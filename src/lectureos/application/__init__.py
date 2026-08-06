@@ -400,7 +400,9 @@ from .effective_transcript_consumption import (
     derive_consumption_identity,
 )
 from .local_asr_transcription import (
+    APPROVED_LOCAL_ASR_CONFIGURATION,
     FASTER_WHISPER_PROVIDER,
+    PROVIDER_RESULT_REF_VERSION,
     LocalAsrDependencyError,
     LocalAsrEngineError,
     LocalAsrEngineRunner,
@@ -408,6 +410,7 @@ from .local_asr_transcription import (
     LocalAsrIntakeError,
     LocalAsrModelError,
     LocalAsrOutputError,
+    LocalAsrProviderConfiguration,
     LocalAsrResult,
     LocalAsrSegment,
     LocalAsrSourceChangedError,
@@ -787,6 +790,9 @@ __all__ = [
     "LocalAsrSourceUnavailableError",
     "LocalAsrTranscriptionResult",
     "LocalAsrTranscriptionService",
+    "LocalAsrProviderConfiguration",
+    "APPROVED_LOCAL_ASR_CONFIGURATION",
+    "PROVIDER_RESULT_REF_VERSION",
     "SourceMediaLocationVerifier",
     "derive_provider_result_ref",
     "CurrentRawTranscriptSelection",

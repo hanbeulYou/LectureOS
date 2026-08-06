@@ -58,7 +58,9 @@ class _FakeEngineRunner:
     def __init__(self) -> None:
         self.invocations: list[dict] = []
 
-    def transcribe(self, *, media_path, model, language, device, compute_type):
+    def transcribe(
+        self, *, media_path, model, language, device, compute_type, condition_on_previous_text
+    ):
         self.invocations.append(
             {
                 "media_path": media_path,
@@ -66,6 +68,7 @@ class _FakeEngineRunner:
                 "language": language,
                 "device": device,
                 "compute_type": compute_type,
+                "condition_on_previous_text": condition_on_previous_text,
             }
         )
         return LocalAsrResult(
