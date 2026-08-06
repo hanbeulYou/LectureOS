@@ -30,6 +30,8 @@
   - `../patches/PATCH-0027-current-corrected-revision-selection.md`
   - `../patches/PATCH-0028-effective-transcript-consumption-boundary.md`
   - `../patches/PATCH-0029-effective-transcript-sourced-subtitle-candidate-contract.md`
+  - `../patches/PATCH-0039-provider-transcript-admission-timing-representation-tolerance.md`
+  - `../patches/PATCH-0040-local-asr-previous-text-conditioning-policy.md`
 
 ## Purpose
 
