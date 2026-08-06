@@ -611,10 +611,25 @@ Artifact로 persist하지 않는다.
 `model`은 operator가 지정한 식별자. 반환된 segment는 순서·시간·text를 그대로 보존하고, 사용/감지 언어는 사실대로
 기록한다.
 
-**Provider-Result Reference (Confirmed, L-7):** provider-result reference는 **결정적**이다 —
-`local-asr:model=<model>:lang=<language-or-auto>:media=<source_media_id>` — 즉 semantic request(model, 요청 language,
-source content identity)를 인코딩한다. device·compute-type은 operational 성능 설정이며 semantic identity가 아니므로
-reference에서 제외한다. 어떤 semantic identity에도 wall-clock·randomness가 관여하지 않는다.
+**Provider-Result Reference (Confirmed, L-7; `PATCH-0040` P-3/P-4로 개정):** provider-result reference는
+**결정적**이며 **버전이 있다**. 승인된 문법은
+
+```text
+v2: local-asr:v2:model=<model>:lang=<language-or-auto>:cond_prev_text=<true|false>:media=<source_media_id>
+v1: local-asr:model=<model>:lang=<language-or-auto>:media=<source_media_id>   (released, 재생성하지 않음)
+```
+
+즉 semantic request(model, 요청 language, **승인된 provider configuration**, source content identity)를
+인코딩한다. device·compute-type은 operational 성능 설정이며 semantic identity가 아니므로 reference에서 계속
+제외한다 — 같은 요청을 더 빠르게 처리할 뿐 출력 text를 바꾸지 않기 때문이다. 반대로 `condition_on_previous_text`는
+출력 text를 바꾸므로 semantic이다(P-3). 이미 저장된 v1 reference는 유효하게 유지되고 재작성·재파생·재해석되지
+않으며, v1은 다시 생성되지 않는다(P-4). 어떤 semantic identity에도 wall-clock·randomness가 관여하지 않는다.
+
+reference가 §14 A-6 anchor에 참여하므로, v1 admission을 가진 intake는 v2 anchor와 일치하지 않아 L-8
+reuse-before-rerun이 발동하지 않고 엔진이 다시 실행되어 v2 reference로 두 번째 Raw Transcript가 admit된다. 이는
+§14 A-7(하나의 intake는 여러 provider 결과를 가질 수 있다)이 이미 허용하는 상태이며, 어느 쪽이 authoritative한지는
+adapter가 아니라 §16 Current Raw Transcript Selection이 결정한다. 이전 결과는 supersede·무효화·삭제되지 않고
+자동 재선택도 일어나지 않는다(P-5).
 
 **Replay (Confirmed, L-8):** admission identity가 anchor에서 결정적이므로 adapter는 **엔진을 실행하기 전에** 이미
 admit된 동등 결과가 있는지 확인하고 있으면 **재실행 없이 재사용**한다(일반적 ASR 비결정성으로 인한 conflict를 회피).
@@ -641,15 +656,52 @@ admission 계약을 바꾸지 않고 교체 가능하다. 이 slice는 provider 
 **Deferred (이후 milestone, L-14):** 다른 엔진/provider·provider registry·plugin discovery·cloud ASR·credential
 관리·model downloader/catalog·GPU 강제·background job·durable queue·retry scheduler·progress·cancellation·streaming/
 microphone·diarization·speaker 식별·word/token timestamp·confidence rewriting·자동 correction·translation·subtitle/
-NLE/rendering 변경·managed media storage·영구 추출-audio 저장·일반화된 ffmpeg framework. 이들 deferred 개념의
+NLE/rendering 변경·managed media storage·영구 추출-audio 저장·일반화된 ffmpeg framework·**VAD(`vad_filter` 및 모든
+VAD parameter, L-16 참조)**·**`hallucination_silence_threshold`·`temperature`·`beam_size`·`no_speech_threshold`·
+`log_prob_threshold`·`compression_ratio_threshold` 조정**·**환각 heuristic 탐지/삭제**. 이들 deferred 개념의
 placeholder는 도입하지 않는다.
+
+**Provider Configuration (Confirmed, L-15; `PATCH-0040` P-1/P-2/P-6/P-7):** LectureOS가 의존하는 엔진 decoding
+parameter는 engine detail이 아니라 **Application이 소유하는 제품 계약**이다. 승인된 값은 Application에 명시적으로
+선언되고 매 production 실행마다 엔진에 **명시적으로 전달**된다 — 설치된 라이브러리의 암묵적 default에 의존하지
+않으므로 upstream default 변경이 LectureOS 동작을 바꿀 수 없다(P-1). L-11 replaceability는 유지된다: 교체 엔진은
+동일한 선언 configuration을 받아들여야 하며 그렇지 않으면 동등한 대체가 아니다.
+
+승인된 production configuration은 **`condition_on_previous_text = False`** 이며 production 경로의 유일한 승인
+값이다(P-2). 다른 값을 선택하는 CLI 플래그·환경 변수·설정 파일은 두지 않는다 — override는 P-1이 막으려는 우회
+그 자체다. 진단 목적 탐색은 production 경로 밖에서 수행하며 아무것도 admit하지 않는다.
+
+provenance는 released 구조를 재사용한다: `provider_result_ref`가 이미 `ProviderTranscriptAdmission`과
+`ProviderTranscriptResult` 증거의 canonical persisted field이므로, provider·model·declared language·conditioning
+설정 전부가 새 column·table·migration 없이 기록만으로 복원된다(P-6).
+
+이 설정은 provider가 **디코딩하기 전에** 적용되는 configuration이지 provider가 반환한 결과에 대한 filter가
+아니다. 승인된 configuration 아래 provider가 낸 text는 그대로 admit되어 canonical Raw Transcript로 보존된다 —
+LectureOS는 이 결정을 근거로 어떤 segment도 삭제하지 않고 text를 고치지 않으며 timestamp를 조정하지 않는다.
+L-6과 §14 A-11은 변경되지 않으며, 그렇기 때문에 이 계약은 출력 필터링의 근거로 읽힐 수 없다(P-7).
+
+**VAD Non-adoption and Residual Hallucination (Confirmed, L-16; `PATCH-0040` P-8/P-9):** `vad_filter`는
+production default로 활성화하지 않으며 어떤 VAD parameter도 이 계약에서 도입하지 않는다. 근거는 측정된 동작이
+**실제 강사 발화를 삭제**하고 downstream에서 사용할 수 없는 duration의 segment를 만들기 때문이다 — **환각 0건
+자체가 녹음된 발화 손실을 정당화하지 않으며**, 2초 발화에 212초 segment는 자막 단위로 성립하지 않는다. 이는 사유가
+기록된 deferral이지 영구 금지가 아니다: 발화 손실과 segment duration을 함께 해결하는 이후 계약은 VAD를 채택할 수
+있다.
+
+이 결정은 환각 없는 전사를 보장하는 계약이 **아니다**. 승인된 configuration에서도 환각은 잔존하고 실행 간
+비결정성도 남으며(L-8이 이미 예상·처리한다), 잔존 환각은 이미 존재하는 계약 — §17 Correction Candidate
+admission, §18 Human Authority, `042` 분석 finding — 이 처리한다. 환각 의심 구간에 대한 heuristic 탐지·점수화·
+자동 삭제는 도입하지 않으며 이 계약에서 추론될 수 없다(P-9).
 
 **Canonical Invariants (Confirmed):** (1) §14 admission service가 유일한 쓰기 경로다. (2) 하나의 concrete 엔진
 (faster-whisper)만 통합하며 framework를 만들지 않는다. (3) source는 실행 시 존재·regular-file·fingerprint 재검증된다.
 (4) 바뀐 바이트는 옛 identity로 전사되지 않고 새 import를 요구한다. (5) `SourceMediaId`·record는 변경되지 않는다.
-(6) provider-result reference와 identity는 결정적이며 device/compute·wall-clock을 제외한다. (7) 엔진 실행 전에
+(6) provider-result reference와 identity는 결정적이고 **버전이 있으며** device/compute·wall-clock을 제외하고
+**승인된 provider configuration을 포함한다**; released v1 reference는 재작성·재해석되지 않는다. (7) 엔진 실행 전에
 재사용을 확인한다. (8) admit 전에는 저장소에 아무것도 쓰지 않는다. (9) 엔진 의존성은 optional·격리된다. (10) 스키마
 변경 없음. (11) 엔진은 admission 계약을 바꾸지 않고 교체 가능하다. (12) deferred 개념의 placeholder는 없다.
+(13) 엔진 decoding configuration은 Application이 소유하고 명시적으로 전달하며, 승인 값은
+`condition_on_previous_text = False` 하나뿐이고 production override 경로는 없다. (14) VAD는 발화 손실과 비정상
+duration 때문에 채택하지 않는다. (15) 이 계약은 환각 제거를 보장하지 않고 출력 필터링을 허가하지 않는다.
 
 ## 16. Current Raw Transcript Selection and Downstream Readiness (First Slice)
 
