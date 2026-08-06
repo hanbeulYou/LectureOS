@@ -30,7 +30,10 @@ class _FakeEngine:
             LocalAsrSegment(2.0, 4.0, "강의를 시작합니다"),
         )
 
-    def transcribe(self, *, media_path, model, language, device, compute_type):
+    def transcribe(
+        self, *, media_path, model, language, device, compute_type, condition_on_previous_text
+    ):
+        self.condition_on_previous_text = condition_on_previous_text
         return LocalAsrResult(
             provider="faster-whisper", model=model, language=language or "ko", segments=self._segments
         )
@@ -84,6 +87,31 @@ class LocalAsrCliTests(unittest.TestCase):
         self.assertIn("provider/model: faster-whisper/tiny", out)
         self.assertIn("segments: 2", out)
         self.assertIn("real ASR execution occurred: yes", out)
+
+    def test_output_discloses_the_provider_configuration(self):
+        """040 §15 L-15 (PATCH-0040 P-6): the configuration is visible in the ordinary result."""
+
+        with mock.patch.object(
+            cli, "compose_sqlite_local_asr_transcription_service", _patched_compose(_FakeEngine())
+        ):
+            code, out, _err = _run(self._argv(extra=["--language", "ko"]))
+        self.assertEqual(code, 0)
+        self.assertIn("provider configuration: condition_on_previous_text=False", out)
+        self.assertIn("vad_filter not enabled", out)
+        self.assertIn("provider result reference: local-asr:v2:", out)
+        self.assertIn("cond_prev_text=false", out)
+
+    def test_cli_exposes_no_override_for_the_configuration(self):
+        """P-2: an override flag would be the bypass the contract exists to prevent."""
+
+        help_text = cli._parser().format_help()
+        for forbidden in (
+            "--condition-on-previous-text",
+            "--vad",
+            "--vad-filter",
+            "--no-condition",
+        ):
+            self.assertNotIn(forbidden, help_text)
 
     def test_replay_reports_reused_without_execution(self):
         engine = _FakeEngine()

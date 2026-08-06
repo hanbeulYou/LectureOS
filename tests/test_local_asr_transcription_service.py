@@ -4,12 +4,14 @@ import unittest
 
 from lectureos.application.identities import TranscriptSourceIntakeId
 from lectureos.application.local_asr_transcription import (
+    APPROVED_LOCAL_ASR_CONFIGURATION,
     LocalAsrDependencyError,
     LocalAsrEngineError,
     LocalAsrError,
     LocalAsrIntakeError,
     LocalAsrModelError,
     LocalAsrOutputError,
+    LocalAsrProviderConfiguration,
     LocalAsrResult,
     LocalAsrSegment,
     LocalAsrSourceChangedError,
@@ -20,6 +22,7 @@ from lectureos.application.local_asr_transcription import (
 from lectureos.application.media_import import SourceMediaRecord, derive_media_identity
 from lectureos.application.provider_transcript_admission import (
     ProviderTranscriptAdmissionService,
+    derive_provider_transcript_admission_identity,
 )
 from lectureos.application.transcript_source_intake import (
     TranscriptSourceIntake,
@@ -87,9 +90,18 @@ class _FakeEngine:
         self.error = error
         self.invocations = []
 
-    def transcribe(self, *, media_path, model, language, device, compute_type):
+    def transcribe(
+        self, *, media_path, model, language, device, compute_type, condition_on_previous_text
+    ):
         self.invocations.append(
-            dict(media_path=media_path, model=model, language=language, device=device, compute_type=compute_type)
+            dict(
+                media_path=media_path,
+                model=model,
+                language=language,
+                device=device,
+                compute_type=compute_type,
+                condition_on_previous_text=condition_on_previous_text,
+            )
         )
         if self.error is not None:
             raise self.error
@@ -103,7 +115,9 @@ class _FakeEngine:
         )
 
 
-def _service(*, intake=True, media=True, verifier=None, engine=None, store=None):
+def _service(
+    *, intake=True, media=True, verifier=None, engine=None, store=None, configuration=None
+):
     intakes = _FakeQuery(
         {_INTAKE_ID: TranscriptSourceIntake(TranscriptSourceIntakeId(_INTAKE_ID), _MEDIA_ID)}
         if intake
@@ -114,8 +128,9 @@ def _service(*, intake=True, media=True, verifier=None, engine=None, store=None)
     admission_service = ProviderTranscriptAdmissionService(intakes, source_media, store, store)
     verifier = verifier if verifier is not None else _FakeVerifier()
     engine = engine if engine is not None else _FakeEngine()
+    kwargs = {} if configuration is None else {"configuration": configuration}
     service = LocalAsrTranscriptionService(
-        intakes, source_media, store, admission_service, verifier, engine
+        intakes, source_media, store, admission_service, verifier, engine, **kwargs
     )
     return service, verifier, engine, store
 
@@ -267,6 +282,135 @@ class LocalAsrOrchestrationTests(unittest.TestCase):
         self.assertEqual(ref1, ref2)
         self.assertNotEqual(ref1, derive_provider_result_ref(_MEDIA_ID, "tiny", "en"))
         self.assertNotEqual(ref1, derive_provider_result_ref(_MEDIA_ID, "base", "ko"))
+
+
+class LocalAsrProviderConfigurationTests(unittest.TestCase):
+    """040 §15 L-15/L-16 (PATCH-0040): the declared provider configuration and its identity role."""
+
+    def test_approved_configuration_disables_previous_text_conditioning(self):
+        """P-2: the sole approved production value."""
+
+        self.assertFalse(APPROVED_LOCAL_ASR_CONFIGURATION.condition_on_previous_text)
+
+    def test_engine_receives_the_setting_explicitly(self):
+        """P-1: passed explicitly, never inherited from the installed library's default."""
+
+        service, _, engine, _ = _service()
+        service.transcribe(intake_id=_INTAKE_ID, model="tiny", language="ko")
+        self.assertIn("condition_on_previous_text", engine.invocations[0])
+        self.assertIs(engine.invocations[0]["condition_on_previous_text"], False)
+
+    def test_setting_is_fixed_regardless_of_library_default(self):
+        """P-1: the value is pinned to the contract, not to whatever the library currently defaults to."""
+
+        service, _, engine, _ = _service()
+        service.transcribe(intake_id=_INTAKE_ID, model="tiny", language="ko")
+        self.assertEqual(
+            engine.invocations[0]["condition_on_previous_text"],
+            APPROVED_LOCAL_ASR_CONFIGURATION.condition_on_previous_text,
+        )
+
+    def test_vad_is_never_passed_on_the_production_path(self):
+        """L-16/P-8: no VAD parameter is introduced by this contract."""
+
+        service, _, engine, _ = _service()
+        service.transcribe(intake_id=_INTAKE_ID, model="tiny", language="ko")
+        for forbidden in ("vad_filter", "vad_parameters", "speech_pad_ms", "min_silence_duration_ms"):
+            self.assertNotIn(forbidden, engine.invocations[0])
+
+    def test_service_configuration_is_fixed_at_construction(self):
+        """P-2: there is no per-call override, so no caller can select a different value."""
+
+        service, _, _, _ = _service()
+        self.assertEqual(service.configuration, APPROVED_LOCAL_ASR_CONFIGURATION)
+
+    def test_reference_records_the_configuration_as_provenance(self):
+        """P-6: the setting is legible from the persisted record alone, with no new column."""
+
+        service, _, _, _ = _service()
+        result = service.transcribe(intake_id=_INTAKE_ID, model="tiny", language="ko")
+        self.assertIn("cond_prev_text=false", result.admission.provider_result_ref)
+        self.assertIn("local-asr:v2:", result.admission.provider_result_ref)
+
+    def test_differing_configuration_is_not_the_same_execution(self):
+        """P-3: a different setting is a different semantic request — distinct reference and identity."""
+
+        off = derive_provider_result_ref(
+            _MEDIA_ID, "tiny", "ko", LocalAsrProviderConfiguration(condition_on_previous_text=False)
+        )
+        on = derive_provider_result_ref(
+            _MEDIA_ID, "tiny", "ko", LocalAsrProviderConfiguration(condition_on_previous_text=True)
+        )
+        self.assertNotEqual(off, on)
+        intake = TranscriptSourceIntakeId(_INTAKE_ID)
+        self.assertNotEqual(
+            derive_provider_transcript_admission_identity(intake, "faster-whisper", "tiny", off),
+            derive_provider_transcript_admission_identity(intake, "faster-whisper", "tiny", on),
+        )
+
+    def test_admissions_under_different_configurations_do_not_collide(self):
+        """P-3/P-5 end to end: two services, two admitted results, both engine runs actually happen."""
+
+        store = _AdmissionStore()
+        approved, _, engine_off, _ = _service(store=store)
+        other, _, engine_on, _ = _service(
+            store=store, configuration=LocalAsrProviderConfiguration(condition_on_previous_text=True)
+        )
+        first = approved.transcribe(intake_id=_INTAKE_ID, model="tiny", language="ko")
+        second = other.transcribe(intake_id=_INTAKE_ID, model="tiny", language="ko")
+        self.assertTrue(first.executed and second.executed)
+        self.assertNotEqual(first.admission.identity, second.admission.identity)
+        self.assertNotEqual(first.admission.raw_transcript_id, second.admission.raw_transcript_id)
+        self.assertEqual(len(store.records), 2)
+        self.assertIs(engine_off.invocations[0]["condition_on_previous_text"], False)
+        self.assertIs(engine_on.invocations[0]["condition_on_previous_text"], True)
+
+    def test_released_v1_reference_is_not_regenerated(self):
+        """P-4: v1 stays released; nothing re-derives it and nothing re-interprets it."""
+
+        ref = derive_provider_result_ref(_MEDIA_ID, "tiny", "ko")
+        legacy = f"local-asr:model=tiny:lang=ko:media={_MEDIA_ID.value}"
+        self.assertNotEqual(ref, legacy)
+        self.assertTrue(ref.startswith("local-asr:v2:"))
+        self.assertNotIn("cond_prev_text", legacy)
+
+    def test_v1_admission_does_not_satisfy_a_v2_anchor(self):
+        """P-5: reuse does not fire across the grammar change, and the prior record is left untouched."""
+
+        intake = TranscriptSourceIntakeId(_INTAKE_ID)
+        legacy_ref = f"local-asr:model=tiny:lang=ko:media={_MEDIA_ID.value}"
+        self.assertNotEqual(
+            derive_provider_transcript_admission_identity(
+                intake, "faster-whisper", "tiny", legacy_ref
+            ),
+            derive_provider_transcript_admission_identity(
+                intake, "faster-whisper", "tiny", derive_provider_result_ref(_MEDIA_ID, "tiny", "ko")
+            ),
+        )
+
+    def test_configuration_rejects_a_non_boolean(self):
+        with self.assertRaises(LocalAsrError):
+            LocalAsrProviderConfiguration(condition_on_previous_text="false")
+
+    def test_raw_output_is_preserved_verbatim_under_the_configuration(self):
+        """P-7: the setting configures the provider; it never filters or edits what came back."""
+
+        engine = _FakeEngine(
+            result=LocalAsrResult(
+                provider="faster-whisper",
+                model="tiny",
+                language="ko",
+                segments=(
+                    LocalAsrSegment(0.0, 2.0, " 화장실 좀 갔다 올게"),
+                    LocalAsrSegment(2.0, 4.0, " o"),
+                ),
+            )
+        )
+        service, _, _, store = _service(engine=engine)
+        result = service.transcribe(intake_id=_INTAKE_ID, model="tiny", language="ko")
+        self.assertEqual(result.admission.segment_count, 2)
+        admitted = store.records[result.admission.identity.value]
+        self.assertEqual(admitted.segment_count, 2)
 
 
 if __name__ == "__main__":

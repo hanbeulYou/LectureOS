@@ -34,8 +34,10 @@ class _FakeModel:
         self._info = info
         self._transcribe_error = transcribe_error
 
-    def transcribe(self, media_path, language=None):
-        self._record["transcribe"] = {"media_path": media_path, "language": language}
+    def transcribe(self, media_path, **kwargs):
+        # Recorded verbatim so a test can assert both what IS passed (the declared configuration)
+        # and what is NOT (any VAD parameter, per 040 §15 L-16).
+        self._record["transcribe"] = {"media_path": media_path, **kwargs}
         if self._transcribe_error is not None:
             raise self._transcribe_error
         return (iter(self._segments), self._info)
@@ -67,9 +69,13 @@ class FasterWhisperEngineRunnerTests(unittest.TestCase):
             language="ko",
             device="cpu",
             compute_type="int8",
+            condition_on_previous_text=False,
         )
         self.assertEqual(record["build"], {"model": "tiny", "device": "cpu", "compute_type": "int8"})
-        self.assertEqual(record["transcribe"], {"media_path": "/tmp/a.wav", "language": "ko"})
+        self.assertEqual(
+            record["transcribe"],
+            {"media_path": "/tmp/a.wav", "language": "ko", "condition_on_previous_text": False},
+        )
         self.assertEqual(result.provider, "faster-whisper")
         self.assertEqual(result.model, "tiny")
         self.assertEqual(result.language, "ko")
@@ -79,13 +85,52 @@ class FasterWhisperEngineRunnerTests(unittest.TestCase):
         self.assertEqual(result.segments[0].text, "안녕")
         self.assertEqual(result.segments[1].text, "하세요")
 
+    def test_configuration_reaches_the_library_and_vad_does_not(self):
+        """040 §15 L-15/L-16 (PATCH-0040 P-1/P-8): what is passed, and what is deliberately not."""
+
+        record = {}
+        runner = FasterWhisperEngineRunner(model_factory=_factory(record))
+        runner.transcribe(
+            media_path="/tmp/a.wav",
+            model="tiny",
+            language="ko",
+            device="cpu",
+            compute_type="int8",
+            condition_on_previous_text=False,
+        )
+        self.assertIs(record["transcribe"]["condition_on_previous_text"], False)
+        for forbidden in (
+            "vad_filter",
+            "vad_parameters",
+            "hallucination_silence_threshold",
+            "temperature",
+            "beam_size",
+        ):
+            self.assertNotIn(forbidden, record["transcribe"])
+
+    def test_configuration_value_is_propagated_not_hardcoded(self):
+        """The runner passes what it is given; the approved value is Application's, not the adapter's."""
+
+        record = {}
+        runner = FasterWhisperEngineRunner(model_factory=_factory(record))
+        runner.transcribe(
+            media_path="/tmp/a.wav",
+            model="tiny",
+            language="ko",
+            device="cpu",
+            compute_type="int8",
+            condition_on_previous_text=True,
+        )
+        self.assertIs(record["transcribe"]["condition_on_previous_text"], True)
+
     def test_used_language_falls_back_to_requested_when_info_absent(self):
         record = {}
         runner = FasterWhisperEngineRunner(
             model_factory=_factory(record, info=_FakeInfo(None))
         )
         result = runner.transcribe(
-            media_path="/tmp/a.wav", model="tiny", language="en", device="cpu", compute_type="int8"
+            media_path="/tmp/a.wav", model="tiny", language="en", device="cpu", compute_type="int8",
+            condition_on_previous_text=False,
         )
         self.assertEqual(result.language, "en")
 
@@ -96,7 +141,7 @@ class FasterWhisperEngineRunnerTests(unittest.TestCase):
         )
         with self.assertRaises(LocalAsrModelError):
             runner.transcribe(
-                media_path="/tmp/a.wav", model="ghost", language=None, device="cpu", compute_type="int8"
+                media_path="/tmp/a.wav", model="ghost", language=None, device="cpu", compute_type="int8", condition_on_previous_text=False
             )
 
     def test_transcribe_failure_becomes_engine_error(self):
@@ -106,7 +151,7 @@ class FasterWhisperEngineRunnerTests(unittest.TestCase):
         )
         with self.assertRaises(LocalAsrEngineError):
             runner.transcribe(
-                media_path="/tmp/a.wav", model="tiny", language=None, device="cpu", compute_type="int8"
+                media_path="/tmp/a.wav", model="tiny", language=None, device="cpu", compute_type="int8", condition_on_previous_text=False
             )
 
     def test_generator_failure_during_iteration_becomes_engine_error(self):
@@ -121,7 +166,7 @@ class FasterWhisperEngineRunnerTests(unittest.TestCase):
         )
         with self.assertRaises(LocalAsrEngineError):
             runner.transcribe(
-                media_path="/tmp/a.wav", model="tiny", language=None, device="cpu", compute_type="int8"
+                media_path="/tmp/a.wav", model="tiny", language=None, device="cpu", compute_type="int8", condition_on_previous_text=False
             )
 
     def test_missing_dependency_becomes_dependency_error(self):
@@ -131,7 +176,12 @@ class FasterWhisperEngineRunnerTests(unittest.TestCase):
         try:
             with self.assertRaises(LocalAsrDependencyError):
                 runner.transcribe(
-                    media_path="/tmp/a.wav", model="tiny", language=None, device="cpu", compute_type="int8"
+                    media_path="/tmp/a.wav",
+                    model="tiny",
+                    language=None,
+                    device="cpu",
+                    compute_type="int8",
+                    condition_on_previous_text=False,
                 )
         finally:
             if saved is not None:
