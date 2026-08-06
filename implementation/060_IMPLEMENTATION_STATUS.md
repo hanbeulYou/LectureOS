@@ -3371,3 +3371,51 @@ P-9 is explicit that hallucination is reduced and not contracted away — one ha
 survived, and the configuration remains non-deterministic across runs, which L-8 already handles.
 Residual hallucination stays with `§17`, `§18`, and `042`; no heuristic detection or automatic
 deletion is introduced or may be inferred.
+
+## Readable Subtitle Cue Composition and Readability Validation (PATCH-0041)
+
+- Record: `124_READABLE_SUBTITLE_CUE_COMPOSITION.md`
+- Blueprint: `docs/041` §16 R-1…R-14, L-1…L-5 (`PATCH-0041`)
+- Status: **COMPLETE**
+- Selected persistence: none — schema remains **v53**, no migration, no new table, column, or identity kind
+- Commits: `feat: add readable subtitle cue composition and readability validation`, `test: cover
+  readable subtitle cue composition and readability validation`, `docs: document readable subtitle
+  cue composition`
+
+`readable_cue_composition v1` is a second generator of the effective-transcript generation, added
+additively beside `deterministic_segment_passthrough v1`. Both hold Candidates for one consumption
+binding with distinct identities, neither is promoted or selected, and adoption stays with the
+released Review and Final Selection boundaries.
+
+No schema change was required because two released structures already carried what the policy needs:
+`derive_effective_candidate_identity` already hashes generator kind and both versions (`§15` E7), and
+`EffectiveSubtitleCue.source_segment_ids` is an ordered tuple documented for non-1:1 segmentation, so
+split and merge lineage are representable as released. The cue `text` column's only constraint is
+non-emptiness, so the canonical `LF` needs nothing new.
+
+Over the preserved 2,564-cue corpus the generator produced 2,574 cues with **exact** text recovery
+against the merge-normalized source, lineage covering every segment once in order, zero overlaps,
+zero cues over 44 characters, 469 two-line cues and none with three, and a minimum duration of
+exactly **100 ms** at millisecond precision — the two `0.020 s` duplicates that stopped Final Cut Pro
+import are merged. Ninety-one warnings and **three** blocking findings remain, all
+`READABILITY_LINE_TOO_LONG` on 42–43 character cues where no break yields two lines of ≤ 22. That is
+a parameter-set property, not an algorithm defect: `maximum_cue_characters = 2 ×
+maximum_line_characters` leaves no slack for break placement, and splitting those cues anyway would
+exceed R-5's contracted trigger. Giving line placement slack needs a new parameter version and
+therefore a PATCH decision, which this milestone does not make.
+
+Duration comparisons reuse the released `PATCH-0039` tolerance. The fixture contains a cue whose true
+duration is exactly `0.100 s` stored as `0.09999999999990905`, and an exact comparison would report
+the product minimum violated by `9e-14` seconds; the same tolerance keeps the three known
+`PATCH-0039` boundary pairs from being reported as overlaps.
+
+Text preservation is stated precisely because R-4 and R-6 must be read together: recovery is exact
+against the **merge-normalized** source — the source with authorized identical-adjacent duplicates
+collapsed — and `merge_normalized_source_text` computes that reference so the invariant is
+executable rather than rhetorical.
+
+The readable Candidate was driven through review preparation, an Accept decision, Final Selection,
+the SRT Artifact and physical materialization on a copy of the real repository (189,075 bytes, 2,574
+cues), with read-only validation `healthy` over 10,425 objects at schema v53 and every released
+passthrough record unchanged. The released `canonical_srt` v1 serializer is unmodified and carries
+the approved line structure verbatim. The complete 3,413-test suite passes.
