@@ -29,7 +29,7 @@ import json
 from dataclasses import dataclass
 from enum import Enum
 from math import isfinite
-from typing import Protocol
+from typing import Callable, Protocol
 
 from lectureos.persistence.errors import PersistenceIdentityCollisionError
 from lectureos.transcript.identities import (
@@ -288,18 +288,56 @@ def build_passthrough_cues(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class SubtitleGeneratorSpec:
+    """One generator of this contract generation: its `§15` E7 identity facts and its cue builder.
+
+    Added by `PATCH-0041` R-2 so a second generator can be introduced **additively**. The passthrough
+    generator's kind, versions, builder, and therefore its Candidate identities and cue output are
+    unchanged; it is simply named here instead of being implicit.
+    """
+
+    kind: str
+    version: int
+    parameters_version: int
+    build_cues: Callable[
+        [EffectiveSubtitleCandidateId, EffectiveTranscriptInput],
+        tuple["EffectiveSubtitleCue", ...],
+    ]
+
+
+PASSTHROUGH_GENERATOR = SubtitleGeneratorSpec(
+    kind=GENERATOR_KIND,
+    version=GENERATOR_VERSION,
+    parameters_version=GENERATION_PARAMETERS_VERSION,
+    build_cues=build_passthrough_cues,
+)
+
+
 class EffectiveSubtitleGenerationService:
-    """The single canonical effective-transcript subtitle generation path (041 §15)."""
+    """The single canonical effective-transcript subtitle generation path (041 §15).
+
+    One service, one generator per instance. `PATCH-0041` R-3 allows several generators to hold
+    Candidates for one binding; each is a separately composed service, and none promotes, ranks, or
+    selects another's Candidate.
+    """
 
     def __init__(
         self,
         consumption_service: EffectiveTranscriptConsumptionService,
         candidate_query: EffectiveSubtitleCandidateQuery,
         persistence: AtomicEffectiveSubtitleCandidatePersistence | None = None,
+        *,
+        generator: SubtitleGeneratorSpec | None = None,
     ) -> None:
         self._consumptions = consumption_service
         self._candidates = candidate_query
         self._persistence = persistence
+        self._generator = generator if generator is not None else PASSTHROUGH_GENERATOR
+
+    @property
+    def generator(self) -> SubtitleGeneratorSpec:
+        return self._generator
 
     # -- generation ----------------------------------------------------------------------------------
 
@@ -318,14 +356,15 @@ class EffectiveSubtitleGenerationService:
             binding.identity,
             binding.source_kind,
             binding.source_transcript_identity,
-            GENERATOR_KIND,
-            GENERATOR_VERSION,
-            GENERATION_PARAMETERS_VERSION,
+            self._generator.kind,
+            self._generator.version,
+            self._generator.parameters_version,
         )
         existing = self._candidates.get(identity)
         if existing is not None:
             return self._reuse(existing, binding)
 
+        cues = self._generator.build_cues(identity, acquired)
         candidate = EffectiveSubtitleCandidate(
             identity=identity,
             transcript_source_intake_id=binding.transcript_source_intake_id,
@@ -334,12 +373,11 @@ class EffectiveSubtitleGenerationService:
             corrected_revision_id=binding.corrected_revision_id,
             parent_raw_transcript_id=binding.parent_raw_transcript_id,
             source_snapshot_fingerprint=binding.content_fingerprint,
-            generator_kind=GENERATOR_KIND,
-            generator_version=GENERATOR_VERSION,
-            generation_parameters_version=GENERATION_PARAMETERS_VERSION,
-            cue_count=len(acquired.segments),
+            generator_kind=self._generator.kind,
+            generator_version=self._generator.version,
+            generation_parameters_version=self._generator.parameters_version,
+            cue_count=len(cues),
         )
-        cues = build_passthrough_cues(identity, acquired)
         if self._persistence is None:
             raise RuntimeError("effective subtitle candidate persistence is not configured")
         try:

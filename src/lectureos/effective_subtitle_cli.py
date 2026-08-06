@@ -40,8 +40,11 @@ from lectureos.application.effective_transcript_consumption import (
     ConsumptionCurrentness,
     EffectiveTranscriptConsumptionError,
 )
+from lectureos.application.readable_cue_composition import READABILITY_PARAMETERS
+from lectureos.application.readable_subtitle_validation import evaluate_readable_cues
 from lectureos.composition import (
     compose_sqlite_effective_subtitle_generation_service,
+    compose_sqlite_readable_subtitle_generation_service,
 )
 from lectureos.persistence import PersistenceError, open_sqlite_database
 
@@ -49,6 +52,11 @@ from lectureos.persistence import PersistenceError, open_sqlite_database
 def _service(database: str):
     connection = open_sqlite_database(database)
     return connection, compose_sqlite_effective_subtitle_generation_service(connection)
+
+
+def _readable_service(database: str):
+    connection = open_sqlite_database(database)
+    return connection, compose_sqlite_readable_subtitle_generation_service(connection)
 
 
 def _print_candidate(candidate, currentness=None) -> None:
@@ -80,6 +88,61 @@ def _run_generate(args) -> int:
         "no review, decision, final selection, export, or file materialization was "
         "created or changed"
     )
+    return 0
+
+
+def _run_generate_readable(args) -> int:
+    connection, service = _readable_service(args.database)
+    try:
+        result = service.generate(intake_id=args.intake)
+    finally:
+        connection.close()
+    print(f"{result.outcome.value} readable effective subtitle candidate")
+    _print_candidate(result.candidate, result.currentness)
+    validation = evaluate_readable_cues(result.cues)
+    print(f"readability parameters version: {validation.parameters_version}")
+    print(f"blocking readability findings: {len(validation.blocking)}")
+    print(f"readability warnings: {len(validation.warnings)}")
+    print(
+        "this is a separate candidate from the deterministic_segment_passthrough candidate; "
+        "neither is promoted, superseded, or selected by this command"
+    )
+    print(
+        "no review, decision, final selection, export, or file materialization was "
+        "created or changed"
+    )
+    return 0
+
+
+def _run_readability(args) -> int:
+    connection, service = _readable_service(args.database)
+    try:
+        candidate = service.get(args.candidate)
+        if candidate is None:
+            raise EffectiveSubtitleGenerationError("unknown effective subtitle candidate")
+        cues = service.cues(args.candidate)
+    finally:
+        connection.close()
+    validation = evaluate_readable_cues(cues)
+    print(f"candidate: {candidate.identity.value}")
+    print(
+        f"generator: {candidate.generator_kind} v{candidate.generator_version} "
+        f"(parameters v{candidate.generation_parameters_version})"
+    )
+    print(f"cues: {candidate.cue_count}")
+    print(f"readability parameters version: {validation.parameters_version}")
+    print(f"deliverable: {'yes' if validation.deliverable else 'no'}")
+    print(f"blocking: {len(validation.blocking)}")
+    for finding in validation.blocking:
+        where = "" if finding.cue_ordinal is None else f" cue #{finding.cue_ordinal}"
+        print(f"  [blocking] {finding.code}{where}: {finding.detail}")
+    print(f"warnings: {len(validation.warnings)}")
+    for finding in validation.warnings[: args.max_warnings]:
+        where = "" if finding.cue_ordinal is None else f" cue #{finding.cue_ordinal}"
+        print(f"  [warning] {finding.code}{where}: {finding.detail}")
+    if len(validation.warnings) > args.max_warnings:
+        print(f"  ... {len(validation.warnings) - args.max_warnings} more warnings not shown")
+    print("validation is read-only and derived; nothing was stored and no decision was made")
     return 0
 
 
@@ -158,11 +221,17 @@ def _parser() -> argparse.ArgumentParser:
         sub.add_argument("--database", required=True, metavar="PATH",
                          help="path to the existing LectureOS SQLite database")
 
-    for name, func in (("generate", _run_generate), ("list", _run_list)):
+    for name, func in (
+        ("generate", _run_generate),
+        ("generate-readable", _run_generate_readable),
+        ("list", _run_list),
+    ):
         sub = subparsers.add_parser(
             name,
-            help=("explicitly generate or reuse the deterministic candidate"
-                  if name == "generate" else "list candidates generated for an intake"),
+            help={
+                "generate": "explicitly generate or reuse the deterministic passthrough candidate",
+                "generate-readable": "explicitly generate or reuse the readable candidate (041 §16)",
+            }.get(name, "list candidates generated for an intake"),
         )
         sub.add_argument("--intake", required=True, metavar="TRANSCRIPT_SOURCE_INTAKE_ID",
                          help="canonical TranscriptSourceIntakeId (the generation context)")
@@ -172,10 +241,14 @@ def _parser() -> argparse.ArgumentParser:
     for name, func, help_text in (
         ("show", _run_show, "show one candidate with lineage and ordered cues"),
         ("status", _run_status, "derive one candidate's source currentness"),
+        ("readability", _run_readability, "evaluate one candidate against the §16 policy"),
     ):
         sub = subparsers.add_parser(name, help=help_text)
         sub.add_argument("--candidate", required=True, metavar="EFFECTIVE_SUBTITLE_CANDIDATE_ID",
                          help="canonical effective subtitle candidate identity")
+        if name == "readability":
+            sub.add_argument("--max-warnings", type=int, default=20, metavar="N",
+                             help="how many warnings to print (default: 20); never a policy override")
         _database(sub)
         sub.set_defaults(func=func)
     return parser

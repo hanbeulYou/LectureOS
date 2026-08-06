@@ -67,6 +67,7 @@ from lectureos.application.correction_candidate_decision import (
 from lectureos.application.corrected_revision_generation import (
     CorrectedRevisionGenerationService,
 )
+from lectureos.application.readable_cue_composition import readable_generator_spec
 from lectureos.application.effective_subtitle_generation import (
     EffectiveSubtitleGenerationService,
 )
@@ -1033,6 +1034,24 @@ def compose_sqlite_effective_subtitle_generation_service(
     candidates = SQLiteEffectiveSubtitleCandidateRepository(connection)
     persistence = SQLiteEffectiveSubtitleCandidateCommandPersistence(connection)
     return EffectiveSubtitleGenerationService(consumption, candidates, persistence)
+
+
+def compose_sqlite_readable_subtitle_generation_service(
+    connection: sqlite3.Connection,
+) -> EffectiveSubtitleGenerationService:
+    """Build the readable effective-subtitle generation path (041 §16, PATCH-0041 R-2/R-3).
+
+    The same orchestration, consumption boundary, and persistence as the passthrough path — only the
+    generator differs. It writes a **separate** Candidate for the same binding and never promotes,
+    supersedes, ranks, or selects the passthrough Candidate.
+    """
+
+    consumption = compose_sqlite_effective_transcript_consumption_service(connection)
+    candidates = SQLiteEffectiveSubtitleCandidateRepository(connection)
+    persistence = SQLiteEffectiveSubtitleCandidateCommandPersistence(connection)
+    return EffectiveSubtitleGenerationService(
+        consumption, candidates, persistence, generator=readable_generator_spec()
+    )
 
 
 def compose_sqlite_effective_subtitle_review_preparation_service(
