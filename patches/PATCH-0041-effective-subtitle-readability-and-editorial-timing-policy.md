@@ -1,7 +1,7 @@
 # PATCH-0041
 
 - Title: Effective-Transcript Subtitle Readability and Editorial Timing Policy (041 §16)
-- Status: Proposed
+- Status: Accepted
 - Priority: High
 - Trigger: Architect Decision on the full-length validation recorded in
   `implementation/122_FULL_LENGTH_REAL_MEDIA_E2E_VALIDATION.md`
@@ -13,12 +13,10 @@
 
 ## Status
 
-**Proposed.** This document exists; `docs/041_SUBTITLE_PIPELINE.md` has not yet been amended. The
-decisions below are not in force until the Blueprint changes in *Required Blueprint Changes* are
-applied and the *PATCH Acceptance Criteria* are verified, at which point this Status becomes
-`Accepted`.
+**Accepted.** `docs/041_SUBTITLE_PIPELINE.md` was amended and the *PATCH Acceptance Criteria* below
+were verified; the decisions are in force for the effective-transcript generation.
 
-Once accepted, this PATCH fixes the readability and editorial-timing policy for the
+This PATCH fixes the readability and editorial-timing policy for the
 **effective-transcript subtitle generation** and requires a corresponding implementation slice. It
 introduces **no schema change, no migration, no new aggregate, no new authority, and no new
 lifecycle**. It removes nothing: the released `deterministic_segment_passthrough` generator, every
@@ -296,19 +294,19 @@ released cross-reference to subtitle readability policy exists elsewhere.
 Verified against the Blueprint amendment itself, before this PATCH may be marked `Accepted`. These
 say nothing about code.
 
-- [ ] §16 exists in `docs/041` and encodes R-1…R-14 and L-1…L-5 as written here.
-- [ ] No released sentence in `docs/041` is deleted or rewritten; every prior PATCH note is treated
+- [x] §16 exists in `docs/041` and encodes R-1…R-14 and L-1…L-5 as written here.
+- [x] No released sentence in `docs/041` is deleted or rewritten; every prior PATCH note is treated
       as released text and is likewise untouched.
-- [ ] §6, §9.1, §13 and §15 E7 gain **additive forward notes only**, verified line by line.
-- [ ] Line representation is fixed as a Blueprint contract (L-1…L-5), not left as an implementation
+- [x] §6, §9.1, §13 and §15 E7 gain **additive forward notes only**, verified line by line.
+- [x] Line representation is fixed as a Blueprint contract (L-1…L-5), not left as an implementation
       choice.
-- [ ] The thresholds and transformation rules are encoded as a **versioned generation policy**, not
+- [x] The thresholds and transformation rules are encoded as a **versioned generation policy**, not
       as free-standing numbers.
-- [ ] Review and Final Selection remain the sole adoption authority; no new authority appears.
-- [ ] The passthrough generation and every released record are stated unchanged and are in fact
+- [x] Review and Final Selection remain the sole adoption authority; no new authority appears.
+- [x] The passthrough generation and every released record are stated unchanged and are in fact
       unchanged.
-- [ ] The Deferred list is present and no deferred item is silently decided.
-- [ ] The change set contains **no implementation, schema, migration, or test change**.
+- [x] The Deferred list is present and no deferred item is silently decided.
+- [x] The change set contains **no implementation, schema, migration, or test change**.
 
 ## Implementation Requirements
 
@@ -348,10 +346,20 @@ marked complete here.
 
 ## Changed Blueprint Files
 
-- `docs/041_SUBTITLE_PIPELINE.md` — pending (see *Required Blueprint Changes*)
+- `docs/041_SUBTITLE_PIPELINE.md` — new §16; forward notes on §6, §9.1, §13, §15 E7; header
+  (`Version`, `Last Updated`, `Amended By`). **+237 / −2 lines**; the two deletions are the two
+  header metadata lines, so every substantive change is an insertion.
+
+No other Blueprint file was amended: no released cross-reference to subtitle readability policy
+exists elsewhere.
 
 ## Result
 
-Pending. This PATCH is `Proposed`: the document exists and the Blueprint is not yet amended. This
-section records the final state once the amendment is applied and the *PATCH Acceptance Criteria*
-are verified.
+**Applied.** §16 encodes R-1…R-14 and L-1…L-5. Every released sentence receiving a forward note was
+verified present verbatim afterwards — §6's threshold deferral, §9.1's method deferral, §13's
+Requires Validation questions, §15 E7's identity composition — and prior PATCH notes, including
+`PATCH-0029`'s contract-generation annotation, are unmodified.
+
+The implementing milestone has not started. *Implementation Requirements* is the open obligation
+list: no generator, validation code, fixture regression, or test exists for this policy yet, and the
+schema is unchanged.
