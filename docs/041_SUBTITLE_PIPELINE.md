@@ -1,8 +1,8 @@
 # 041_SUBTITLE_PIPELINE
 
 - Status: Draft
-- Version: Blueprint 0.1
-- Last Updated: 2026-07-15
+- Version: Blueprint 0.2
+- Last Updated: 2026-08-06
 - Layer: L1 — Pipeline
 - Depends On:
   - `000_MANIFESTO.md`
@@ -17,6 +17,8 @@
   - `040_TRANSCRIPT_PIPELINE.md`
   - `../patches/PATCH-0001-l0-and-prd-stabilization.md`
   - `../patches/PATCH-0029-effective-transcript-sourced-subtitle-candidate-contract.md`
+- Amended By:
+  - `../patches/PATCH-0041-effective-subtitle-readability-and-editorial-timing-policy.md`
 - Referenced By:
   - `043` Review Pipeline
   - `044` Export Pipeline
@@ -209,6 +211,11 @@ Reading Representation은 Corrected Transcript의 의미를 시청자가 읽기 
 
 가독성 정책의 구체적인 수치, 언어별 기준과 판단 방법은 이 문서에서 확정하지 않는다. 정책이 달라져도 Corrected Transcript와 사용자 Modification을 덮어쓰지 않고 Subtitle만 다시 구성할 수 있어야 한다.
 
+> **후속 결정 note (`PATCH-0041`):** 위 유보는 그대로 유효하다. 다만 **effective-transcript 계약 세대**에
+> 한해 구체 수치와 판단 방법이 **§16**에서 versioned generation policy로 확정되었다. legacy 세대와
+> `deterministic_segment_passthrough` generator에는 적용되지 않으며, "정책이 달라져도 Subtitle만 다시 구성한다"는
+> 위 원칙은 §16 R-13(파라미터 변경 → 새 Candidate identity)과 R-14(released record 불변)로 실현된다.
+
 ## 7. Time Representation
 
 Time Representation은 Subtitle Unit이 Source Timeline 위에서 언제 표시되고 어떤 순서를 갖는지 표현하는 책임 관점이다. 편집 도구의 UI Timeline이나 편집 후 시간축을 뜻하지 않는다.
@@ -258,6 +265,10 @@ Validation은 Subtitle의 가독성과 시간 구조를 확인하며 Transcript 
 - Subtitle Unit의 분할과 줄 구성이 적용 가능한 가독성 정책을 위반하지 않는지 확인한다.
 - 지나치게 길거나 불완전한 표시 단위를 정상 결과처럼 통과시키지 않는다.
 - 구체적인 정책 수치와 판정 방법은 후속 검증에서 정한다.
+
+> **후속 결정 note (`PATCH-0041`):** effective-transcript 계약 세대에 대한 "후속 검증"은 완료되었다. 수치와
+> 판정 방법은 **§16 R-10/R-11**에 있으며, 특히 R-11은 배포 차단 위반과 비차단 진단을 구분한다 — `7초` 초과는
+> 그 자체로 corruption이 아니다. legacy 세대의 판정 방법은 여전히 이 절의 유보 아래 있다.
 
 ### 9.2 Time Consistency
 
@@ -379,6 +390,20 @@ Corrected Transcript에서 사용할 수 있는 Subtitle Candidate 또는 Subtit
 - 여러 Review iteration에서 현재 적용 가능한 Subtitle Review Decision을 어떻게 구분할 것인가?
 - 재처리 후 기존 Subtitle Decision을 새 후보에 연결할 수 있는 안전 조건은 무엇인가?
 
+> **해소 note (`PATCH-0041`):** 위 질문 목록은 문언 그대로 유효하다. 그중 **네 항목이
+> effective-transcript 계약 세대에 한해 §16에서 해소되었다**:
+>
+> | 질문 | 해소 위치 |
+> |---|---|
+> | 적용 가능한 가독성 정책과 그 임계값 | §16 R-10 |
+> | 발화 호흡과 의미 경계를 분할에 반영할 우선순위 | §16 R-5 |
+> | 여러 Transcript Unit을 하나의 Subtitle Unit에 결합할 안전 조건 | §16 R-6 |
+> | 시간 조정이 허용되는 범위와 원본 근거 확인 기준 | §16 R-7 / R-8 |
+>
+> 나머지 세 항목 — 어떤 변경이 명시적 Review Item을 요구하는가, 여러 iteration에서 현재 적용 가능한 Decision을
+> 어떻게 구분하는가, 재처리 후 기존 Decision을 새 후보에 연결할 안전 조건은 무엇인가 — 은 **계속 미결**이며 §16이
+> 답하지 않는다. legacy 세대에 대해서는 네 항목도 미결로 남는다.
+
 ### Deferred
 
 - 구체적인 가독성 및 시간 정책과 계산 방법
@@ -459,6 +484,11 @@ fingerprint 단독·물리 경로·출력 파일명·latest row·auto-increment 
 Cue identity는 immutable Candidate 안에서 결정적이며 삽입 시점에 의존하지 않는다. 정확한 hash 구성은 GOAL-013
 구현에 위임된다.
 
+> **후속 결정 note (`PATCH-0041`):** 이 조항의 "알고리즘/parameter version"에는 **§16 R-10의 readability
+> parameter set**이 포함된다. 따라서 임계값이 하나라도 바뀌면 parameter version이 바뀌고 새 Candidate identity가
+> 파생된다(§16 R-13). 이는 E7의 identity 구성을 **변경하지 않고** 그 안에서 해석되는 것이며, 새 identity 메커니즘은
+> 도입되지 않는다. §16 L-4에 따라 승인된 줄 구조는 cue text 안에 있으므로 identity에 자동으로 참여한다.
+
 **Replay (Confirmed, E8):** 동일한 정확한 source binding + 동일 generator version + 동일 parameter + 동일 요청
 의미 → 동일 Candidate 재사용. Raw → Corrected → 동일 Raw 복귀 → 원래 Raw-source Candidate 재사용. 내용이
 동일해도 source entity가 다르면 별개 Candidate다. 이는 구현이 유예되어 있어도 계약 요구사항이다.
@@ -486,6 +516,211 @@ review authority ≠ Human Decision ≠ final selection ≠ export 적격성.**
 **Additive Evolution (Confirmed, E14):** 구현은 strictly additive여야 한다(예상 스키마 v39, 전체 마이그레이션
 ritual). legacy 컬럼 변경·역사적 backfill·이중 기록(dual-write)은 금지된다. 새 표현의 미래 repository
 validation은 무결성 전용이며(stale은 손상이 아님) GOAL-012 §21의 검증 원칙을 따른다.
+
+## 16. Readability and Editorial Timing Policy (Effective-Transcript Generation)
+
+이 절은 `PATCH-0041`로 승인된 Architect 결정(R-1…R-14, L-1…L-5)을 기록한다. §4.3 Reading Representation과
+§4.4 Time Representation이 이미 계약한 책임에 대해, **effective-transcript 계약 세대의 구체적 generation
+policy**를 확정한다. 새 Product Domain·새 Aggregate·새 Authority·새 lifecycle을 만들지 않으며, 스키마 변경과
+마이그레이션을 요구하지 않는다.
+
+근거는 실측이다. 2시간 2분 36초 실제 강의에서 생성된 2,564 cue 중 **94.2%가 이미 1~7초**, **98.0%가 44자
+이하**이며, 개입 대상은 1초 미만 60개·7초 초과 88개·44자 초과 52개·인접 완전중복 4개다. 0.020초 cue가 Final Cut
+Pro import를 실제로 중단시켰고, 0.5초 교사·학생 대화는 정상 발화이며, 145자 cue는 CPS 6.3이라 CPS 규칙으로
+탐지되지 않는다.
+
+### 범위와 generator
+
+**Scope (Confirmed, R-1):** 이 정책은 **effective-transcript 세대의 readable subtitle candidate에만** 적용된다.
+legacy 계약 세대와 released `deterministic_segment_passthrough` generator는 변경·재범위화·폐기되지 않으며, 기존
+어떤 record도 새 의미를 얻지 않는다.
+
+**Generator (Confirmed, R-2):** `readable_cue_composition`은 §15 E6/E7 provenance 아래의 **새로운 additive
+generator version**이다. passthrough generator를 대체·포장·supersede·재해석하지 않으며, passthrough는 이 세대에서
+계속 지원되는 generator다.
+
+**Candidate Competition (Confirmed, R-3):** 하나의 Effective Transcript Consumption Binding은 passthrough
+Candidate와 readable Candidate를 동시에 가질 수 있다. 이는 §15 E9의 통상 동작이며 새 개념을 필요로 하지 않는다.
+**어느 쪽도 자동으로 승격·선호·순위화·선택되지 않는다.** 채택 권위는 released Review Preparation·Human
+Decision·Final Selection에 그대로 남는다.
+
+### 변환 의미
+
+**Text Preservation (Confirmed, R-4):** generator는 입력 transcript text의 문자 시퀀스·순서·의미를 정확히
+보존한다. 문자를 추가·삭제·재작성·정규화·trim·재배열·번역·구두점화·대소문자 변경 하지 않는다. **유일하게 허용되는
+삽입은 L-1의 line break**이며, 이는 §5가 Subtitle Unit을 전사 단위가 아니라 표시 단위로 정의하기 때문에 허용된다.
+삽입된 모든 line break를 제거하면 원본 text가 정확히 복원되어야 한다 — 이는 검증 가능한 불변식이다.
+
+**Split (Confirmed, R-5):** 하나의 source cue는 `duration > 7.000초` **또는** `text length > 44자`이면서 내부에
+안전한 분할 지점이 있을 때 여러 표시 cue가 될 수 있다. 분할 지점은 고정 우선순위로 선택한다.
+
+1. 문장 종결부호(`.` `?` `!`)
+2. 쉼표 또는 접속 경계
+3. 어절(공백) 경계
+
+**단어 중간 분할은 금지한다.** 형태소 분석은 사용하지 않는다. pause 기반 분할은 사용할 수 없고 승인되지도 않았다 —
+`040 §15` L-15의 승인된 provider configuration에서 word-level timestamp가 존재하지 않으며, 이를 켜는 것은 다른
+계약의 결정이다.
+
+우선순위를 만족하는 분할 지점이 없거나 분할 결과가 임계값을 위반하면 **generator는 분할하지 않는다.** cue를 그대로
+내보내고 진단을 기록한다(R-11). 강제 분할은 금지된다.
+
+**Merge (Confirmed, R-6):** 이 세대에서 generator는 **text가 문자 단위로 완전히 동일한 인접 cue만** 병합한다.
+병합된 cue는 두 시간 범위의 합집합을 가지며 text를 한 번만 담는다. text가 다른 cue의 병합, 의미를 근거로 한 서로
+다른 발화의 병합은 **금지된다** — speaker diarization이 존재하지 않으므로 한 화자의 이어지는 문장과 두 화자의 턴을
+구분할 증거가 없다. 병합된 모든 cue의 source segment lineage는 보존된다.
+
+**Timing Extension (Confirmed, R-7):** 목표 하한보다 짧은 cue는 **다음 cue 앞의 실제 gap 안에서만** `1.000초`를
+향해, 그 이상은 아니게 확장할 수 있다. generator는 다음 cue를 이동시키거나 침범하거나 overlap을 만들거나 순서를
+바꾸거나 Source Timeline 밖으로 확장해서는 안 된다. 무음으로의 확장은 발화를 발명하지 않지만, 이웃을 밀어내는 것은
+발화를 왜곡한다. gap이 부족하면 짧은 cue를 그대로 두고 진단을 기록한다.
+
+**Timing Interpolation (Confirmed, R-8):** word timestamp 없이 긴 cue를 분할할 때 내부 경계는 **source cue 자신의
+시간 범위 안에서 문자 수에 비례하여** 계산한다. 이 값은 **derived presentation timing**이며 관측된 발화 경계가
+명시적으로 아니고, 파생값임이 기록되어야 한다. 생성된 모든 cue에 대해 원본 transcript 시간 범위와
+cue-to-source-segment lineage가 복원 가능해야 한다. 보간된 경계는 결코 source 범위를 벗어나지 않는다.
+
+**Ordering and Non-overlap (Confirmed, R-9):** 표시 순서와 비겹침은 **불변식**이고 가독성 임계값은 **목표**다.
+충돌하면 불변식이 이기고, 원본 cue가 그대로 남으며, 달성하지 못한 목표는 진단이 된다. 검증 코퍼스에 overlap이 0건
+이므로 이 계약은 새 속성을 도입하는 것이 아니라 이미 성립하는 속성을 보존한다.
+
+### 임계값
+
+**Readability Parameter Set, version 1 (Confirmed, R-10):**
+
+| parameter | value |
+|---|---|
+| hard minimum display duration | `0.100초` |
+| target minimum display duration | `1.000초` |
+| maximum display duration | `7.000초` |
+| maximum characters per line | `22` |
+| maximum lines per cue | `2` |
+| maximum characters per cue | `44` |
+| CPS warning threshold | `> 12` |
+
+이 값들은 **하나의 versioned parameter set**을 이루며 Candidate identity에 참여한다(R-13). 값이 하나라도 바뀌면 새
+parameter version이 되어 새 Candidate가 생성되며, 기존 Candidate는 결코 변형되지 않는다.
+
+**`0.100초`가 주장하는 것과 주장하지 않는 것.** LectureOS는 `0.100초`를 **이 세대가 생성하는 readable subtitle
+cue에 대한 제품 수준 hard minimum**으로 확정한다. 이는 SRT 일반·자막 포맷 일반·모든 외부 consumer에 대한 보편적
+validity 규칙으로 주장되지 **않으며**, 그런 주장의 근거로 이 절을 인용해서는 안 된다. 근거는 구체적이다: `0.020초`
+cue가 목표 편집 환경인 Final Cut Pro에서 실제로 import에 실패했고, `0.100초`는 24·25·30·60fps의 1프레임보다 충분히
+길며, 검증 코퍼스의 정상적인 짧은 대화 cue는 약 `0.5초`이므로 보존된다. **이 값 미만인 기존 passthrough cue가
+소급하여 corrupt해지지 않는다** — 그것들은 `040 §14` A-10(`PATCH-0039` 개정)에 따라 정당하게 admit되었고 provider가
+산출한 바에 대한 유효한 역사적 record로 남는다.
+
+**CPS에 관하여.** 초당 문자수는 **진단 지표로만** 채택하며 생성 규칙으로는 결코 사용하지 않는다. 실측이 그 이유를
+보여준다: 145자 cue의 CPS는 6.3이라 이 코퍼스의 결함을 구조적으로 탐지하지 못한다.
+
+### 줄 표현
+
+**Canonical Line Structure (Confirmed, L-1):** cue의 표시 줄은 **canonical cue text 안의 `U+000A` line break**로
+표현된다. line break가 없는 cue text는 한 줄 cue이며, 이는 기존의 축약 사례이므로 released cue는 재해석 없이 모두
+유효하다.
+
+판정 기준은 **사람이 무엇을 승인하는가**와 **모든 serializer가 무엇을 공통으로 투영하는가**였다. L-1에서 승인된
+artifact가 곧 표시 형태다 — Human Decision과 전달 파일 사이에 어떤 변환도 서 있지 않다. 포맷 간 공통 투영 대상은
+표시 줄의 순서열이고, 그것을 하나의 구분자로 정규 표현한다. 각 포맷의 serializer는 그 구분자를 자기 문법(SRT는 문자
+그대로의 `LF`)으로 **매핑만** 하며 표현에 관해 아무것도 결정하지 않는다.
+
+같은 기준으로 두 대안을 기각했다. **별도의 ordered line structure**는 cue가 내용을 두 번 소유하게 만들고, 결합
+규칙이 필연적으로 serializer에 놓여 "승인 이후에 표현을 결정하는" 문제를 축소된 형태로 재발시키며, 새 필드를
+받아들이기 위해 released §15 E7 identity 파생을 변경해야 한다. **serializer가 wrap하는 flat text**는 즉시
+기각했다 — serializer가 아무도 승인하지 않은 표시 구조를 발명하게 되고, 하나의 승인된 Final Subtitle에 대해 포맷마다
+다른 줄 구조가 배포될 수 있으며, §4.8과 모순된다.
+
+**Line Break Grammar (Confirmed, L-2):** 하나의 cue text 안에서 line break는 최대 `maximum lines per cue − 1`
+개이며, **연속 line break 금지**, **선행·후행 line break 금지**, 그 밖의 control character 금지다. 연속 line break를
+금지하는 이유는 구체적이다 — released canonical SRT serializer가 블록을 빈 줄로 구분하므로 cue 안의 빈 줄은 블록
+framing을 파괴한다.
+
+**Serializer Responsibility Unchanged (Confirmed, L-3):** released `canonical_srt` v1 serializer의 "텍스트 정확
+보존" 계약은 문자 그대로 만족된다: 승인된 cue text를 verbatim 내보내며, 내장된 `LF`는 이미 올바른 다중 줄 SRT를
+만든다. **어떤 serializer도 text를 wrap·re-wrap·분할·결합·재배치하지 않는다.** 이 절은 어떤 serializer 변경도
+승인하지 않는다.
+
+**Identity Participation (Confirmed, L-4):** line break가 cue text 안에 있고 cue text는 이미 Candidate identity와
+content fingerprint에 참여하므로, 승인된 표시 구조는 **released identity 파생을 변경하지 않고** identity에 자동으로
+참여한다. 줄 구성만 다른 두 Candidate는 서로 다른 Candidate다.
+
+**Widened Meaning of `text` (Confirmed, L-5):** 이 세대에 한해 cue의 `text`는 단순한 발화 텍스트가 아니라 **표시
+텍스트**를 뜻한다. 이는 L-1의 비용이며 알면서 수용한다: §5가 이미 Subtitle Unit을 표시 책임으로 정의하고, R-4의
+복원 불변식과 L-2의 문법이 확장 범위를 한정한다. legacy 세대의 의미는 변경되지 않는다.
+
+### 권위·identity·보존
+
+**Review Authority (Confirmed, R-12):** readable Candidate는 §4.2가 Candidate를 규정하는 그대로, 그리고 §13
+Confirmed가 요구하는 그대로("AI 또는 처리 규칙은 Subtitle 후보를 만들지만 사용자의 결정을 대신하지 않는다")
+**자동 제안**이다. 생성은 review record·decision·selection·export 적격성을 만들지 않는다. 채택은 Review와 Final
+Selection에 남는다.
+
+**Identity and Replay (Confirmed, R-13):** Candidate identity는 released §15 E7 구성을 사용하며, 이미 반영하는
+binding·source kind·정확한 source identity에 더해 generator kind·generator version·algorithm version·readability
+parameter version을 반영한다. 같은 binding·같은 immutable input·같은 parameter set은 같은 Candidate로 수렴한다
+(§15 E8). 새 identity 메커니즘은 도입되지 않는다.
+
+**Legacy and Released Preservation (Confirmed, R-14):** released record는 재작성·backfill·dual-write·재파생·
+마이그레이션·재해석되지 않는다. 기존 Candidate는 identity와 내용을 유지하고, 기존 Review Decision·Final
+Selection·SRT Artifact·materialization·delivery·publication은 손대지 않는다. §12.2에 따라 가독성 정책 변경은 새
+Candidate를 만들 수 있으나 기존 사용자 Modification과 Review Decision을 **결코** 자동 적용하지 않으며, 승인되거나
+발행된 Final Subtitle을 재작성하지 않는다.
+
+### 검증
+
+**Two Severities (Confirmed, R-11):** 검증은 두 단계를 의도적으로 구분한다.
+
+배포 차단(구조 또는 계약 위반):
+
+- 표시 시간 `< 0.100초`
+- cue 겹침
+- 비증가 표시 순서
+- 줄 수 `> 2`
+- `22`자를 넘는 줄
+- cue text `> 44`자
+- line break 문법 위반(L-2)
+- source 대비 text 손실·text 추가·lineage 손실(R-4)
+- 승인된 줄 구조와 직렬화된 줄 구조의 불일치
+
+비차단 진단(달성하지 못한 가독성 목표, Review로 노출):
+
+- 표시 시간 `< 1.000초`
+- 안전한 분할 지점이 없는 상태의 표시 시간 `> 7.000초`
+- CPS `> 12`
+- 그 밖의 미달성 가독성 목표
+
+**7초 초과는 corruption이 아니다.** 검증 코퍼스에는 정상적인 긴 설명이 존재하고, cue `#1505`(`애들을`, 3자가
+13.4초)는 분할할 내용이 없는 긴 cue다. 길이만으로 결함 판정하면 진짜 강의 자료가 고장으로 표시된다.
+
+### Sections Not Re-scoped
+
+§4.2·§4.3·§4.4·§4.8·§5·§7·§12.2·§13(위 해소 note가 명시한 네 항목 제외)·§15 E1…E14는 이 절로 개정되지 않는다.
+legacy 계약 세대, `deterministic_segment_passthrough` generator, released canonical SRT serializer, Review·Final
+Selection·SRT Artifact·materialization·delivery·publication의 어떤 계약도 변경되지 않는다.
+
+### Deferred
+
+이 절은 다음을 확정하지 않으며 각각 별도 gate 평가가 필요하다: speaker diarization 기반 merge; 서로 다른 text의
+semantic merge; pause 기반 split; word timestamp 기반 timing; 형태소 분석; 기존 Candidate의 소급 변환; 기존 Review
+Decision 재적용; Review 비교 화면; cue 구조를 직접 수정하는 Modify Decision; 포맷별 line wrapping; iTT·FCPXML 등 신규
+포맷; ASR 환각; 전사 checkpoint; `U+FFFD` 처리; 일괄 correction; terminology dictionary.
+
+### Canonical Invariants
+
+(1) 이 정책은 effective 세대의 readable candidate에만 적용되고 legacy와 passthrough를 변경하지 않는다.
+(2) `readable_cue_composition`은 additive generator version이며 passthrough를 대체하지 않는다.
+(3) 하나의 binding에 두 Candidate가 공존할 수 있고 자동 승격·자동 선택은 없다.
+(4) L-1의 line break를 제외하면 문자는 추가·삭제·재작성되지 않으며 line break 제거로 원본이 정확히 복원된다.
+(5) 분할은 조건과 우선순위를 따르고 단어 중간을 자르지 않으며 강제되지 않는다.
+(6) 병합은 문자 완전 동일 인접 cue에 한하고 lineage를 보존한다.
+(7) 확장은 뒤쪽 실제 gap 안에서만 일어나고 이웃을 이동·침범하지 않는다.
+(8) 보간 timing은 derived presentation timing이며 관측된 발화 경계가 아니다.
+(9) 순서와 비겹침은 가독성 목표보다 우선한다.
+(10) 임계값은 versioned parameter set이며 identity에 참여한다.
+(11) `0.100초`는 이 세대의 제품 하한이지 보편적 validity 규칙이 아니고, 기존 cue를 소급 무효화하지 않는다.
+(12) CPS는 진단 지표이며 생성 규칙이 아니다.
+(13) 줄 구조는 cue text 안의 단일 `LF`이고 serializer는 그대로 투영할 뿐이다.
+(14) 채택 권위는 Review와 Final Selection에 남는다.
+(15) released record는 재작성·재해석되지 않는다.
 
 ## Related Documents
 
