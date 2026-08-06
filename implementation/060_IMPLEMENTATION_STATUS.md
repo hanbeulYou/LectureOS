@@ -3317,3 +3317,57 @@ invocation); and `U+FFFD` passthrough (Low, cosmetic, correct under `§14` A-11)
 found that the two parameters trade real-speech loss against hallucination reduction and that the
 current default is not reproducible across runs, so no default was changed and the question remains
 open for an Architect Decision.
+
+## Local ASR Provider Configuration — Previous-Text Conditioning (PATCH-0040)
+
+- Record: `123_LOCAL_ASR_PROVIDER_CONFIGURATION.md`
+- Blueprint: `docs/040` §15 L-7 (amended), L-14 (amended), new L-15 and L-16, Canonical Invariants
+  (amended), by `PATCH-0040` (P-1…P-9, Confirmed)
+- Status: **COMPLETE**
+- Selected persistence: none — schema remains **v53**, no migration, no new record, no new identity kind
+- Commits: `docs: contract the local ASR previous-text conditioning policy`, `feat: declare the local
+  ASR provider configuration explicitly`, `test: cover the local ASR provider configuration contract`,
+  `docs: document the local ASR provider configuration`
+
+This slice implements a Product Owner decision taken on the 4-way diagnostic recorded in
+`122`: set `condition_on_previous_text=False` on the local ASR path and decline `vad_filter`, on the
+principle that in lecture subtitles inserting words the instructor never said is less dangerous than
+deleting words they did. The VAD variants removed every hallucinated segment and were the only
+reproducible configurations, but they dropped a real instructor utterance at a speech/silence
+boundary and emitted a 212-second caption for a two-second utterance; L-16 records that deferral with
+its reason rather than leaving VAD unmentioned.
+
+No implementation-level fix existed. L-7 encoded the semantic execution request into the
+provider-result reference and excluded `device`/`compute-type` as operational, while
+`condition_on_previous_text` appeared in neither list and the released grammar could not express it —
+and because `§14` A-6 derives every identity from an anchor containing that reference, deciding where
+the setting lives also decides whether two transcriptions differing only in it are one execution.
+
+The implementation is an Application-owned `LocalAsrProviderConfiguration` with the single parameter
+this contract decides, held by the service **from construction** so no production caller can select
+another value, passed explicitly to the library so an upstream default change cannot alter behaviour,
+and with no CLI flag because an override is the bypass P-1 exists to prevent. The provider-result
+reference becomes versioned (`local-asr:v2:…:cond_prev_text=<true|false>:…`); released v1 references
+stay valid, are never rewritten or re-interpreted, and are never generated again. Provenance needed
+no additive extension because `provider_result_ref` is already a canonical persisted field of both
+the admission and the provider evidence.
+
+Per P-5 the replay consequence is accepted rather than engineered around: an intake holding a v1
+admission does not match a v2 anchor, so L-8 reuse does not fire and a second Raw Transcript is
+admitted — permitted by `§14` A-7, with `§16` Selection deciding which is authoritative and nothing
+superseded or re-selected. This was verified on the real 2-hour repository that already held a v1
+admission.
+
+Verification used the preserved diagnostic fixtures through the released infrastructure runner:
+absence-region hallucinated segments 12 → 1, maximum phrase repeats 7 → 2, the four-fold
+`고기와 함께 먹는 김치찌개` loop eliminated, longest segment 30.0 s → 7.4 s with no segment over 200 s,
+and the instructor utterance `나 화장실 좀 갔다 올게` preserved. The terminology fixture additionally
+recovered `사군자` and `메란 국죽`, which the baseline missed, losing nothing the baseline had. The
+local ASR demo golden was regenerated because the reference change moves the derived identities and
+content fingerprint; its segments and every other field are unchanged. The complete 3352-test suite
+passes.
+
+P-9 is explicit that hallucination is reduced and not contracted away — one hallucinated segment
+survived, and the configuration remains non-deterministic across runs, which L-8 already handles.
+Residual hallucination stays with `§17`, `§18`, and `042`; no heuristic detection or automatic
+deletion is introduced or may be inferred.

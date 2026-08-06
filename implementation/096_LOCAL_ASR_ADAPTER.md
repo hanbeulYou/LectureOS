@@ -61,18 +61,40 @@ None. faster-whisper decodes the source internally, so no separate ffmpeg step i
 `infrastructure/faster_whisper_engine.py::FasterWhisperEngineRunner` runs `faster_whisper.WhisperModel` on CPU by
 default (`device="cpu"`, `compute_type="int8"`; GPU optional). It is a **pure library call** (no subprocess, no
 shell — no injection surface). The injectable `model_factory` seam lets contract tests drive the exact invocation
-shape (model/device/compute-type propagation, `transcribe(path, language=...)`, segment/text/timestamp
-extraction, and error translation) with a fake model, without the real library or a downloaded model. Errors map
-to `LocalAsrDependencyError` / `LocalAsrModelError` / `LocalAsrEngineError`.
+shape (model/device/compute-type propagation, `transcribe(path, language=..., condition_on_previous_text=...)`,
+segment/text/timestamp extraction, and error translation) with a fake model, without the real library or a
+downloaded model. The fake records its full keyword set, so tests assert both what is passed and what must not
+be — no VAD parameter reaches the library. Errors map to `LocalAsrDependencyError` / `LocalAsrModelError` /
+`LocalAsrEngineError`.
+
+## Provider configuration
+
+The engine decoding parameters LectureOS relies on are declared by Application and passed explicitly, never
+inherited from the installed library (`040 §15 L-15` / `PATCH-0040`). The approved production value is
+`condition_on_previous_text = False`, held by the service from construction so no caller can select another on
+the production path, and the CLI exposes no flag for it. `vad_filter` and every VAD parameter are **not** passed:
+`L-16` declines them because the measured behaviour deletes real speech and produces unusable segment durations.
+Full contract and evidence: `123_LOCAL_ASR_PROVIDER_CONFIGURATION.md`.
 
 ## Identity and replay
 
-The provider-result reference is deterministic — `local-asr:model=<model>:lang=<language-or-auto>:media=
-<source_media_id>` — so distinct model / language / source produce distinct admissions. Device and compute-type
-are operational performance settings and are **excluded** from identity. Because the admission identity is
-deterministic, the adapter checks for an already-admitted result **before** running the engine and reuses it
-without re-executing — avoiding a spurious conflict from ordinary ASR non-determinism. No wall-clock/randomness
-defines identity.
+The provider-result reference is deterministic and **versioned**:
+
+```text
+v2 (current):   local-asr:v2:model=<model>:lang=<language-or-auto>:cond_prev_text=<true|false>:media=<source_media_id>
+v1 (released):  local-asr:model=<model>:lang=<language-or-auto>:media=<source_media_id>
+```
+
+Distinct model / language / **configuration** / source produce distinct admissions. Device and compute-type stay
+**excluded** from identity — they serve the same request faster without changing the emitted text, whereas the
+configuration changes the text and therefore the canonical Raw Transcript. Released v1 references stay valid and
+are never rewritten, re-derived, or re-interpreted; v1 is never generated again.
+
+Because the admission identity is deterministic, the adapter checks for an already-admitted result **before**
+running the engine and reuses it without re-executing — avoiding a spurious conflict from ordinary ASR
+non-determinism. No wall-clock/randomness defines identity. An intake holding a **v1** admission does not match a
+v2 anchor, so reuse does not fire and a second Raw Transcript is admitted; `040 §14 A-7` permits that and
+`§16` Selection decides which is authoritative.
 
 ## Failure and atomicity
 
