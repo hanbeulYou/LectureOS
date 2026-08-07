@@ -1,7 +1,7 @@
 # PATCH-0043
 
 - Title: Effective Subtitle Readability Parameter Set v2 (041 §16 R-10)
-- Status: Proposed
+- Status: Accepted
 - Priority: Medium
 - Trigger: Product Owner decision on the v1 blocking cases recorded in
   `implementation/124_READABLE_SUBTITLE_CUE_COMPOSITION.md`, verified by scratch diagnostic over the
@@ -14,7 +14,8 @@
 
 ## Status
 
-**Proposed.** This document exists; `docs/041_SUBTITLE_PIPELINE.md` has not yet been amended.
+**Accepted.** `docs/041_SUBTITLE_PIPELINE.md` §16 R-10 was amended and the *PATCH Acceptance
+Criteria* below were verified.
 
 Scope is **one parameter version addition**. It designs no readability policy, changes no rule, and
 touches no other decision: R-1…R-9, R-11…R-14, L-1…L-5 and EN-1…EN-11 are unchanged, as are the
@@ -162,15 +163,15 @@ addition relies on, and neither needs amending.
 
 Verified against the Blueprint amendment, before this PATCH may be marked `Accepted`.
 
-- [ ] §16 R-10 carries the v2 table with `maximum_line_characters = 24` and every other value equal
+- [x] §16 R-10 carries the v2 table with `maximum_line_characters = 24` and every other value equal
       to v1.
-- [ ] The released v1 table and R-10's surrounding text are present verbatim.
-- [ ] `maximum_cue_characters = 44` is stated unchanged for both versions.
-- [ ] v1 is stated permanently preserved and v1 Candidates stated never re-validated under v2.
-- [ ] The default for new readable generation is stated as v2.
-- [ ] Released records are stated untouched and nothing is auto-regenerated.
-- [ ] No other §16 decision, and no other section, is modified.
-- [ ] The change set contains no implementation, schema, migration, or test change.
+- [x] The released v1 table and R-10's surrounding text are present verbatim.
+- [x] `maximum_cue_characters = 44` is stated unchanged for both versions.
+- [x] v1 is stated permanently preserved and v1 Candidates stated never re-validated under v2.
+- [x] The default for new readable generation is stated as v2.
+- [x] Released records are stated untouched and nothing is auto-regenerated.
+- [x] No other §16 decision, and no other section, is modified.
+- [x] The change set contains no implementation, schema, migration, or test change.
 
 ## Implementation Requirements
 
@@ -189,6 +190,19 @@ Required validation for the implementing milestone. **Not satisfied by this PATC
    no cue over 44, no sub-100 ms cue, no overlap, and recovers its text.
 10. The serializer, the schema, and every released record are unchanged.
 11. The complete test suite passes.
+
+## Changed Blueprint Files
+
+- `docs/041_SUBTITLE_PIPELINE.md` — §16 R-10 follow-up note carrying the v2 table and PV-1…PV-7;
+  header (`Version`, `Last Updated`, `Amended By`). **+45 / −1 lines**; the single deletion is the
+  header's `Version` line, so every substantive change is an insertion.
+
+## Result
+
+**Applied.** R-10's released v1 table and its surrounding text are present verbatim, R-1…R-14 and
+EN-1…EN-11 are intact, and no other section moved.
+
+The implementing milestone follows; *Implementation Requirements* is its obligation list.
 
 ## Consequences
 
