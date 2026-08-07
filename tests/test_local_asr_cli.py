@@ -31,7 +31,9 @@ class _FakeEngine:
         )
 
     def transcribe(
-        self, *, media_path, model, language, device, compute_type, condition_on_previous_text
+        self, *, media_path, model, language, device, compute_type, condition_on_previous_text,
+        start_offset=None,
+        on_segment=None,
     ):
         self.condition_on_previous_text = condition_on_previous_text
         return LocalAsrResult(
@@ -40,8 +42,10 @@ class _FakeEngine:
 
 
 def _patched_compose(engine):
-    def factory(connection):
-        return _real_compose(connection, engine_runner=engine)
+    def factory(connection, checkpoint_root=None):
+        return _real_compose(
+            connection, engine_runner=engine, checkpoint_root=checkpoint_root
+        )
     return factory
 
 
