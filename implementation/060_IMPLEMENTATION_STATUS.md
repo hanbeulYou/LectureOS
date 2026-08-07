@@ -3420,13 +3420,41 @@ cues), with read-only validation `healthy` over 10,425 objects at schema v53 and
 passthrough record unchanged. The released `canonical_srt` v1 serializer is unmodified and carries
 the approved line structure verbatim. The complete 3,415-test suite passes.
 
-**That walk-through carried three findings at blocking severity and no boundary refused it, which is
-an open Blueprint question rather than an implementation gap.** `§16` R-11 classifies those
-violations as delivery-blocking but names no enforcing boundary, and `§16`'s *Sections Not
-Re-scoped* clause leaves the Review, Final Selection, SRT Artifact, materialization, delivery and
-publication contracts unchanged — so §16 cannot have imposed a gate on them. Pointing the other way,
-the released `§4.5` (not in that clause's list) says a Subtitle revision with Validation Failure is
-not treated as Final Subtitle, and `§9.1` says an over-long display unit must not pass as a normal
-result. Implementation cannot choose between two released statements: no boundary was changed, no
-output claims a gate that does not exist, and `EnforcementBoundaryTests` pins the current absence of
-enforcement as an executable fact. **Requires Blueprint Clarification.**
+**That walk-through carried three findings at blocking severity and no boundary refused it**, which
+was recorded at the time as an open Blueprint question rather than an implementation gap. `PATCH-0042`
+answered it and the enforcement is now implemented; see the entry below.
+
+
+## Effective Subtitle Readability Enforcement (PATCH-0042)
+
+- Record: `124_READABLE_SUBTITLE_CUE_COMPOSITION.md` (enforcement section)
+- Blueprint: `docs/041` §16 EN-1…EN-11 (`PATCH-0042`)
+- Status: **COMPLETE**
+- Selected persistence: none — schema remains **v53**; readability is derived and stored nowhere
+- Commits: `feat: enforce readability blocking findings at Final Selection admission`, `test: cover
+  Final Selection readability enforcement`, `docs: record the readability enforcement boundary`
+
+Final Selection admission is now the one readability enforcement boundary. A readable Candidate
+carrying any blocking finding is refused with every finding enumerated; a warning-only Candidate is
+selectable; Review Preparation and Human Decision continue to admit; and no downstream boundary
+re-evaluates. Enforcement extends the released `EligibilityBlockingReason` idiom with
+`READABILITY_BLOCKING` and `READABILITY_CONTRACT_UNKNOWN` rather than adding a second gate, and
+creates no aggregate, lifecycle, authority, or command.
+
+Two implementation properties are worth recording because they are invisible in outcomes alone. The
+gate runs **after** the released decision conditions, so readability is an additional condition and
+never a replacement — asserted by counting cue reads, not by outcome. And version dispatch is
+**explicit while only v1 exists**: the parameter set is resolved from the Candidate's own generator
+and parameter versions and an unknown contract refuses rather than falling back, so a future v2
+cannot re-evaluate released v1 Candidates under thresholds they were never composed under.
+
+Verified on the real repository: the readable Candidate reached Review Preparation and an Accept
+Decision, and Final Selection then refused it with exit status 1 naming all three
+`READABILITY_LINE_TOO_LONG` findings and their cue ordinals (#95, #1272, #1747) under parameters v1.
+Every table's row count was byte-for-byte unchanged across the refusal, and the passthrough Candidate
+remained eligible. The Final Selection, SRT Artifact and materialization produced before this
+milestone are untouched — EN-8 governs new admissions only. The complete 3,432-test suite passes.
+
+The three blocking findings were **not** resolved, deliberately: EN-10 keeps the parameter set fixed,
+and this milestone's purpose was to make those three actually block. Giving line placement slack
+needs a new parameter version and a Product Decision.

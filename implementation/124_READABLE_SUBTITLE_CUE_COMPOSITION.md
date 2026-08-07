@@ -133,6 +133,7 @@ Composition over the preserved 2,564-cue corpus (`e2e-results/segments.jsonl`):
 | overlapping cues | 0 | **0** |
 | blocking findings | n/a | **3** |
 | warnings | n/a | 91 |
+| Final Selection admission (post `PATCH-0042`) | eligible | **refused** |
 
 Warnings break down as 34 below the one-second target (no gap available), 51 above 12 CPS, 3 above
 seven seconds with nothing to split, and 3 line-composition-unavailable.
@@ -151,44 +152,46 @@ a `PATCH` decision and not this milestone's to make.
 
 Short conversational cues are preserved as distinct turns: `저요?` and `응` remain separate cues.
 
-## Downstream — and an unresolved enforcement question
+## Downstream and enforcement
 
-The readable Candidate was driven through the released path on a copy of the real E2E repository —
-review preparation, an Accept decision, Final Selection, SRT Artifact, and physical materialization
-(189,075 bytes, 2,574 cues) — and read-only validation reports `healthy` over 10,425 objects at
-schema v53. Both Candidates coexist for the same consumption binding with distinct identities, and
-the passthrough Candidate, its decisions, its selection, its artifact, and the published SRT are
-unchanged.
+`PATCH-0042` resolved the question this record previously left open. Final Selection admission is the
+one enforcement boundary; every other boundary is explicitly out of scope.
 
-**That walk-through must not be read as a clean success.** The Candidate carried **three findings at
-blocking severity**, and no boundary refused it. That is not an implementation shortcut — it is an
-open Blueprint question, and the implementation deliberately does not settle it:
+| stage | behaviour under a blocking finding | contract |
+|---|---|---|
+| Candidate generation | proceeds | EN-2 |
+| Review Preparation | proceeds | EN-2, §4.6 |
+| Human Review Decision | proceeds | EN-3 |
+| **Final Selection admission** | **refused, findings enumerated** | **EN-4, EN-5** |
+| SRT Artifact → publication | unreachable; never re-evaluates | EN-7 |
 
-- `§16` R-11 classifies those violations as **배포 차단 / delivery-blocking**, but names no boundary
-  that must refuse them and defines no admission rule.
-- `§16`'s *Sections Not Re-scoped* clause states that the **Review, Final Selection, SRT Artifact,
-  materialization, delivery and publication contracts are unchanged**. §16 therefore cannot have
-  imposed an admission gate on them; it explicitly disclaimed amending them.
-- The effective generation's own Final Selection contract enumerates its ineligibility reasons and
-  readability is not among them.
-- Pointing the other way, the released `§4.5` — which is **not** in §16's not-re-scoped list — states
-  that "Validation Failure가 있는 Subtitle revision을 Final Subtitle로 취급하지 않는다", and `§9.1`
-  states that an over-long or incomplete display unit must not be passed off as a normal result. §16's
-  own forward note connects §9.1 to R-10/R-11 for this generation.
+Enforcement extends the released eligibility idiom: `EligibilityBlockingReason` gains
+`READABILITY_BLOCKING` and `READABILITY_CONTRACT_UNKNOWN`, and `SelectionEligibility` carries the
+blocking findings and the parameter version they were derived under. No new aggregate, lifecycle,
+authority, or command exists, and nothing is persisted — readability is derived from the immutable
+cue graph every time it is needed.
 
-Two released statements therefore point in opposite directions for the effective generation. Adding a
-gate would amend a contract §16 says it does not amend; staying silent sits against §4.5 and §9.1.
-Implementation cannot choose between them, so it does neither: **no boundary was changed, and no
-output claims a gate that does not exist.** The CLI states the situation in words, the
-`ReadabilityValidation.deliverable` property is documented as a derived observation rather than an
-admission decision, and `EnforcementBoundaryTests` pins the current absence of enforcement as an
-executable fact so it cannot drift and so a future clarification has a single anchor to move.
+**The gate runs after the released decision conditions**, so a subject already blocked by a missing
+or inapplicable Accept never reaches it and never reads the cue graph. Readability is an *additional*
+condition, not a replacement, and a test asserts the ordering by counting cue reads rather than by
+outcome — the two are indistinguishable from the outside otherwise.
 
-On the merits `§4.5` and `§9.1` favour enforcement, but that is an Architect/Blueprint call.
-**Requires Blueprint Clarification** — see the milestone report.
+**Version dispatch is explicit while only v1 exists.** `readability_contract_for` resolves the
+parameter set from the Candidate's **own** generator and parameter versions and raises rather than
+falling back, so introducing v2 later cannot re-evaluate released v1 Candidates under thresholds they
+were never composed under. An unknown contract refuses the selection instead of guessing: guessing
+would silently judge a Candidate by a policy it never claimed.
 
-The serialized payload carries the approved line structure verbatim: `verify_serialized_lines`
-returns no finding over the full corpus, and the released `canonical_srt` v1 serializer is unmodified.
+**Passthrough Candidates are out of scope entirely** (EN-9) — not evaluated, and their cue graph is
+not even read. `is_readable_candidate` answers the scope question in one place so a generator-kind
+literal is never repeated across boundaries.
+
+### Existing records
+
+The Final Selection, SRT Artifact and materialization produced during earlier validation — made while
+the readable Candidate carried three blocking findings — are **unchanged**. EN-8 governs new
+admissions only, and re-running selection against that same subject now refuses without touching a
+single row.
 
 ## CLI
 
