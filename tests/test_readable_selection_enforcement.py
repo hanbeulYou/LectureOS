@@ -9,6 +9,8 @@ from lectureos.application.effective_subtitle_final_selection import (
 )
 from lectureos.application.readable_cue_composition import (
     READABILITY_PARAMETERS,
+    READABILITY_PARAMETERS_V1,
+    READABILITY_PARAMETERS_V2,
     READABLE_GENERATOR_KIND,
     READABLE_GENERATOR_VERSION,
     UnknownReadabilityContractError,
@@ -25,7 +27,7 @@ LF = "\n"
 class _Candidate:
     generator_kind: str = READABLE_GENERATOR_KIND
     generator_version: int = READABLE_GENERATOR_VERSION
-    generation_parameters_version: int = 1
+    generation_parameters_version: int = 2
 
 
 @dataclass(frozen=True)
@@ -41,13 +43,20 @@ class ContractDispatchTests(unittest.TestCase):
     """EN-4: validation re-derives under the Candidate's OWN version, never the current default."""
 
     def test_v1_candidate_resolves_the_v1_parameter_set(self):
-        parameters = readability_contract_for(_Candidate())
-        self.assertEqual(parameters.version, 1)
-        self.assertEqual(parameters, READABILITY_PARAMETERS)
+        """PV-4: a released v1 Candidate is evaluated under v1 forever."""
+
+        parameters = readability_contract_for(_Candidate(generation_parameters_version=1))
+        self.assertEqual(parameters, READABILITY_PARAMETERS_V1)
+        self.assertEqual(parameters.maximum_line_characters, 22)
+
+    def test_v2_candidate_resolves_the_v2_parameter_set(self):
+        parameters = readability_contract_for(_Candidate(generation_parameters_version=2))
+        self.assertEqual(parameters, READABILITY_PARAMETERS_V2)
+        self.assertEqual(parameters.maximum_line_characters, 24)
 
     def test_unknown_parameter_version_never_falls_back(self):
         with self.assertRaises(UnknownReadabilityContractError) as raised:
-            readability_contract_for(_Candidate(generation_parameters_version=2))
+            readability_contract_for(_Candidate(generation_parameters_version=99))
         self.assertIn("unknown readability parameter version", str(raised.exception))
 
     def test_unknown_generator_version_never_falls_back(self):
@@ -172,7 +181,7 @@ class EnforcementGateTests(unittest.TestCase):
         self.assertTrue(report.eligible)
         self.assertIsNone(report.blocking_reason)
         self.assertEqual(report.readability_findings, ())
-        self.assertEqual(report.readability_parameters_version, 1)
+        self.assertEqual(report.readability_parameters_version, 2)
 
     def test_warning_only_candidate_is_eligible(self):
         """EN-6: warnings never refuse."""
@@ -221,7 +230,7 @@ class EnforcementGateTests(unittest.TestCase):
         self.assertIn("readability_blocking", message)
         self.assertIn("READABILITY_LINE_TOO_LONG", message)
         self.assertIn("cue #0", message)
-        self.assertIn("parameters v1", message)
+        self.assertIn("parameters v2", message)
 
     def test_passthrough_candidate_is_never_evaluated(self):
         """EN-9: out of scope entirely — the cue graph is not even read."""
@@ -238,7 +247,7 @@ class EnforcementGateTests(unittest.TestCase):
     def test_unknown_contract_refuses_rather_than_falling_back(self):
         service, _, _ = self._service(
             [_Cue(0, "짧고 좋은 자막", 0.0, 3.0)],
-            candidate=_Candidate(generation_parameters_version=2),
+            candidate=_Candidate(generation_parameters_version=99),
         )
         report = service.eligibility("subject")
         self.assertFalse(report.eligible)

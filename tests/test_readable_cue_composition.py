@@ -20,7 +20,10 @@ from lectureos.application.identities import (
     TranscriptSourceIntakeId,
 )
 from lectureos.application.readable_cue_composition import (
+    DEFAULT_READABILITY_PARAMETERS_VERSION,
     READABILITY_PARAMETERS,
+    READABILITY_PARAMETERS_V1,
+    READABILITY_PARAMETERS_V2,
     READABILITY_PARAMETERS_VERSION,
     READABLE_GENERATOR_KIND,
     READABLE_GENERATOR_VERSION,
@@ -91,17 +94,25 @@ def _as_cues(composed):
 
 
 class ParameterSetTests(unittest.TestCase):
-    def test_readability_parameter_set_is_pinned_to_its_version(self):
-        """R-10/R-13: a silent value change would let two policies share one identity."""
+    def test_v1_parameter_set_is_pinned_to_its_version(self):
+        """R-10/R-13 + PATCH-0043 PV-1: v1's values are released and must never drift."""
 
-        self.assertEqual(READABILITY_PARAMETERS.version, READABILITY_PARAMETERS_VERSION)
+        self.assertEqual(READABILITY_PARAMETERS_V1.version, 1)
         self.assertEqual(
-            READABILITY_PARAMETERS.fingerprint(),
+            READABILITY_PARAMETERS_V1.fingerprint(),
             "b487fcec7aaae4fa72cf7dcdeee97b9ec5fecea4869c230445f27edef60eb742",
         )
 
-    def test_declared_values_match_the_contract(self):
-        p = READABILITY_PARAMETERS
+    def test_v2_parameter_set_is_pinned_to_its_version(self):
+        """PATCH-0043 PV-2: v2 is a distinct set, so it needs its own pin."""
+
+        self.assertEqual(READABILITY_PARAMETERS_V2.version, 2)
+        self.assertNotEqual(
+            READABILITY_PARAMETERS_V2.fingerprint(), READABILITY_PARAMETERS_V1.fingerprint()
+        )
+
+    def test_v1_declared_values_match_the_contract(self):
+        p = READABILITY_PARAMETERS_V1
         self.assertEqual(p.hard_minimum_duration, 0.100)
         self.assertEqual(p.target_minimum_duration, 1.000)
         self.assertEqual(p.maximum_duration, 7.000)
@@ -109,6 +120,26 @@ class ParameterSetTests(unittest.TestCase):
         self.assertEqual(p.maximum_lines, 2)
         self.assertEqual(p.maximum_cue_characters, 44)
         self.assertEqual(p.cps_warning_threshold, 12)
+
+    def test_v2_differs_from_v1_in_exactly_one_value(self):
+        """PATCH-0043 PV-2: the cue ceiling deliberately does not follow the line ceiling."""
+
+        a, b = READABILITY_PARAMETERS_V1, READABILITY_PARAMETERS_V2
+        differing = [
+            field
+            for field in a.__dataclass_fields__
+            if field != "version" and getattr(a, field) != getattr(b, field)
+        ]
+        self.assertEqual(differing, ["maximum_line_characters"])
+        self.assertEqual(b.maximum_line_characters, 24)
+        self.assertEqual(b.maximum_cue_characters, 44)
+
+    def test_default_generation_uses_v2(self):
+        """PATCH-0043 PV-5."""
+
+        self.assertEqual(READABILITY_PARAMETERS.version, DEFAULT_READABILITY_PARAMETERS_VERSION)
+        self.assertEqual(DEFAULT_READABILITY_PARAMETERS_VERSION, 2)
+        self.assertEqual(readable_generator_spec().parameters_version, 2)
 
     def test_incoherent_parameters_are_rejected(self):
         with self.assertRaises(ValueError):
@@ -317,7 +348,7 @@ class TimingExtensionTests(unittest.TestCase):
 class LineCompositionTests(unittest.TestCase):
     def test_two_lines_from_one_break(self):
         text = "가나다라마바사아자차. 카타파하가나다라마바사"
-        composed = compose_lines(text, READABILITY_PARAMETERS)
+        composed = compose_lines(text, READABILITY_PARAMETERS_V1)
         self.assertEqual(composed.count(LF), 1)
         self.assertEqual(len(composed.split(LF)), 2)
 
@@ -330,7 +361,7 @@ class LineCompositionTests(unittest.TestCase):
 
     def test_each_line_stays_within_the_limit(self):
         text = "가나다라마바사아자차. 카타파하가나다라마바사"
-        for line in compose_lines(text, READABILITY_PARAMETERS).split(LF):
+        for line in compose_lines(text, READABILITY_PARAMETERS_V1).split(LF):
             self.assertLessEqual(display_length(line), 22)
 
     def test_unbreakable_long_text_stays_flat(self):
