@@ -1,7 +1,7 @@
 # PATCH-0042
 
 - Title: Effective Subtitle Readability Validation Enforcement Boundary (041 §16)
-- Status: Proposed
+- Status: Accepted
 - Priority: High
 - Trigger: Contract-consistency review of the GOAL implementing `PATCH-0041`, recorded in
   `implementation/124_READABLE_SUBTITLE_CUE_COMPOSITION.md`
@@ -13,9 +13,8 @@
 
 ## Status
 
-**Proposed.** This document exists; `docs/041_SUBTITLE_PIPELINE.md` has not yet been amended. The
-decisions below are not in force until the changes in *Required Blueprint Changes* are applied and
-the *PATCH Acceptance Criteria* are verified, at which point this Status becomes `Accepted`.
+**Accepted.** `docs/041_SUBTITLE_PIPELINE.md` was amended and the *PATCH Acceptance Criteria* below
+were verified; the decisions are in force for the effective-transcript readable generation.
 
 It introduces no schema change, no migration, no new aggregate, no new authority, no new lifecycle,
 and no parameter change. It invalidates no released record.
@@ -204,19 +203,19 @@ no dedicated PATCH — so the enforcing contract belongs where the policy alread
 Verified against the Blueprint amendment, before this PATCH may be marked `Accepted`. These say
 nothing about code.
 
-- [ ] §16 carries EN-1…EN-11 as written here.
-- [ ] No released sentence in `docs/041` is deleted or rewritten; prior PATCH notes are treated as
+- [x] §16 carries EN-1…EN-11 as written here.
+- [x] No released sentence in `docs/041` is deleted or rewritten; prior PATCH notes are treated as
       released text and are likewise untouched; verified line by line.
-- [ ] §4.5 and §4.8 gain **additive forward notes only**.
-- [ ] The *Sections Not Re-scoped* amendment removes only the Final Selection assertion and leaves
+- [x] §4.5 and §4.8 gain **additive forward notes only**.
+- [x] The *Sections Not Re-scoped* amendment removes only the Final Selection assertion and leaves
       every other assertion in force.
-- [ ] The enforcing boundary is named unambiguously as Final Selection admission, and Review
+- [x] The enforcing boundary is named unambiguously as Final Selection admission, and Review
       Preparation and Human Decision are stated as admitting.
-- [ ] Warnings are stated as carrying no admission consequence.
-- [ ] Existing records are stated immutable and the change is stated strictly additive.
-- [ ] The parameter set and its version are stated unchanged, and the three known blocking findings
+- [x] Warnings are stated as carrying no admission consequence.
+- [x] Existing records are stated immutable and the change is stated strictly additive.
+- [x] The parameter set and its version are stated unchanged, and the three known blocking findings
       are stated as remaining.
-- [ ] The change set contains no implementation, schema, migration, or test change.
+- [x] The change set contains no implementation, schema, migration, or test change.
 
 ## Implementation Requirements
 
@@ -235,6 +234,35 @@ Required validation for the implementing milestone. **Not satisfied by this PATC
 8. The real-fixture readable Candidate — three blocking findings — is refused at Final Selection, and
    the refusal enumerates the three affected cues.
 9. The complete test suite passes and the schema version is unchanged.
+
+## Changed Blueprint Files
+
+- `docs/041_SUBTITLE_PIPELINE.md` — §16 enforcement subsection (EN-1…EN-11 + Canonical Invariants);
+  forward notes on §4.5 and §4.8; scope-narrowing note on §16 *Sections Not Re-scoped*; header
+  (`Version`, `Last Updated`, `Amended By`). **+112 / −2 lines**; the two deletions are the two
+  header metadata lines, so every substantive change is an insertion.
+
+No other Blueprint file was amended. The effective-generation Final Selection carries no separate
+Blueprint section — `implementation/106` records it as introduced under the released `§4.8`
+responsibility and the `§15` generation with no dedicated PATCH — so the enforcing contract belongs
+where the policy already lives.
+
+## Result
+
+**Applied.** §16 carries EN-1…EN-11 and ten enforcement Canonical Invariants. Preservation was
+verified mechanically: `git diff --check` clean, two deleted lines both header metadata, and each
+released sentence the notes attach to confirmed present verbatim afterwards — §4.5's refusal, §4.8's
+Final Subtitle definition, §4.6's responsibility to connect Validation Failure to Review Items, §6's
+threshold deferral, §13's open questions, and PATCH-0029's contract-generation annotation. All eight
+`PATCH-0041` references survive, R-1…R-14 and L-1…L-5 are intact, and `src/` and `tests/` are
+unchanged with the schema at v53.
+
+`PATCH-0041`'s *Sections Not Re-scoped* sentence was narrowed by note rather than rewritten, so the
+record of what that PATCH declined to re-scope stays legible beside what this one changed.
+
+The implementing milestone has not started. *Implementation Requirements* is the open obligation
+list: Final Selection admission does not yet consult readability, and until it does the enforcement
+contracted here is not in effect in code.
 
 ## Consequences
 
