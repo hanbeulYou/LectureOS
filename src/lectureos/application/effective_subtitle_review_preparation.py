@@ -337,6 +337,15 @@ class EffectiveSubtitleReviewPreparationService:
             )
         return candidate
 
+    def cues_of(self, subject: EffectiveSubtitleReviewSubject) -> tuple:
+        """The subject candidate's immutable ordered cue graph, for boundaries that must inspect it.
+
+        Read-only, and the same idiom as `candidate_of`. Preparation itself never gates on the cues
+        (041 §16 EN-2); it exposes them so a later boundary can evaluate them.
+        """
+
+        return self._candidates.cues(subject.candidate_id.value)
+
     def _status_of(self, candidate) -> ReviewSubjectStatus:
         source = self._candidates.currentness(candidate)
         return ReviewSubjectStatus(

@@ -40,6 +40,12 @@ from .effective_subtitle_review_preparation import (
     require_canonical_review_subject_id,
 )
 from .effective_transcript_consumption import ConsumptionCurrentness
+from .readable_cue_composition import (
+    UnknownReadabilityContractError,
+    is_readable_candidate,
+    readability_contract_for,
+)
+from .readable_subtitle_validation import evaluate_readable_cues
 from .identities import (
     EffectiveSubtitleCandidateId,
     EffectiveSubtitleFinalSelectionId,
@@ -80,6 +86,11 @@ class EligibilityBlockingReason(str, Enum):
     NO_DECISION = "no_decision"
     DECISION_NOT_ACCEPT = "decision_not_accept"
     DECISION_NOT_APPLICABLE = "decision_not_applicable"
+    # 041 §16 EN-1/EN-4 (PATCH-0042): a readable candidate carrying any blocking readability
+    # finding must not become the Final Subtitle. Extends the released eligibility idiom rather
+    # than introducing a second gate, a new lifecycle, or a new aggregate.
+    READABILITY_BLOCKING = "readability_blocking"
+    READABILITY_CONTRACT_UNKNOWN = "readability_contract_unknown"
 
 
 class SelectionApplicability(str, Enum):
@@ -221,6 +232,10 @@ class SelectionEligibility:
     candidate_source_currentness: ConsumptionCurrentness
     review_subject_currentness: object
     blocking_reason: EligibilityBlockingReason | None
+    # Populated only when `blocking_reason` is READABILITY_BLOCKING, so the refusal names what
+    # must change instead of stating that something did (041 §16 EN-4/EN-5).
+    readability_findings: tuple = ()
+    readability_parameters_version: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -279,12 +294,18 @@ class EffectiveSubtitleFinalSelectionService:
             )
         applicability = self._decisions.applicability(current)
         blocking = None
+        findings: tuple = ()
+        parameters_version: int | None = None
         if current.kind is not DecisionKind.ACCEPT:
             blocking = EligibilityBlockingReason.DECISION_NOT_ACCEPT
         elif applicability is not DecisionApplicability.APPLICABLE:
             # Conservative policy: a NEW selection requires a current, applicable Accept — a
             # stale or unresolvable subject blocks new selection (existing selections stay valid).
             blocking = EligibilityBlockingReason.DECISION_NOT_APPLICABLE
+        else:
+            # 041 §16 EN-4: Final Selection is the ONE readability enforcement boundary. An Accept
+            # exists and applies; what remains is whether the proposal is structurally deliverable.
+            blocking, findings, parameters_version = self._readability_gate(subject, candidate)
         return SelectionEligibility(
             eligible=blocking is None,
             review_subject_id=subject.identity,
@@ -295,7 +316,35 @@ class EffectiveSubtitleFinalSelectionService:
             candidate_source_currentness=status.candidate_source_currentness,
             review_subject_currentness=status.review_subject_currentness,
             blocking_reason=blocking,
+            readability_findings=findings,
+            readability_parameters_version=parameters_version,
         )
+
+    def _readability_gate(self, subject, candidate):
+        """Re-derive readability under the candidate's OWN versioned contract (041 §16 EN-4).
+
+        Returns ``(blocking_reason_or_None, findings, parameters_version)``. Passthrough candidates
+        are out of scope entirely (EN-9): they were never composed under the readability policy, so
+        evaluating them against it would judge them by a contract they never claimed.
+        """
+
+        if not is_readable_candidate(candidate):
+            return None, (), None
+        try:
+            parameters = readability_contract_for(candidate)
+        except UnknownReadabilityContractError:
+            # Never fall back to the newest known set: that would evaluate a released candidate
+            # under a policy it was not composed under. Refusing is the safe, explicit outcome.
+            return EligibilityBlockingReason.READABILITY_CONTRACT_UNKNOWN, (), None
+        cues = self._subjects.cues_of(subject)
+        validation = evaluate_readable_cues(cues, parameters=parameters)
+        if validation.blocking:
+            return (
+                EligibilityBlockingReason.READABILITY_BLOCKING,
+                validation.blocking,
+                validation.parameters_version,
+            )
+        return None, (), validation.parameters_version
 
     # -- authority command ---------------------------------------------------------------------------
 
@@ -313,14 +362,26 @@ class EffectiveSubtitleFinalSelectionService:
         actor = HumanActorReference(selector)
         report = self.eligibility(review_subject_id)
         if not report.eligible:
+            detail = ""
+            if report.readability_findings:
+                # 041 §16 EN-4/EN-5: the refusal names what must change. A count alone would make
+                # the outcome unactionable, which is the difference between a recoverable admission
+                # result and an opaque failure.
+                enumerated = "; ".join(
+                    f"{finding.code}"
+                    + ("" if finding.cue_ordinal is None else f" (cue #{finding.cue_ordinal})")
+                    + f": {finding.detail}"
+                    for finding in report.readability_findings
+                )
+                detail = (
+                    f" ({len(report.readability_findings)} blocking readability finding(s) under "
+                    f"parameters v{report.readability_parameters_version}) [{enumerated}]"
+                )
+            elif report.decision_applicability is not None:
+                detail = f" (decision applicability: {report.decision_applicability.value})"
             raise ReviewSubjectNotEligibleError(
                 "review subject is not eligible for a new final selection: "
-                f"{report.blocking_reason.value}"
-                + (
-                    f" (decision applicability: {report.decision_applicability.value})"
-                    if report.decision_applicability is not None
-                    else ""
-                )
+                f"{report.blocking_reason.value}{detail}"
             )
         subject, candidate = self._resolve_subject(review_subject_id)
         intake = candidate.transcript_source_intake_id

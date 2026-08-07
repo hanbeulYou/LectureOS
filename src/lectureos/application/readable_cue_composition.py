@@ -430,3 +430,61 @@ def readable_generator_spec():
 
 
 __all__ += ["build_readable_cues", "readable_generator_spec"]
+
+
+class UnknownReadabilityContractError(ValueError):
+    """A readable Candidate declares a generator or parameter version this build cannot evaluate."""
+
+
+# 041 §16 EN-4 / R-13: validation is re-derived under the Candidate's OWN versioned contract, never
+# under whatever the current build happens to default to. The dispatch is explicit even while only
+# v1 exists, so adding v2 cannot silently re-evaluate released v1 Candidates under v2 thresholds.
+_READABILITY_PARAMETER_SETS: dict[int, ReadabilityParameters] = {
+    READABILITY_PARAMETERS_VERSION: READABILITY_PARAMETERS,
+}
+_SUPPORTED_GENERATOR_VERSIONS = frozenset({READABLE_GENERATOR_VERSION})
+
+
+def is_readable_candidate(candidate) -> bool:
+    """Whether this Candidate was produced by `readable_cue_composition` (041 §16 EN-9).
+
+    The single place that answers the question, so a generator kind is never compared by an
+    incidental string literal scattered across boundaries.
+    """
+
+    return getattr(candidate, "generator_kind", None) == READABLE_GENERATOR_KIND
+
+
+def readability_contract_for(candidate) -> ReadabilityParameters:
+    """The parameter set the Candidate was generated under — never the current default.
+
+    Raises `UnknownReadabilityContractError` for a generator or parameter version this build does
+    not know. Falling back to the newest known set would evaluate a released Candidate against a
+    policy it was never composed under, which EN-4 forbids.
+    """
+
+    if not is_readable_candidate(candidate):
+        raise UnknownReadabilityContractError(
+            "readability contracts apply only to readable_cue_composition candidates"
+        )
+    if candidate.generator_version not in _SUPPORTED_GENERATOR_VERSIONS:
+        raise UnknownReadabilityContractError(
+            f"unsupported readable generator version {candidate.generator_version!r}: this build "
+            f"knows {sorted(_SUPPORTED_GENERATOR_VERSIONS)}"
+        )
+    try:
+        return _READABILITY_PARAMETER_SETS[candidate.generation_parameters_version]
+    except KeyError:
+        raise UnknownReadabilityContractError(
+            f"unknown readability parameter version "
+            f"{candidate.generation_parameters_version!r}: this build knows "
+            f"{sorted(_READABILITY_PARAMETER_SETS)}; evaluating it under a different version would "
+            "apply a policy the candidate was not composed under"
+        ) from None
+
+
+__all__ += [
+    "UnknownReadabilityContractError",
+    "is_readable_candidate",
+    "readability_contract_for",
+]
