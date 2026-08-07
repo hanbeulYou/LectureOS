@@ -95,7 +95,23 @@ class ReadabilityParameters:
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-READABILITY_PARAMETERS = ReadabilityParameters()
+# 041 §16 R-10 version 1 (PATCH-0041). Released and permanently supported (PATCH-0043 PV-1): its
+# values are never edited, and every v1 Candidate is evaluated under it forever.
+READABILITY_PARAMETERS_V1 = ReadabilityParameters()
+
+# 041 §16 R-10 version 2 (PATCH-0043 PV-2). Exactly one value differs from v1. The per-cue ceiling
+# deliberately does NOT follow the line ceiling to 48: a cue over 44 characters stays blocking under
+# both versions, so this admits no denser cue — only room to place an already-admissible 44-character
+# cue at a natural word boundary instead of inside a two-character window.
+READABILITY_PARAMETERS_V2 = ReadabilityParameters(
+    maximum_line_characters=24,
+    version=2,
+)
+
+# PV-5: the default parameter set for NEW readable generation. Released v1 Candidates are untouched
+# and are never re-composed or re-validated at v2.
+DEFAULT_READABILITY_PARAMETERS_VERSION = 2
+READABILITY_PARAMETERS = READABILITY_PARAMETERS_V2
 
 
 def display_length(text: str) -> int:
@@ -372,7 +388,10 @@ def compose_readable_cues(
 
 
 __all__ = [
+    "DEFAULT_READABILITY_PARAMETERS_VERSION",
     "READABILITY_PARAMETERS",
+    "READABILITY_PARAMETERS_V1",
+    "READABILITY_PARAMETERS_V2",
     "READABILITY_PARAMETERS_VERSION",
     "READABLE_GENERATOR_KIND",
     "READABLE_GENERATOR_VERSION",
@@ -440,7 +459,8 @@ class UnknownReadabilityContractError(ValueError):
 # under whatever the current build happens to default to. The dispatch is explicit even while only
 # v1 exists, so adding v2 cannot silently re-evaluate released v1 Candidates under v2 thresholds.
 _READABILITY_PARAMETER_SETS: dict[int, ReadabilityParameters] = {
-    READABILITY_PARAMETERS_VERSION: READABILITY_PARAMETERS,
+    READABILITY_PARAMETERS_V1.version: READABILITY_PARAMETERS_V1,
+    READABILITY_PARAMETERS_V2.version: READABILITY_PARAMETERS_V2,
 }
 _SUPPORTED_GENERATOR_VERSIONS = frozenset({READABLE_GENERATOR_VERSION})
 
