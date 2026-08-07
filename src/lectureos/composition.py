@@ -626,6 +626,12 @@ def compose_sqlite_local_asr_transcription_service(
         )
 
         engine_runner = FasterWhisperEngineRunner()
+    try:
+        import faster_whisper as _faster_whisper
+
+        engine_version = getattr(_faster_whisper, "__version__", "unknown")
+    except Exception:  # the engine dependency stays optional (L-12)
+        engine_version = "unknown"
     return LocalAsrTranscriptionService(
         intakes,
         source_media,
@@ -633,6 +639,8 @@ def compose_sqlite_local_asr_transcription_service(
         admission_service,
         verifier,
         engine_runner,
+        checkpoint_store=checkpoint_store,
+        engine_version=engine_version,
     )
 
 

@@ -548,3 +548,68 @@ class StreamingTests(unittest.TestCase):
         service.transcribe(intake_id=_INTAKE_ID, model="tiny", language="ko")
         # A durable record exists after each segment — not only once the engine finished.
         self.assertEqual(observed, [1, 2, 3])
+
+
+class CompositionWiringTests(unittest.TestCase):
+    """The composition root must actually attach the store — a unit-tested service does not prove it.
+
+    The first cut of this milestone wired every layer except this one, and every service-level test
+    passed against it: the defect only surfaced when a real run left an empty checkpoint directory.
+    """
+
+    def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory()
+
+    def tearDown(self):
+        self.tempdir.cleanup()
+
+    def _service(self, **kwargs):
+        from lectureos.composition import compose_sqlite_local_asr_transcription_service
+        from lectureos.persistence import initialize_sqlite_database
+
+        connection = initialize_sqlite_database(Path(self.tempdir.name) / "t.sqlite3")
+        self.addCleanup(connection.close)
+        return compose_sqlite_local_asr_transcription_service(
+            connection, engine_runner=object(), **kwargs
+        )
+
+    def test_checkpoint_root_attaches_a_store(self):
+        service = self._service(checkpoint_root=str(Path(self.tempdir.name) / "scratch"))
+        self.assertIsNotNone(service._checkpoints)
+
+    def test_omitting_the_root_disables_checkpointing(self):
+        """CP-10: without a root every run is fresh, which is always a correct outcome."""
+
+        self.assertIsNone(self._service()._checkpoints)
+
+    def test_engine_version_reaches_the_binding(self):
+        """CP-5: an 'unknown' version would silently merge checkpoints across engine upgrades."""
+
+        service = self._service(checkpoint_root=str(Path(self.tempdir.name) / "scratch"))
+        try:
+            import faster_whisper  # noqa: F401
+        except ImportError:
+            self.skipTest("faster-whisper is not installed in this environment")
+        self.assertNotEqual(service._engine_version, "unknown")
+
+
+class CliWiringTests(unittest.TestCase):
+    """The CLI must forward the operational options; an unforwarded flag is silently inert."""
+
+    def test_cli_forwards_checkpoint_options(self):
+        import inspect
+
+        import lectureos.local_asr_cli as cli
+
+        source = inspect.getsource(cli.main)
+        self.assertIn("checkpoint_root=args.checkpoint_root", source)
+        self.assertIn("force_fresh=args.force_fresh", source)
+
+    def test_cli_declares_no_retention_default(self):
+        """CP-21: the retention duration is operational configuration, not a product number."""
+
+        import lectureos.local_asr_cli as cli
+
+        help_text = cli._parser().format_help()
+        for forbidden in ("--ttl", "--retention", "--max-age"):
+            self.assertNotIn(forbidden, help_text)
