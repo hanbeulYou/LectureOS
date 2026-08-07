@@ -1,8 +1,8 @@
 # 041_SUBTITLE_PIPELINE
 
 - Status: Draft
-- Version: Blueprint 0.2
-- Last Updated: 2026-08-06
+- Version: Blueprint 0.3
+- Last Updated: 2026-08-07
 - Layer: L1 — Pipeline
 - Depends On:
   - `000_MANIFESTO.md`
@@ -19,6 +19,7 @@
   - `../patches/PATCH-0029-effective-transcript-sourced-subtitle-candidate-contract.md`
 - Amended By:
   - `../patches/PATCH-0041-effective-subtitle-readability-and-editorial-timing-policy.md`
+  - `../patches/PATCH-0042-effective-subtitle-readability-enforcement-boundary.md`
 - Referenced By:
   - `043` Review Pipeline
   - `044` Export Pipeline
@@ -159,6 +160,13 @@ Subtitle은 Corrected Transcript의 시간 구조를 설명 없이 잃거나 원
 
 Validation Failure가 있는 Subtitle revision을 Final Subtitle로 취급하지 않는다. Validation은 구체적인 표현이 교육적으로 올바른지 대신 판단하지 않으며, Transcript Pipeline의 의미 검증을 다시 수행하지 않는다.
 
+> **후속 결정 note (`PATCH-0042`):** 위 금지는 그대로 유효하며, **effective-transcript 계약 세대의 readable
+> generation**에 대해 다음과 같이 구체화된다. §16 R-11의 **blocking** severity readability finding은 이 절이
+> 말하는 **Validation Failure에 해당한다**. 그 금지는 §16의 enforcement 절(EN-4)에 따라 **Final Subtitle
+> admission에서 집행**된다 — 생성·Review Preparation·Human Decision 단계가 아니다. **warning** severity는 이
+> 금지에 포함되지 않으며 Final Subtitle 확정을 막지 않는다(EN-6). `deterministic_segment_passthrough`
+> generation과 legacy 계약 세대에는 소급 적용되지 않는다(EN-9).
+
 ### 4.6 Subtitle Review Preparation
 
 - **Responsibility:** 분할, 표현, 타이밍, 읽기 문제, Uncertainty와 Validation Failure를 Subtitle 관련 Review Item으로 연결하고 관련 Source Media 구간을 확인할 수 있게 준비한다.
@@ -182,6 +190,14 @@ Reject된 후보는 새 사용자 판단 없이 다시 승인 상태가 되지 �
 - **Does Not Produce:** 별도의 승인 Subtitle 엔티티, 외부 자막 파일, export, 실제 화면 렌더링.
 
 Final Subtitle은 SRT와 동일하지 않으며 외부 파일이 Final Subtitle을 덮어쓰지 않는다. 승인 상태는 Source Media보다 높은 사실 권위를 부여하지 않고 현재 작업에서 사용할 Subtitle 표현을 확정한다.
+
+> **후속 결정 note (`PATCH-0042`):** 이 절의 "**구조적 Validation과** 적용 가능한 Review Decision을 **반영해**"는
+> **effective-transcript 계약 세대의 readable Candidate**에 대해 두 조건을 함께 요구하는 것으로 확정된다.
+> readable Candidate가 Final Subtitle로 선택되려면 **① 적용 가능한 Human Review Decision**과 **② readability
+> blocking finding 부재**를 **모두** 만족해야 한다. 이 조건은 **Final Selection Admission이 집행**한다(§16 EN-4).
+> **Review accept가 존재한다는 사실만으로 Final Subtitle 적격성이 생기지 않는다**(EN-3). warning severity는 이
+> 조건에 포함되지 않는다(EN-6). §16의 이 forward note는 `PATCH-0041`이 이 절을 재범위화하지 않는다고 한 진술을
+> `PATCH-0042`가 이 한 지점에서 좁힌 결과이며, 이 절의 기존 문언은 변경되지 않는다.
 
 ## 5. Subtitle Unit
 
@@ -691,11 +707,105 @@ Candidate를 만들 수 있으나 기존 사용자 Modification과 Review Decisi
 **7초 초과는 corruption이 아니다.** 검증 코퍼스에는 정상적인 긴 설명이 존재하고, cue `#1505`(`애들을`, 3자가
 13.4초)는 분할할 내용이 없는 긴 cue다. 길이만으로 결함 판정하면 진짜 강의 자료가 고장으로 표시된다.
 
+### 집행 경계 (Enforcement Boundary)
+
+이 소절은 `PATCH-0042`로 승인된 Architect 결정(EN-1…EN-11)을 기록한다. R-11이 정한 severity가 **어디서
+집행되는지**를 확정하며, 새 Product Domain·Aggregate·Authority·lifecycle을 만들지 않고 파라미터를 바꾸지 않는다.
+
+경계 배정은 이미 릴리스된 단계 책임에서 도출된다. §4.6은 Review Preparation의 책임을 "Validation Failure를
+Review Item으로 **연결**"하는 것으로 정하므로 실패를 드러내야 할 단계가 실패를 거부하는 단계일 수 없고, §4.5는
+거부를 **Final Subtitle**에 대해 진술하며, §4.8은 "**구조적 Validation과** … 반영해" 승인 상태를 구분하는 것을
+Final Subtitle 자신의 책임으로 정한다.
+
+**Blocking Is an Admission Condition (Confirmed, EN-1):** effective-transcript 세대에서 R-11의 **blocking**
+severity finding을 하나라도 가진 readable Candidate는 **Final Subtitle이 될 수 없으며**, 그것을 통해
+export·materialization·delivery·publication에 도달할 수 없다. `blocking`은 진단 라벨이 아니라 admission
+조건이다. **warning** severity는 어느 경계에서도 admission 결과를 갖지 않는다.
+
+**Generation and Review Preparation Admit (Confirmed, EN-2):** blocking finding은 Candidate 생성을 막지 않고
+Review Preparation을 막지 않는다(§4.6). readability finding을 이유로 Candidate record·cue·lineage를 숨기거나
+보류하거나 삭제하거나 무효로 표시하지 않는다. R-5와 R-9가 요구하는 "강제 변환 대신 원본 cue + 진단" 결과는 계속
+도달 가능하고 관측 가능해야 하며, blocking finding은 Review Item 또는 관측 가능한 validation result로 노출된다.
+
+**Human Decision Admits (Confirmed, EN-3):** 사람은 blocking finding을 가진 Candidate에 대해 `accept`·`reject`·
+`modify`를 기록할 수 있다. Review는 관찰과 판단이며, 결함 있는 제안을 판단할 권한을 없애는 것이 그 제안을 개선하지
+않는다. **Accept ≠ Final Subtitle 적격성** — 이 분리는 released effective-generation 계약이 이미 갖고 있고,
+EN-4는 조건을 하나 더할 뿐 새로 만들지 않는다.
+
+**Final Selection Is the Enforcing Boundary (Confirmed, EN-4):** 새 Final Selection admission은 명령 시점에
+해당 Candidate의 readability validation을 **재파생**하고, blocking severity finding이 하나라도 있으면
+**거부**한다. 거부는 명시적이고 해당 finding을 열거하며, 조용한 skip·강등·부분 선택·다른 Candidate로의 자동
+대체가 아니다.
+
+readability는 **파생이며 저장되지 않는다.** Candidate의 불변 cue 그래프를 그 Candidate 자신의 readability
+parameter version(R-13이 이미 identity의 일부로 만든 값)으로 재평가하므로, 생성 시점과 선택 시점 사이에 판정이
+흔들릴 수 없다.
+
+**Refusal Preserves Everything (Confirmed, EN-5):** 거부된 선택은 아무것도 쓰지 않고 아무것도 파괴하지 않는다.
+Candidate·cue·lineage·Review Subject·모든 Review Decision이 그대로 남고 상류 record는 변경되지 않는다. 부분
+Final Selection을 저장하지 않고 downstream side effect를 만들지 않으며 history를 수정하지 않는다. blocking
+detail은 최소한 코드와 해당 cue를 포함해 호출자에게 노출된다. 거부는 저장소 손상이 아니라 **복구 가능한 통상
+admission 결과**다.
+
+**Warnings Never Refuse (Confirmed, EN-6):** 목표 하한 미만 duration, 안전한 분할 지점이 없는 상태의 최대 초과
+duration, CPS 임계 초과, 그 밖의 미달성 가독성 목표는 non-blocking이며 Final Selection을 **막지 않는다**. "7초
+초과는 corruption이 아니다"라는 R-11의 진술은 그대로이며 이제 운영상 귀결을 갖는다 — 그런 Candidate는 선택
+가능하다.
+
+**Downstream Trusts Final Selection (Confirmed, EN-7):** SRT Artifact 생성·serialization·materialization·
+delivery·publication은 readability를 **재평가하지 않는다.** 이들은 EN-4를 이미 만족한 Final Selection을
+소비한다. 그 경계들에 readability 재검사·재파생·2차 게이트를 도입하지 않으며 이 절에서 추론될 수 없다. 하나의
+결정을 한 곳에서 내리므로 향후 어떤 포맷도 정책을 지지 않는다.
+
+**Strictly Additive; Released Records Immutable (Confirmed, EN-8):** 이미 존재하는 Final Selection·SRT
+Artifact·materialization·delivery·publication은 — **Candidate가 blocking finding을 가진 상태에서 만들어진
+것을 포함해** — 재작성·무효화·철회·재파생·supersede·표시되지 않는다. EN-4는 **새** admission에만 적용된다.
+§12.2가 바뀐 규칙의 기존 결정 자동 적용을 금지하고 R-14가 released record 불변을 요구하는 것과 일치한다.
+
+**Scope Is the Readable Generation (Confirmed, EN-9):** 집행은 `readable_cue_composition`이 생성한 Candidate에
+적용된다. `deterministic_segment_passthrough` Candidate에는 소급으로도 장래로도 적용되지 않는다 — 그것들은
+readability 정책 아래 구성되지 않았고 그 cue가 적합한 표시 단위로 제안된 적이 없다. passthrough Candidate의 선택
+가능성은 모든 면에서 변경되지 않는다.
+
+**No Parameter Change (Confirmed, EN-10):** `22`·`44`·`0.100초`·`1.000초`·`7.000초`·CPS `12`와 readability
+parameter version은 변경되지 않는다. 따라서 검증 코퍼스에서 관측된 **blocking 3건은 그대로 남고**, EN-4 아래
+해당 Candidate는 조용히 배포되는 대신 **선택 불가**가 된다. 이는 의도된 결과다. 그 3건을 줄이는 것은 향후
+parameter version에 관한 별도 Product Decision이며 여기서 내리지 않는다.
+
+**R-4/R-6 Recovery Reference (Confirmed, EN-11):** R-6은 문자 완전 동일 인접 cue의 병합을 승인하고 병합된 cue가
+text를 **한 번만** 담는다고 정한다. 따라서 R-4의 정확 복원 요구는 **R-6이 승인한 identical-duplicate collapse
+이후의 canonical source sequence**를 기준으로 평가한다. 이는 확장이 아니라 도출이다 — R-4를 원본 시퀀스 기준으로
+읽으면 R-6이 자신이 규율하는 모든 경우에서 무효가 되고, 명시적 Confirmed 결정을 무효화하는 해석은 채택할 수 없다.
+이 기준은 **다른 어떤 편차도 허용하지 않는다**: semantic merge·유사 병합·공백 무시 병합·그 밖의 text 손실이나
+추가는 여전히 금지되며 R-11 아래 blocking으로 남는다.
+
+#### Canonical Invariants (Enforcement)
+
+(1) blocking finding을 가진 Candidate도 Review Preparation과 Human Decision이 가능하다.
+(2) blocking finding을 가진 Candidate는 Final Subtitle로 선택될 수 없다.
+(3) warning만 가진 Candidate는 Final Selection이 가능하다.
+(4) Review accept는 Final Subtitle 적격성이 아니다.
+(5) Final Selection 성공 이후 downstream은 readability를 재평가하지 않는다.
+(6) blocking 거부는 Candidate·Decision·history를 변경하지 않으며 아무것도 저장하지 않는다.
+(7) 이미 released된 Final Selection과 Artifact는 소급 무효화되지 않는다.
+(8) `deterministic_segment_passthrough` generation은 이 집행의 대상이 아니다.
+(9) readability parameter set과 그 version은 `PATCH-0042`에서 변경되지 않는다.
+(10) readability는 파생이며 저장되지 않고, Candidate 자신의 parameter version으로 재평가된다.
+
 ### Sections Not Re-scoped
 
 §4.2·§4.3·§4.4·§4.8·§5·§7·§12.2·§13(위 해소 note가 명시한 네 항목 제외)·§15 E1…E14는 이 절로 개정되지 않는다.
 legacy 계약 세대, `deterministic_segment_passthrough` generator, released canonical SRT serializer, Review·Final
 Selection·SRT Artifact·materialization·delivery·publication의 어떤 계약도 변경되지 않는다.
+
+> **범위 축소 note (`PATCH-0042`):** 위 문언은 `PATCH-0041`이 스스로에 대해 한 진술이며 그 범위에서 그대로
+> 유효하다. `PATCH-0042`가 그중 **정확히 한 지점**을 좁힌다: **Final Selection Admission**은 이제
+> effective-transcript 세대의 **readable Candidate에 한해** readability 집행을 수행한다(위 EN-4). 이 축소는 그
+> 한 경계, 그 한 세대에 한정되며 다음은 **여전히 재범위화되지 않는다** — legacy 계약 세대,
+> `deterministic_segment_passthrough` generator, released canonical SRT serializer, Review Preparation, Human
+> Review Decision, **SRT Artifact·serialization·materialization·delivery·publication**. 특히 EN-7에 따라
+> downstream 경계는 readability를 재평가하지 않으므로 이 축소가 그쪽으로 번지지 않는다. §4.5와 §4.8은 원문이
+> 보존된 채 후속 note만 추가되었다.
 
 ### Deferred
 
