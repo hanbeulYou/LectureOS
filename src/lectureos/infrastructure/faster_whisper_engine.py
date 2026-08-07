@@ -32,8 +32,8 @@ from lectureos.application.local_asr_transcription import (
     LocalAsrSegment,
 )
 
-# A factory that builds an engine model exposing
-# ``transcribe(media_path, language=..., condition_on_previous_text=...) -> (segments, info)``.
+# A factory that builds an engine model exposing ``transcribe(media_path, **options)``, where
+# options carry the declared configuration and, when resuming, ``clip_timestamps``.
 ModelFactory = Callable[[str, str, str], object]
 
 
@@ -68,6 +68,8 @@ class FasterWhisperEngineRunner:
         device: str,
         compute_type: str,
         condition_on_previous_text: bool,
+        start_offset: float | None = None,
+        on_segment=None,
     ) -> LocalAsrResult:
         factory = self._factory()
         try:
@@ -84,19 +86,31 @@ class FasterWhisperEngineRunner:
             # upstream change to the library's default cannot alter LectureOS behaviour. No VAD parameter is
             # passed here — L-16 declines `vad_filter` and every VAD setting, and adding one would be a
             # contract change, not a tuning decision.
-            segments_iter, info = engine_model.transcribe(
-                media_path,
-                language=language,
-                condition_on_previous_text=condition_on_previous_text,
-            )
-            segments = tuple(
-                LocalAsrSegment(
+            options = {
+                "language": language,
+                "condition_on_previous_text": condition_on_previous_text,
+            }
+            if start_offset is not None:
+                # 040 §15 CP-12: resume decodes from an explicit instant on the same media.
+                # `clip_timestamps` seeks to that frame and the library restores emitted timestamps
+                # onto the ORIGINAL media timeline, so the adapter never re-bases anything — which
+                # is what keeps L-6's verbatim-timing requirement intact.
+                options["clip_timestamps"] = str(start_offset)
+            segments_iter, info = engine_model.transcribe(media_path, **options)
+            # The library yields lazily, so each segment is surfaced to the caller as it is decoded.
+            # `on_segment` is how the adapter records a durable checkpoint during a long run rather
+            # than only after it (040 §15 CP-11); it never alters what is returned.
+            produced: list[LocalAsrSegment] = []
+            for segment in segments_iter:
+                converted = LocalAsrSegment(
                     start=float(segment.start),
                     end=float(segment.end),
                     text=segment.text,
                 )
-                for segment in segments_iter
-            )
+                if on_segment is not None:
+                    on_segment(converted)
+                produced.append(converted)
+            segments = tuple(produced)
         except LocalAsrError:
             raise
         except Exception as error:

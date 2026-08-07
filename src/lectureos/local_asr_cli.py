@@ -41,18 +41,23 @@ def run_local_asr_transcription(
     language: str | None = None,
     device: str = "cpu",
     compute_type: str = "int8",
+    checkpoint_root: str | None = None,
+    force_fresh: bool = False,
 ) -> LocalAsrTranscriptionResult:
     """Run the local ASR adapter for an intake (existing repository required)."""
 
     connection = open_sqlite_database(database)
     try:
-        service = compose_sqlite_local_asr_transcription_service(connection)
+        service = compose_sqlite_local_asr_transcription_service(
+            connection, checkpoint_root=checkpoint_root
+        )
         return service.transcribe(
             intake_id=intake_id,
             model=model,
             language=language,
             device=device,
             compute_type=compute_type,
+            force_fresh=force_fresh,
         )
     finally:
         connection.close()
@@ -111,6 +116,20 @@ def _parser() -> argparse.ArgumentParser:
         help="compute device for the engine (default: cpu)",
     )
     parser.add_argument(
+        "--checkpoint-root",
+        metavar="DIR",
+        default=None,
+        help=(
+            "absolute path of the approved scratch root for execution checkpoints (040 §15 CP-9); "
+            "omit to disable checkpointing, in which case every run is a fresh execution"
+        ),
+    )
+    parser.add_argument(
+        "--force-fresh",
+        action="store_true",
+        help="discard any existing checkpoint for this key and run from the beginning",
+    )
+    parser.add_argument(
         "--compute-type",
         metavar="TYPE",
         default="int8",
@@ -129,6 +148,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             language=args.language,
             device=args.device,
             compute_type=args.compute_type,
+            checkpoint_root=args.checkpoint_root,
+            force_fresh=args.force_fresh,
         )
     except (
         LocalAsrError,
@@ -158,6 +179,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     print(f"segments: {admission.segment_count}")
     print(f"real ASR execution occurred: {'yes' if result.executed else 'no (reused prior admission)'}")
+    print(f"execution mode: {result.mode.value}")
+    if result.checkpoint_identity is not None:
+        print(f"checkpoint: {result.checkpoint_identity}")
+    if result.resumed_from is not None:
+        print(f"resumed from: {result.resumed_from}s (absolute source timeline)")
+    if result.checkpoint_discard_reason is not None:
+        print(
+            f"prior checkpoint not used: {result.checkpoint_discard_reason.value} "
+            "(discarded; a fresh execution ran instead)"
+        )
     return 0
 
 

@@ -592,6 +592,7 @@ def compose_sqlite_provider_transcript_admission_service(
 def compose_sqlite_local_asr_transcription_service(
     connection: sqlite3.Connection,
     engine_runner: LocalAsrEngineRunner | None = None,
+    checkpoint_root: str | None = None,
 ) -> LocalAsrTranscriptionService:
     """Build the local ASR execution adapter on one caller connection (040 §15).
 
@@ -610,6 +611,15 @@ def compose_sqlite_local_asr_transcription_service(
     admissions = SQLiteProviderTranscriptAdmissionRepository(connection)
     admission_service = compose_sqlite_provider_transcript_admission_service(connection)
     verifier = LocalSourceMediaVerifier()
+    checkpoint_store = None
+    if checkpoint_root is not None:
+        # 040 §15 CP-9: execution-local, beneath an approved scratch root, never the repository.
+        # Omitting the root simply disables checkpointing — CP-10 makes fresh execution correct.
+        from lectureos.infrastructure.local_asr_checkpoint_store import (
+            LocalAsrCheckpointFileStore,
+        )
+
+        checkpoint_store = LocalAsrCheckpointFileStore(checkpoint_root)
     if engine_runner is None:
         from lectureos.infrastructure.faster_whisper_engine import (
             FasterWhisperEngineRunner,

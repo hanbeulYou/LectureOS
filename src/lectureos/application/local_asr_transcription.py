@@ -26,6 +26,13 @@ from typing import Protocol
 
 from lectureos.execution.identities import SourceMediaId
 
+from .local_asr_checkpoint import (
+    CheckpointBinding,
+    CheckpointDiscardReason,
+    CheckpointSegment,
+    ExecutionMode,
+    LocalAsrCheckpointStore,
+)
 from .provider_transcript_admission import (
     ProviderTranscriptAdmission,
     ProviderTranscriptAdmissionError,
@@ -133,11 +140,20 @@ class LocalAsrResult:
 
 @dataclass(frozen=True, slots=True)
 class LocalAsrTranscriptionResult:
-    """The outcome: the admitted record, whether it was newly created, and whether the engine actually ran."""
+    """The outcome: the admitted record, whether it was newly created, and whether the engine actually ran.
+
+    `PATCH-0044` CP-21 adds the execution-mode disclosure: an operator must be able to tell which of
+    CP-8's three paths a command took, and why a checkpoint was not used when one existed. These are
+    statements about this command's outcome — never a progress API (L-14).
+    """
 
     admission: ProviderTranscriptAdmission
     created: bool
     executed: bool
+    mode: ExecutionMode = ExecutionMode.FRESH
+    checkpoint_identity: str | None = None
+    resumed_from: float | None = None
+    checkpoint_discard_reason: CheckpointDiscardReason | None = None
 
 
 class TranscriptSourceIntakeQuery(Protocol):
@@ -179,6 +195,8 @@ class LocalAsrEngineRunner(Protocol):
         device: str,
         compute_type: str,
         condition_on_previous_text: bool,
+        start_offset: float | None = None,
+        on_segment=None,
     ) -> LocalAsrResult: ...
 
 
@@ -223,6 +241,9 @@ class LocalAsrTranscriptionService:
         *,
         provider: str = FASTER_WHISPER_PROVIDER,
         configuration: LocalAsrProviderConfiguration = APPROVED_LOCAL_ASR_CONFIGURATION,
+        checkpoint_store: LocalAsrCheckpointStore | None = None,
+        engine_library: str = FASTER_WHISPER_PROVIDER,
+        engine_version: str = "unknown",
     ) -> None:
         self._intakes = intake_query
         self._source_media = source_media_query
@@ -232,6 +253,10 @@ class LocalAsrTranscriptionService:
         self._engine = engine_runner
         self._provider = provider
         self._configuration = configuration
+        # None means checkpointing is unavailable; CP-10 makes fresh execution always correct.
+        self._checkpoints = checkpoint_store
+        self._engine_library = engine_library
+        self._engine_version = engine_version
 
     @property
     def configuration(self) -> LocalAsrProviderConfiguration:
@@ -251,6 +276,7 @@ class LocalAsrTranscriptionService:
         language: str | None = None,
         device: str = DEFAULT_DEVICE,
         compute_type: str = DEFAULT_COMPUTE_TYPE,
+        force_fresh: bool = False,
     ) -> LocalAsrTranscriptionResult:
         if not isinstance(model, str) or not model.strip():
             raise LocalAsrError("model identifier must be a non-empty string")
@@ -281,16 +307,77 @@ class LocalAsrTranscriptionService:
         admission_identity = derive_provider_transcript_admission_identity(
             intake_identity, self._provider, model, provider_result_ref
         )
+        # CP-8 step 1: canonical reuse wins without exception. The checkpoint is not consulted,
+        # not read, and not resumed — a checkpoint alongside a canonical result is stale.
         existing = self._admissions.get(admission_identity)
         if existing is not None:
             return LocalAsrTranscriptionResult(
-                admission=existing, created=False, executed=False
+                admission=existing,
+                created=False,
+                executed=False,
+                mode=ExecutionMode.REUSED,
             )
 
         # Operational availability + fingerprint verification (does not change Media identity).
         media_path = self._source_verifier.verify(record)
 
-        # Execute the concrete local engine (the only place external ASR work happens).
+        binding = CheckpointBinding(
+            provider_result_ref=provider_result_ref,
+            device=device,
+            compute_type=compute_type,
+            engine_library=self._engine_library,
+            engine_version=self._engine_version,
+        )
+        if self._checkpoints is None:
+            return self._execute(
+                intake_identity, provider_result_ref, model, language, device, compute_type,
+                media_path, binding, prior=(), resume_from=None, mode=ExecutionMode.FRESH,
+                discard_reason=None,
+            )
+        # CP-20: one owner per key for the whole inspect → decide → execute → append → admit → clean
+        # span. Ownership is released by the OS if this process dies.
+        with self._checkpoints.owned(binding):
+            loaded = self._checkpoints.load(binding)
+            if force_fresh or not loaded.resumable:
+                # CP-19: an incompatible or corrupt checkpoint is discarded whole and the reason is
+                # disclosed; it is never partially trusted or blended with a fresh run.
+                self._checkpoints.begin(binding)
+                return self._execute(
+                    intake_identity, provider_result_ref, model, language, device, compute_type,
+                    media_path, binding, prior=(), resume_from=None, mode=ExecutionMode.FRESH,
+                    discard_reason=None if force_fresh else loaded.discard_reason,
+                )
+            prior = tuple(
+                LocalAsrSegment(start=s.start, end=s.end, text=s.text) for s in loaded.segments
+            )
+            return self._execute(
+                intake_identity, provider_result_ref, model, language, device, compute_type,
+                media_path, binding, prior=prior, resume_from=loaded.resume_from,
+                mode=ExecutionMode.RESUMED, discard_reason=None,
+            )
+
+    def _execute(
+        self, intake_identity, provider_result_ref, model, language, device, compute_type,
+        media_path, binding, *, prior, resume_from, mode, discard_reason,
+    ) -> LocalAsrTranscriptionResult:
+        # CP-13: checkpointed segments are adopted as they are. They are never regenerated and never
+        # compared for equality — ASR is non-deterministic, so an equality contract would be
+        # unsatisfiable and would make resume permanently impossible.
+        # CP-11: the checkpoint is appended **as each segment is produced**, not after the engine
+        # finishes. Recording only at the end would leave a 90-minute run unprotected for its whole
+        # duration, which is the exact failure this contract exists to prevent.
+        next_ordinal = len(prior)
+
+        def _record(segment) -> None:
+            nonlocal next_ordinal
+            if self._checkpoints is None:
+                return
+            self._checkpoints.append(
+                binding,
+                CheckpointSegment(next_ordinal, segment.start, segment.end, segment.text),
+            )
+            next_ordinal += 1
+
         result = self._engine.transcribe(
             media_path=media_path,
             model=model,
@@ -298,16 +385,35 @@ class LocalAsrTranscriptionService:
             device=device,
             compute_type=compute_type,
             condition_on_previous_text=self._configuration.condition_on_previous_text,
+            start_offset=resume_from,
+            on_segment=_record if self._checkpoints is not None else None,
         )
-
-        document = self._to_document(result, model, provider_result_ref)
+        produced = list(result.segments)
+        assembled = LocalAsrResult(
+            provider=result.provider,
+            model=result.model,
+            language=result.language,
+            segments=prior + tuple(produced),
+        )
+        # CP-14: the assembled whole goes through the unchanged §14 admission. No partial credit,
+        # no per-segment admission, and no repository write before it. The resume join is validated
+        # there like any other boundary.
+        document = self._to_document(assembled, model, provider_result_ref)
         admission_result = self._admission_service.admit(
             intake_id=intake_identity.value, document=document
         )
+        if self._checkpoints is not None:
+            # CP-17: the canonical result now exists, so keeping the checkpoint would leave a copy
+            # of canonical content outside the repository.
+            self._checkpoints.delete(binding)
         return LocalAsrTranscriptionResult(
             admission=admission_result.admission,
             created=admission_result.created,
             executed=True,
+            mode=mode,
+            checkpoint_identity=binding.identity if self._checkpoints is not None else None,
+            resumed_from=resume_from,
+            checkpoint_discard_reason=discard_reason,
         )
 
     def _to_document(

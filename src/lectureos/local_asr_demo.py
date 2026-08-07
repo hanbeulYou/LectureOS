@@ -59,7 +59,9 @@ class _FakeEngineRunner:
         self.invocations: list[dict] = []
 
     def transcribe(
-        self, *, media_path, model, language, device, compute_type, condition_on_previous_text
+        self, *, media_path, model, language, device, compute_type, condition_on_previous_text,
+        start_offset=None,
+        on_segment=None,
     ):
         self.invocations.append(
             {
