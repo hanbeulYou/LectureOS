@@ -1,7 +1,7 @@
 # PATCH-0044
 
 - Title: Local ASR Checkpoint and Resume Boundary (040 §15)
-- Status: Proposed
+- Status: Accepted
 - Priority: High
 - Trigger: Architect Decision on the transcription loss recorded in
   `implementation/122_FULL_LENGTH_REAL_MEDIA_E2E_VALIDATION.md`; the gate evaluation `PATCH-0039`
@@ -14,9 +14,8 @@
 
 ## Status
 
-**Proposed.** This document exists; `docs/040_TRANSCRIPT_PIPELINE.md` has not yet been amended. The
-decisions below are not in force until the changes in *Required Blueprint Changes* are applied and
-the *PATCH Acceptance Criteria* are verified.
+**Accepted.** `docs/040_TRANSCRIPT_PIPELINE.md` was amended and the *PATCH Acceptance Criteria* below
+were verified; the decisions are in force for the `§15` local ASR adapter.
 
 It introduces **no schema change, no migration, no new aggregate, no new Product Domain record, no
 new lifecycle, no new authority, and no new database table**. It changes no released contract's
@@ -266,20 +265,20 @@ released cross-reference to local ASR execution state exists elsewhere.
 
 Verified against the Blueprint amendment, before this PATCH may be marked `Accepted`.
 
-- [ ] §15 carries CP-1…CP-21 as written here.
-- [ ] No released sentence in `docs/040` is deleted or rewritten; prior PATCH notes are treated as
+- [x] §15 carries CP-1…CP-21 as written here.
+- [x] No released sentence in `docs/040` is deleted or rewritten; prior PATCH notes are treated as
       released text and are likewise untouched; verified line by line.
-- [ ] L-5, L-8, L-10 and L-14 gain **additive forward notes only**.
-- [ ] The checkpoint is stated non-canonical, without Product Domain identity, and unable to start
+- [x] L-5, L-8, L-10 and L-14 gain **additive forward notes only**.
+- [x] The checkpoint is stated non-canonical, without Product Domain identity, and unable to start
       any downstream stage.
-- [ ] The Application/Infrastructure split is stated.
-- [ ] The checkpoint key and its deliberate asymmetry with the admission anchor are stated.
-- [ ] The CP-8 reuse order places canonical reuse first.
-- [ ] Full `§14` revalidation and unchanged admission atomicity are stated.
-- [ ] Resume is stated engine-conditional with fresh execution as the correct fallback.
-- [ ] Retention is stated bounded with the duration left to operational configuration, and no
+- [x] The Application/Infrastructure split is stated.
+- [x] The checkpoint key and its deliberate asymmetry with the admission anchor are stated.
+- [x] The CP-8 reuse order places canonical reuse first.
+- [x] Full `§14` revalidation and unchanged admission atomicity are stated.
+- [x] Resume is stated engine-conditional with fresh execution as the correct fallback.
+- [x] Retention is stated bounded with the duration left to operational configuration, and no
       specific number is invented.
-- [ ] The change set contains no implementation, schema, migration, or test change.
+- [x] The change set contains no implementation, schema, migration, or test change.
 
 ## Implementation Requirements
 
@@ -302,6 +301,29 @@ Required validation for the implementing milestone. **Not satisfied by this PATC
     when the owning process dies.
 11. The command discloses whether it reused a canonical result, resumed, or ran fresh.
 12. The complete test suite passes and the schema version is unchanged.
+
+## Changed Blueprint Files
+
+- `docs/040_TRANSCRIPT_PIPELINE.md` — §15 *Execution Checkpoint and Resume* subsection (CP-1…CP-21
+  plus fifteen Canonical Invariants); forward notes on L-5, L-8, L-10 and L-14; header (`Version`,
+  `Last Updated`, `Amended By`). **+183 / −2 lines**; the two deletions are the two header metadata
+  lines, so every substantive change is an insertion.
+
+No other Blueprint file was amended: no released cross-reference to local ASR execution state exists
+elsewhere.
+
+## Result
+
+**Applied.** §15 carries CP-1…CP-21. Preservation was verified mechanically: `git diff --check`
+clean, two deleted lines both header metadata, and each released sentence the notes attach to
+confirmed present verbatim afterwards — L-5's temporary workspace rule, L-10's
+admission-before-persistence prohibition, L-8's reuse-before-rerun, and L-14's deferred list.
+`PATCH-0039` and `PATCH-0040` notes survive at four references each, L-1…L-16 and A-1…A-15 are
+intact, `src/` and `tests/` are unchanged, and the schema stays at v53.
+
+The implementing milestone has not started. *Implementation Requirements* is the open obligation
+list: no checkpoint is written, no resume path exists, and a failed transcription is still lost
+today.
 
 ## Consequences
 
