@@ -559,29 +559,47 @@ if __name__ == "__main__":
 
 
 class EnforcementBoundaryTests(unittest.TestCase):
-    """Pins where readability validation is — and is not — consulted (041 §16 R-11).
+    """Pins where readability validation is — and is not — consulted (041 §16 EN-4/EN-7).
 
-    §16 names one severity "delivery-blocking" but specifies no boundary that must refuse, and its
-    *Sections Not Re-scoped* clause states that the Review, Final Selection, SRT Artifact,
-    materialization, delivery and publication contracts are unchanged. The released §4.5 and §9.1
-    point the other way. Until that is resolved in the Blueprint, the implementation must neither
-    enforce a gate nor pretend one exists — these tests fix the current state as an observable fact
-    so it cannot drift silently, and they are the anchor a future clarification will move.
+    `PATCH-0042` resolved the question this class was written to anchor: Final Selection admission
+    is the one enforcing boundary, and every other boundary is explicitly out of scope. Review
+    Preparation and Human Decision must admit (EN-2/EN-3), and downstream must not re-evaluate
+    (EN-7), so those modules must not consult the validator at all.
     """
 
-    _DOWNSTREAM = (
+    _MUST_NOT_CONSULT = (
         "lectureos.application.effective_subtitle_review_preparation",
         "lectureos.application.effective_subtitle_review_decision",
-        "lectureos.application.effective_subtitle_final_selection",
         "lectureos.application.effective_subtitle_srt_artifact",
         "lectureos.application.effective_srt_materialization",
     )
+    _ENFORCING = "lectureos.application.effective_subtitle_final_selection"
 
-    def test_no_downstream_boundary_consults_readability(self):
+    @staticmethod
+    def _imports(module_name):
         import ast
         import importlib
 
-        for module_name in self._DOWNSTREAM:
+        module = importlib.import_module(module_name)
+        tree = ast.parse(Path(module.__file__).read_text(encoding="utf-8"))
+        imported = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module)
+            elif isinstance(node, ast.Import):
+                imported.update(alias.name for alias in node.names)
+        return imported
+
+    def test_final_selection_is_the_enforcing_boundary(self):
+        """EN-4: the one boundary that must consult the validator."""
+
+        self.assertIn("readable_subtitle_validation", self._imports(self._ENFORCING))
+
+    def test_no_other_boundary_consults_readability(self):
+        import ast
+        import importlib
+
+        for module_name in self._MUST_NOT_CONSULT:
             module = importlib.import_module(module_name)
             tree = ast.parse(Path(module.__file__).read_text(encoding="utf-8"))
             imported = set()
