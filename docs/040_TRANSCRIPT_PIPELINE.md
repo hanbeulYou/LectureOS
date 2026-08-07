@@ -1,8 +1,8 @@
 # 040_TRANSCRIPT_PIPELINE
 
 - Status: Draft
-- Version: Blueprint 0.1
-- Last Updated: 2026-07-14
+- Version: Blueprint 0.2
+- Last Updated: 2026-08-07
 - Layer: L1 — Pipeline
 - Depends On:
   - `000_MANIFESTO.md`
@@ -32,6 +32,7 @@
   - `../patches/PATCH-0029-effective-transcript-sourced-subtitle-candidate-contract.md`
   - `../patches/PATCH-0039-provider-transcript-admission-timing-representation-tolerance.md`
   - `../patches/PATCH-0040-local-asr-previous-text-conditioning-policy.md`
+  - `../patches/PATCH-0044-local-asr-checkpoint-and-resume-boundary.md`
 
 ## Purpose
 
@@ -609,6 +610,16 @@ re-import·re-hash-into-new-identity를 하지 않고 record를 변경하지 않
 격리된 임시 workspace에만 쓰고 성공·실패 모두 정리하며 원본을 덮어쓰지 않고, 확정 계약이 없는 한 추출 audio를
 Artifact로 persist하지 않는다.
 
+> **후속 결정 note (`PATCH-0044`):** 위 문언은 그대로 유효하다. 다만 **두 workspace를 구분한다.**
+>
+> | workspace | 정리 규칙 |
+> |---|---|
+> | **media preparation temporary workspace** (이 절) | 성공·실패 **모두 정리** |
+> | **execution checkpoint workspace** (§15 CP 절) | 실패·crash 후에도 resume을 위해 **존속 가능** |
+>
+> checkpoint의 존속은 이 절의 temporary preparation workspace lifecycle을 **재해석하는 것이 아니다.** 둘은 서로
+> 다른 산출물이며 **같은 directory lifecycle을 공유하지 않는다**(CP-16).
+
 **Execution Metadata (Confirmed, L-6):** provider/model 메타데이터는 사실대로다: `provider = "faster-whisper"`,
 `model`은 operator가 지정한 식별자. 반환된 segment는 순서·시간·text를 그대로 보존하고, 사용/감지 언어는 사실대로
 기록한다.
@@ -637,6 +648,18 @@ adapter가 아니라 §16 Current Raw Transcript Selection이 결정한다. 이�
 admit된 동등 결과가 있는지 확인하고 있으면 **재실행 없이 재사용**한다(일반적 ASR 비결정성으로 인한 conflict를 회피).
 서로 다른 model/language/source는 서로 다른 admission을 만든다.
 
+> **후속 결정 note (`PATCH-0044`):** 이 절의 reuse-before-rerun은 **최우선**으로 유지된다. execution checkpoint가
+> 도입된 뒤의 순서는 다음으로 확정된다(CP-8):
+>
+> ```text
+> 1. canonical admitted Provider Result reuse   (이 절)
+> 2. compatible checkpoint resume
+> 3. fresh execution
+> ```
+>
+> canonical 결과가 이미 존재하면 checkpoint를 참조하지 않고 새 실행을 시작하지 않는다. 그때의 checkpoint는
+> **stale**이며 정리 대상이지 경쟁 source가 아니다.
+
 **Conflict (Confirmed, L-9):** 같은 anchor에 대한 상충 결과는 결코 덮어쓰지 않는다(§14 A-9와 일관). reuse-before-rerun
 때문에 이 adapter를 통해서는 자연히 conflict가 발생하지 않는다.
 
@@ -644,6 +667,12 @@ admit된 동등 결과가 있는지 확인하고 있으면 **재실행 없이 �
 전에는 저장소에 아무것도 쓰지 않는다**. 어떤 실패(malformed/unknown intake·source unavailable/changed·dependency/model
 부재·engine 실패·inadmissible output)에서도 Provider Transcript Result·segment·Raw Transcript·admission 상태를 남기지
 않으며 Source Media·intake 기록을 바꾸지 않는다. admission 원자성은 기존 admission service가 소유한다.
+
+> **후속 결정 note (`PATCH-0044`):** 이 절의 admission-before-persistence 금지는 **repository Product state**를
+> 대상으로 한다 — 위 열거가 전부 repository record이고 문언도 "**저장소에**"로 한정한다. **execution-local
+> checkpoint filesystem state는 이 금지에 포함되지 않는다**(CP-2). checkpoint가 존재해도 admission 이전에 다음은
+> **하나도 생성되지 않는다**: Provider Transcript Result, Provider Transcript Admission, Raw Transcript, canonical
+> segment row, intake, Source Media, Domain Result. admission 원자성과 전체 재검증은 그대로다(CP-14).
 
 **Replaceability (Confirmed, L-11):** adapter는 변경되지 않은 provider-neutral 경계(§14)에서 종료하므로 엔진은
 admission 계약을 바꾸지 않고 교체 가능하다. 이 slice는 provider registry·plugin discovery·generic provider SDK를
@@ -662,6 +691,11 @@ NLE/rendering 변경·managed media storage·영구 추출-audio 저장·일반�
 VAD parameter, L-16 참조)**·**`hallucination_silence_threshold`·`temperature`·`beam_size`·`no_speech_threshold`·
 `log_prob_threshold`·`compression_ratio_threshold` 조정**·**환각 heuristic 탐지/삭제**. 이들 deferred 개념의
 placeholder는 도입하지 않는다.
+
+> **후속 결정 note (`PATCH-0044`):** 위 Deferred는 그대로 유효하다. **execution checkpoint가 존재한다고 해서
+> 다음이 생기는 것이 아니다**: progress percentage, background job, durable queue, retry scheduler, automatic
+> retry, cancellation, job lifecycle. checkpoint는 이 중 어느 것도 아니며 그 placeholder도 아니다. CP-21의
+> **resume/fresh 실행 경로 노출은 한 명령의 결과에 대한 진술**이지 progress API가 아니다.
 
 **Provider Configuration (Confirmed, L-15; `PATCH-0040` P-1/P-2/P-6/P-7):** LectureOS가 의존하는 엔진 decoding
 parameter는 engine detail이 아니라 **Application이 소유하는 제품 계약**이다. 승인된 값은 Application에 명시적으로
@@ -704,6 +738,153 @@ admission, §18 Human Authority, `042` 분석 finding — 이 처리한다. 환�
 (13) 엔진 decoding configuration은 Application이 소유하고 명시적으로 전달하며, 승인 값은
 `condition_on_previous_text = False` 하나뿐이고 production override 경로는 없다. (14) VAD는 발화 손실과 비정상
 duration 때문에 채택하지 않는다. (15) 이 계약은 환각 제거를 보장하지 않고 출력 필터링을 허가하지 않는다.
+
+### Execution Checkpoint and Resume (`PATCH-0044`)
+
+이 소절은 `PATCH-0044`로 승인된 Architect 결정(CP-1…CP-21)을 기록한다. 고비용 ASR 실행을 안전하게 이어갈 수
+있게 하되, **검증되지 않은 canonical 결과를 저장하지 않는다는 원칙은 깨지 않는다.** 새 Aggregate·Product Domain
+record·lifecycle·Authority·database table을 만들지 않으며 스키마를 바꾸지 않는다.
+
+근거는 릴리스된 문언에 이미 있다. L-10의 금지는 **repository state**를 대상으로 하고(위 note), L-5는 **격리된 임시
+workspace**를 이미 계약한다. 다만 L-5는 성공·실패 모두 정리를 요구하므로, 실패 후 존속하는 checkpoint는 그와
+구분되는 **새 문장**을 요구한다 — CP-16이 그것이며 L-5는 변경되지 않는다.
+
+#### 성격과 책임
+
+**Scope (Confirmed, CP-1):** 이 계약은 §15 local ASR adapter의 execution checkpoint를 규율한다. 다른 단계를
+바꾸지 않으며 §14 admission은 모든 면에서 불변이다.
+
+**Non-canonical (Confirmed, CP-2):** checkpoint는 `ProviderTranscriptResult`가 아니고 `RawTranscript`가 아니며
+canonical segment도, 어떤 Product Domain record도, Artifact도 아니다. **canonical identity·lifecycle·state
+machine·Human Authority·provenance 역할이 없다.** 진행 중인 하나의 실행에 대한 durable 증거일 뿐이다.
+
+**Starts Nothing (Confirmed, CP-3):** checkpoint의 존재는 어떤 downstream 단계도 도달 가능하게 만들지 않는다.
+selection·correction·subtitle 생성·review·export·validation 중 어느 것도 이를 소비·조회하거나 이로 인해
+촉발되지 않으며, adapter 밖의 어떤 것도 이를 transcript 내용으로 읽지 않는다.
+
+**Responsibility Split (Confirmed, CP-4):** **Application**이 checkpoint 결속 키, canonical reuse → resume →
+fresh 순서, 그리고 어느 경로였는지 노출할 의무를 소유한다. **Infrastructure**가 저장·원자적 쓰기·잠금·손상
+탐지·정리를 소유한다. Application은 저장 매체를 지시하지 않고 Infrastructure는 identity 의미를 발명하지 않는다.
+
+#### 결속과 호환성
+
+**Checkpoint Key (Confirmed, CP-5):**
+
+```text
+checkpoint_key = provider_result_ref  (L-7 v2: provider·model·language·configuration·media)
+               + device
+               + compute_type
+               + engine library version
+```
+
+**Deliberate Asymmetry (Confirmed, CP-6):** L-7은 `device`·`compute_type`을 "같은 요청을 더 빠르게 처리할 뿐"이라
+provider-result reference에서 제외한다. 그러나 checkpoint는 요청이 아니라 **하나의 물리적 실행의 재개**이며 수치
+체계가 그 실행의 일부다. `int8` 출력에 `float32` 출력을 잇거나 서로 다른 engine library version의 출력을 접합하면
+다른 산술 아래 생성된 segment를 결합하게 된다. **따라서 checkpoint key는 admission anchor보다 엄격히 좁으며**, 이
+축소는 admission identity를 전혀 바꾸지 않는다.
+
+**No Cross-configuration Reuse (Confirmed, CP-7):** provider configuration·model·language·media·device·compute
+type·engine version 중 하나라도 다르면 다른 키이고 다른 checkpoint다. 이들을 가로질러 재개하지 않는다.
+
+**Reuse Order (Confirmed, CP-8):**
+
+```text
+1. canonical admitted Provider Result   (L-8 reuse-before-rerun)
+2. compatible checkpoint resume
+3. fresh execution
+```
+
+L-8이 예외 없이 우선한다. canonical 결과가 존재하면 실행을 시작하지 않고 checkpoint를 참조하지 않는다. 그때의
+checkpoint는 **stale**이며 정리 대상이지 경쟁 source가 아니다.
+
+#### 저장과 durability
+
+**Storage Isolation (Confirmed, CP-9):** checkpoint는 **승인된 scratch root** 아래에만 존재하며 저장소 내부나
+canonical storage, Source Media 디렉터리에는 두지 않는다. 최소한 다음 **의미**를 담는다: semantic binding
+metadata, execution compatibility metadata, 순서 있는 완전 segment 레코드, 완전 레코드가 어디서 끝나는지 안전하게
+판정할 수단. 구체 파일명과 배치는 구현 세부이며 이 네 의미가 계약이다.
+
+**Best-effort Durability (Confirmed, CP-10):** checkpoint는 프로세스 종료와 재부팅을 견뎌야 하며 그래서 메모리가
+아니라 파일시스템이다. 그러나 **보장이 아니다** — resume은 운영자가 얻을 수 있는 최적화이지 약속된 제품 기능이
+아니다. checkpoint 유실은 결코 오류 조건이 아니고 fresh execution은 언제나 올바른 결과다.
+
+**Complete Records; No Per-record fsync (Confirmed, CP-11):** segment 레코드는 append 지향으로 기록하고 **완전한**
+레코드만 재사용한다. 잘린 꼬리 레코드는 읽을 때 폐기한다. 레코드마다 `fsync`는 **의무가 아니다**: 2,500 세그먼트
+실행에 세그먼트당 동기 디스크 왕복을 강요하게 되고, CP-10이 durability를 best-effort로 두므로 불필요하다. OS
+crash로 마지막 미flush 레코드가 사라지면 **손상이 아니라 incomplete tail**이며 checkpoint는 계속 사용 가능하고
+resume이 더 이른 지점에서 재개될 뿐이다. metadata는 released `LocalSrtFileWriter._atomic_write` 관용구를 따라
+원자적으로 교체한다. checkpoint 쓰기는 repository transaction과 결합하지 않는다.
+
+#### 재개
+
+**Engine-conditional (Confirmed, CP-12):** automatic resume은 엔진이 **동일 source media의 명시적 시각에서
+디코딩을 시작**할 수 있고 **원본 시간축의 timestamp를 보고**할 때에만 제공된다. 설치된 `faster-whisper 1.2.0`은
+`clip_timestamps`로 이를 만족한다(Capability A: `clip_timestamps="30"` 실행이 첫 segment를 정확히 `30.00`에서
+반환). 그렇지 않은 엔진에서는 **resume을 제공하지 않고 fresh execution이 올바른 fallback이다** — adapter는 재개
+지점을 근사하지 않고 timestamp를 rebase하지 않으며 없는 능력을 발명하지 않는다. L-11 replaceability가 유지된다.
+
+**Adopt, Never Re-verify by Regeneration (Confirmed, CP-13):** resume은 완전한 checkpoint segment를 **그대로
+채택**하고 마지막 완전 segment 이후만 생성한다. checkpoint된 구간을 다시 실행해 동일성을 비교하지 **않는다**: ASR은
+비결정적이며(바이트 동일 오디오에서 23개와 60개 세그먼트가 관측됨) 동일성 계약은 구조적으로 충족 불가여서 재개를
+영구히 불가능하게 만들 뿐이다.
+
+**Full Revalidation; Unchanged Atomicity (Confirmed, CP-14):** checkpoint segment와 새로 생성된 segment는 **하나의**
+Provider Result candidate로 조립되어 변경되지 않은 §14 admission에 제출되고, admission은 **전체**를 검증한다. 부분
+검증 크레딧도, segment별 admission도, admission 이전 repository write도 없다. 마지막 checkpoint segment와 첫 새
+segment의 접합은 다른 경계와 동일하게 거기서 검증된다 — 순서, `PATCH-0039` 표현 허용치 아래의 비겹침, 구조적
+유효성.
+
+**Resume Changes No Final Meaning (Confirmed, CP-15):** 재개를 거쳐 조립된 결과도 단일 실행 결과와 **같은 anchor
+에서 같은 admission identity**를 파생한다 — §14 A-6이 실행 이력이 아니라 anchor를 해싱하기 때문이다. resume은
+identity·provenance·모든 downstream 계약에 보이지 않는다.
+
+#### lifecycle
+
+**Survives Failure; L-5 Workspace Does Not (Confirmed, CP-16):** L-5의 media preparation workspace는 성공·실패
+모두 정리되며 그 규칙은 불변이다. execution checkpoint는 목적이 다른 별개 산출물이며 **엔진 실패·admission
+실패·프로세스 사망 후에도 존속한다** — 실패를 견디는 것이 존재 이유다. 둘은 같은 directory lifecycle을 공유해서는
+안 된다.
+
+**Deleted on Admission Success (Confirmed, CP-17):** canonical Provider Result가 존재하게 되면 checkpoint를
+삭제한다. 유지하면 canonical 내용의 사본이 저장소 밖에 남아 CP-2가 지키려는 경계가 흐려진다.
+
+**Retained on Failure (Confirmed, CP-18):** admission 실패·validation 거부·conflict·엔진 실패·crash는 모두
+checkpoint를 유지한다. 거부는 복구 가능한 결과이며 고비용 출력은 다음 시도를 위해 남는다.
+
+**Corruption Is Discarded (Confirmed, CP-19):** metadata parse 실패, 결속 불일치, engine 호환성 불일치, malformed
+레코드, 불가능한 순서, 유효하지 않은 timestamp, 인식되지 않는 checkpoint version 중 하나라도 해당하면 **resume에
+사용하지 않는다.** 폐기 또는 격리하고 그 사실을 명시적으로 알린 뒤 fresh execution을 진행한다. 이는 **저장소 손상이
+아니고 Provider Transcript Validation Failure도 아니다** — repository validator는 이를 알지도 보고하지도 않는다.
+부분 신뢰는 없다.
+
+**One Owner per Key (Confirmed, CP-20):** 하나의 checkpoint key는 한 번에 하나의 실행만 소유한다. 같은 키의 두
+번째 실행은 **명시적으로 거부**하고 기존 소유자를 보고하며, interleave하지 않고 병행 append하지 않으며 lock을
+탈취하지 않는다. 소유권은 소유 프로세스가 죽으면 자동 해제되어야 하고 **OS-level advisory lock이 의도된 기제**다 —
+heartbeat가 필요 없기 때문이다. **background heartbeat·lease 갱신·job lifecycle을 도입하지 않는다**(L-14 유지).
+플랫폼이 자동 해제를 제공할 수 없으면 stale-owner 판정을 **명시적으로 계약한 뒤에만** 지원하며 추론하지 않는다.
+그 플랫폼에서는 automatic resume을 제공하지 않고 fresh execution fallback을 사용할 수 있다.
+
+**Bounded Retention; Observation Without a Progress API (Confirmed, CP-21):** checkpoint를 무한 보존하지 않는다.
+retention은 bounded이며 age 기반 수집을 허용한다. **구체 기간은 여기서 정하지 않는다** — 이를 정할 제품 근거가
+없고 숫자를 발명하는 것은 근거 없는 정책 결정이므로, 정확한 기간은 승인된 scratch root 아래의 **operational
+configuration**이다. 운영자는 checkpoint를 조회·삭제하고 fresh 실행을 강제할 수 있어야 하되, 정상 운영에서
+checkpoint를 관리할 필요가 없어야 한다. adapter는 **CP-8의 세 경로 중 무엇이 일어났는지 반드시 알린다.** 그 노출은
+한 명령의 결과에 대한 진술이며 **progress API가 아니다**: percentage progress·background job·durable queue·retry
+scheduler·cancellation·job lifecycle은 L-14 아래 계속 deferred이며 checkpoint의 존재에서 추론될 수 없다.
+
+#### Canonical Invariants (Checkpoint)
+
+(1) checkpoint는 canonical Provider Result·Raw Transcript·canonical segment·Product Domain record·Artifact가
+아니다. (2) checkpoint는 Human Authority를 갖지 않고 어떤 downstream도 시작하지 못한다. (3) Application이 결속
+키·순서·노출을, Infrastructure가 저장·원자성·잠금·정리를 소유한다. (4) checkpoint key는 admission anchor보다 좁고
+device·compute-type·engine version을 포함한다. (5) canonical reuse가 resume보다, resume이 fresh보다 우선한다.
+(6) checkpoint는 승인된 scratch root 아래에만 존재하고 repository state를 만들지 않는다. (7) durability는
+best-effort이며 완전한 레코드만 재사용하고 잘린 꼬리는 폐기한다. (8) resume은 engine-conditional이며 불가능하면
+fresh execution이 정상 fallback이다. (9) checkpoint된 구간은 재생성·동일성 비교하지 않는다. (10) 조립 결과는 §14
+admission 전체 검증을 받고 admission 원자성은 불변이다. (11) resume은 최종 Provider Result identity를 바꾸지
+않는다. (12) admission 성공은 checkpoint를 삭제하고 실패·crash는 유지한다. (13) 손상된 checkpoint는 부분 신뢰 없이
+폐기되며 저장소 손상이 아니다. (14) 키당 소유자는 하나이며 heartbeat·job lifecycle은 도입하지 않는다.
+(15) retention은 bounded이고 정확한 기간은 operational configuration이며, 경로 노출은 progress API가 아니다.
 
 ## 16. Current Raw Transcript Selection and Downstream Readiness (First Slice)
 
