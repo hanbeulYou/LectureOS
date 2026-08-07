@@ -3486,3 +3486,40 @@ readable v2 Candidate (**selected**, then materialized to 188,964 bytes with at 
 line over 24 characters, no cue over 44, no sub-100 ms cue and no overlap). Validation is `healthy`
 over 15,690 objects at schema v53, previously released SRTs are byte-identical, and the complete
 3,436-test suite passes.
+
+## Local ASR Execution Checkpoint and Resume (PATCH-0044)
+
+- Record: `125_LOCAL_ASR_CHECKPOINT_AND_RESUME.md`
+- Blueprint: `docs/040` §15 CP-1…CP-21 (`PATCH-0044`)
+- Status: **COMPLETE**
+- Selected persistence: none — schema remains **v53**; a checkpoint is not repository state
+- Commits: `feat: add local ASR execution checkpoint and resume`, `test: cover local ASR checkpoint,
+  resume and recovery`, `fix: attach the checkpoint store in the composition root`, `fix: compare
+  checkpoint boundaries with the released representation tolerance`, `docs: record local ASR
+  execution checkpoint and resume`
+
+A failed 90-minute transcription is now resumable without weakening the rule that caused the loss.
+`§15` L-10 prohibits writing to the **repository** before admission and enumerates only repository
+records, so execution-local filesystem state was never inside it — which is why this needed no
+schema change, no migration, and no change to admission atomicity.
+
+CP-20's premise was verified with real subprocesses before any code was written: `fcntl.flock`
+refuses a second acquirer, releases on normal exit, and releases immediately after `SIGKILL` with no
+stale-lock handling. That is what lets the contract forbid inventing a heartbeat or a stale-owner
+sweep.
+
+**Three defects passed the full unit suite and were found only by running the real experiment**, and
+each lived in a layer the tests did not reach: the engine runner materialized its generator before
+returning, so nothing was recorded until the run finished; the composition root built the store and
+returned a service without it; and boundary comparison used exact floats, so the `PATCH-0039` shape
+(`4.5e-13`) made valid checkpoints look non-increasing and turned every long resume into a fresh run.
+All three now have regression tests aimed at their own layer — a streaming count taken from inside
+the engine, composition and CLI wiring assertions, and a store round-trip over the real boundary
+shape.
+
+Demonstrated on the 2-hour, 30.2 GB lecture: 90 segments recorded, process `SIGKILL`ed, repository
+still empty, checkpoint survived, restart resumed at exactly `441.58 s` on the absolute source
+timeline with unbroken ordinals, the run completed reporting `execution mode: resumed`, 1,731
+segments were admitted, the checkpoint was deleted on success, validation reported `healthy` at
+schema v53, and a third run took the canonical `reused` path without consulting the checkpoint. All
+three CP-8 paths are proven on real media. The complete 3,479-test suite passes.
