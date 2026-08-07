@@ -1,7 +1,7 @@
 # 041_SUBTITLE_PIPELINE
 
 - Status: Draft
-- Version: Blueprint 0.3
+- Version: Blueprint 0.4
 - Last Updated: 2026-08-07
 - Layer: L1 — Pipeline
 - Depends On:
@@ -20,6 +20,7 @@
 - Amended By:
   - `../patches/PATCH-0041-effective-subtitle-readability-and-editorial-timing-policy.md`
   - `../patches/PATCH-0042-effective-subtitle-readability-enforcement-boundary.md`
+  - `../patches/PATCH-0043-effective-subtitle-readability-parameter-v2.md`
 - Referenced By:
   - `043` Review Pipeline
   - `044` Export Pipeline
@@ -616,6 +617,49 @@ cue-to-source-segment lineage가 복원 가능해야 한다. 보간된 경계는
 
 이 값들은 **하나의 versioned parameter set**을 이루며 Candidate identity에 참여한다(R-13). 값이 하나라도 바뀌면 새
 parameter version이 되어 새 Candidate가 생성되며, 기존 Candidate는 결코 변형되지 않는다.
+
+> **후속 결정 note — parameter set version 2 (`PATCH-0043`, PV-1…PV-7):** 위 v1 표와 문언은 그대로 유효하며
+> **version 1은 released 버전으로 영구 보존된다**(PV-1). 그 위에 **version 2**를 additive하게 추가한다.
+>
+> | parameter | v1 | **v2** |
+> |---|---|---|
+> | hard minimum display duration | `0.100초` | `0.100초` |
+> | target minimum display duration | `1.000초` | `1.000초` |
+> | maximum display duration | `7.000초` | `7.000초` |
+> | **maximum characters per line** | `22` | **`24`** |
+> | maximum lines per cue | `2` | `2` |
+> | **maximum characters per cue** | `44` | **`44`** |
+> | CPS warning threshold | `> 12` | `> 12` |
+>
+> **정확히 한 값만 다르다**(PV-2). cue 상한 `44`는 line 상한을 따라 `48`로 **올리지 않는다** — 44자를 넘는 cue는
+> 두 버전 모두에서 blocking이며, 이 변경은 **더 밀도 높은 cue를 허용하지 않는다.** 추가되는 것은 **line-layout
+> slack**뿐이다: 이미 승인 가능한 44자 cue를 두 글자 창 안에서만 끊어야 하는 제약을 풀어 자연스러운 한국어 어절
+> 경계에 배치할 여유를 준다.
+>
+> **근거는 실측이다.** 보존된 2,564-segment fixture에서 v1은 2,574 cue 중 **3건**이
+> `READABILITY_LINE_TOO_LONG`으로 blocking이었다(0.12%). 원인은 알고리즘이 아니라 산술이다 — cue `#95`(42자)는
+> 분할 후보 11개 중 최선이 `18/23`·`24/17`, `#1272`(42자)는 14개 중 `17/24`·`24/17`, `#1747`(43자)는 10개 중
+> `19/23`·`23/19`로, **모두 한쪽이 22를 넘고 어느 쪽도 24를 넘지 않는다.** 동일 알고리즘에 v2 파라미터만 적용하면
+> blocking은 **3 → 0**이 되고 새 blocking은 발생하지 않으며, cue 수·timing·lineage는 **비트 단위로 동일**하고 줄
+> 구성만 132 cue(5.1%)에서 달라진다.
+>
+> **identity는 released mechanism을 그대로 쓴다**(PV-3): parameter version이 이미 `§15` E7과 R-13을 통해
+> Candidate identity에 참여하므로, v2 Candidate는 같은 binding에 대해 **다른 identity**를 파생하고 v1 Candidate와
+> R-3 아래 경쟁 후보로 공존한다. 새 identity 메커니즘·Aggregate·Authority·lifecycle은 도입되지 않는다.
+>
+> **v1 Candidate는 결코 v2로 재검증되지 않는다**(PV-4). EN-4가 이미 "Candidate 자신의 parameter version으로
+> 재파생"을 요구하며, 그 요구가 이 추가를 안전하게 만든다. released v1 Candidate는 영원히 v1으로 평가되고, 모르는
+> parameter version은 여전히 fallback 없이 거부된다.
+>
+> **새 readable generation의 기본 parameter set은 v2다**(PV-5). R-10이 version 1의 값을 정하면서 새 생성이 어떤
+> version을 쓰는지는 정하지 않았으므로, 이 전환은 구현 선택이 아니라 제품 진술로 여기에 기록한다. v1 생성은
+> 원리상 가능하되 기본값이 아니며 새 인터페이스를 요구하지 않는다.
+>
+> **released record는 손대지 않는다**(PV-6): 기존 Candidate·Review Subject·Review Decision·Final Selection·SRT
+> Artifact·materialization·delivery·publication은 재작성·무효화·재파생·supersede·재생성되지 않으며, 어떤 것도
+> v2로 자동 재생성되지 않는다. **그 밖에는 아무것도 바뀌지 않는다**(PV-7): generator 알고리즘·split trigger와
+> 우선순위·merge 규칙·timing extension·timing interpolation·line-break 문법·validation code와 severity·집행
+> 경계·canonical SRT serializer·schema 전부 불변이며, 7초를 넘는 3건은 두 버전 모두에서 warning으로 남는다.
 
 **`0.100초`가 주장하는 것과 주장하지 않는 것.** LectureOS는 `0.100초`를 **이 세대가 생성하는 readable subtitle
 cue에 대한 제품 수준 hard minimum**으로 확정한다. 이는 SRT 일반·자막 포맷 일반·모든 외부 consumer에 대한 보편적
