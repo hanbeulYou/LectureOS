@@ -193,6 +193,67 @@ the readable Candidate carried three blocking findings — are **unchanged**. EN
 admissions only, and re-running selection against that same subject now refuses without touching a
 single row.
 
+## Readability parameter set v2 (`PATCH-0043`)
+
+`PATCH-0043` added a second parameter version after v1 left three cues blocking out of 2,574. One
+value changed — `maximum_line_characters` `22 → 24` — and `maximum_cue_characters` deliberately
+stayed at `44`: `2 × 24` is **not** the new cue ceiling, so no cue may carry more text than v1 allows.
+What v2 adds is line-placement room.
+
+The v1 blockers were arithmetic, not algorithmic. With a 44-character cue ceiling and 22-character
+lines, a 42–43 character cue must break inside a two-character window:
+
+| cue | characters | admissible breaks | best under v1 | v2 result |
+|---|---|---|---|---|
+| `#95` | 42 | 11 | `18/23`, `24/17` | `24/17` |
+| `#1272` | 42 | 14 | `17/24`, `24/17` | `24/17` |
+| `#1747` | 43 | 10 | `19/23`, `23/19` | `19/23` |
+
+Every best candidate has a side above 22 and none above 24.
+
+Over the full fixture, with the identical generator algorithm and only the parameter set varying:
+
+| measurement | v1 | v2 |
+|---|---|---|
+| output cues | 2,574 | 2,574 |
+| **blocking findings** | **3** | **0** |
+| warnings | 91 | 88 |
+| one-line / two-line cues | 2,106 / 468 | 2,217 / 357 |
+| three or more lines | 0 | 0 |
+| cues over 44 characters | 0 | 0 |
+| lines over the version's maximum | 0 | 0 |
+| cues under 100 ms | 0 | 0 |
+| overlaps | 0 | 0 |
+| text recovery / lineage | exact / preserved | exact / preserved |
+
+**Timing, lineage and cue count are bit-identical between the versions**; only line composition
+differs, on 132 cues (5.1 %). That identity is the evidence the parameter governs line placement
+alone — no split trigger, merge rule, or timing rule reads it. The three lost warnings are the
+`READABILITY_LINE_COMPOSITION_UNAVAILABLE` diagnostics for the three cues that now compose.
+
+`READABILITY_PARAMETERS_V1` keeps its released values and fingerprint. `READABILITY_PARAMETERS` now
+aliases v2 because PV-5 makes it the default for **new** generation, and
+`DEFAULT_READABILITY_PARAMETERS_VERSION` names that intent rather than leaving it implied by an
+alias. The dispatch table gained an entry rather than replacing one, so a v1 Candidate still resolves
+to v1 — which under EN-4 is why adding a version is safe at all.
+
+### End-to-end result on the real repository
+
+Three Candidates now coexist for one consumption binding, each with a distinct identity:
+
+| candidate | generator | versions | cues | Final Selection |
+|---|---|---|---|---|
+| `4c067f0f…` | `deterministic_segment_passthrough` | v1 / params v1 | 2,564 | eligible |
+| `558bb854…` | `readable_cue_composition` | v1 / params v1 | 2,574 | **refused** (3 blocking) |
+| `7bc8ae6d…` | `readable_cue_composition` | v1 / **params v2** | 2,574 | **selected** |
+
+The v2 Candidate passed Review Preparation, an Accept decision and Final Selection, then produced an
+SRT Artifact and a materialized file of 188,964 bytes with **at most two lines, no line over 24
+characters, no cue over 44, no sub-100 ms cue and no overlap**. The v1 Candidate is still refused
+under its own parameter version, which is PV-4 working as intended rather than a leftover. Read-only
+validation reports `healthy` over 15,690 objects at schema v53, and the previously released SRTs are
+byte-identical.
+
 ## CLI
 
 ```text

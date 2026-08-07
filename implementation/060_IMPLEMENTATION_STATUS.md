@@ -3458,3 +3458,31 @@ milestone are untouched — EN-8 governs new admissions only. The complete 3,432
 The three blocking findings were **not** resolved, deliberately: EN-10 keeps the parameter set fixed,
 and this milestone's purpose was to make those three actually block. Giving line placement slack
 needs a new parameter version and a Product Decision.
+
+
+## Readability Parameter Set v2 (PATCH-0043)
+
+- Record: `124_READABLE_SUBTITLE_CUE_COMPOSITION.md` (v2 section)
+- Blueprint: `docs/041` §16 R-10 follow-up note (`PATCH-0043`, PV-1…PV-7)
+- Status: **COMPLETE**
+- Selected persistence: none — schema remains **v53**
+- Commits: `docs: define/apply/accept PATCH-0043 …`, `feat: add readability parameter set v2 and
+  default new generation to it`, `test: cover readability parameter v2 alongside v1`, `docs: record
+  readability parameter v2`
+
+One value changed — `maximum_line_characters` `22 → 24` — with `maximum_cue_characters` held at `44`,
+so no cue may carry more text than v1 allowed; what v2 adds is line-placement room. The three v1
+blockers were arithmetic rather than algorithmic: a 42–43 character cue had to break inside a
+two-character window, and each cue's best admissible break had a side above 22 and none above 24.
+
+Over the real fixture v2 takes blocking from **3 to 0** and introduces none, while timing, lineage
+and cue count stay **bit-identical** to v1 and only line composition differs on 132 cues. v1 keeps
+its values, its fingerprint and its dispatch entry, and released v1 Candidates are still evaluated
+at v1 under EN-4 — which is what made adding a version safe.
+
+Three Candidates now coexist for one binding: the passthrough Candidate (eligible), the readable v1
+Candidate (**still refused**, its three blocking findings judged under its own version), and the
+readable v2 Candidate (**selected**, then materialized to 188,964 bytes with at most two lines, no
+line over 24 characters, no cue over 44, no sub-100 ms cue and no overlap). Validation is `healthy`
+over 15,690 objects at schema v53, previously released SRTs are byte-identical, and the complete
+3,436-test suite passes.
