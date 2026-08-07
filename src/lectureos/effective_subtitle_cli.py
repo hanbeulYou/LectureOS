@@ -101,8 +101,14 @@ def _run_generate_readable(args) -> int:
     _print_candidate(result.candidate, result.currentness)
     validation = evaluate_readable_cues(result.cues)
     print(f"readability parameters version: {validation.parameters_version}")
-    print(f"blocking readability findings: {len(validation.blocking)}")
+    print(f"readability findings at blocking severity: {len(validation.blocking)}")
     print(f"readability warnings: {len(validation.warnings)}")
+    if validation.blocking:
+        print(
+            "note: 041 §16 R-11 classifies these as delivery-blocking but names no boundary that "
+            "refuses them, and §16 amends no downstream contract; no review, selection, or export "
+            "boundary currently consults readability (see 'readability' for detail)"
+        )
     print(
         "this is a separate candidate from the deterministic_segment_passthrough candidate; "
         "neither is promoted, superseded, or selected by this command"
@@ -131,8 +137,7 @@ def _run_readability(args) -> int:
     )
     print(f"cues: {candidate.cue_count}")
     print(f"readability parameters version: {validation.parameters_version}")
-    print(f"deliverable: {'yes' if validation.deliverable else 'no'}")
-    print(f"blocking: {len(validation.blocking)}")
+    print(f"findings at blocking severity: {len(validation.blocking)}")
     for finding in validation.blocking:
         where = "" if finding.cue_ordinal is None else f" cue #{finding.cue_ordinal}"
         print(f"  [blocking] {finding.code}{where}: {finding.detail}")
@@ -142,7 +147,12 @@ def _run_readability(args) -> int:
         print(f"  [warning] {finding.code}{where}: {finding.detail}")
     if len(validation.warnings) > args.max_warnings:
         print(f"  ... {len(validation.warnings) - args.max_warnings} more warnings not shown")
-    print("validation is read-only and derived; nothing was stored and no decision was made")
+    print(
+        "validation is read-only and derived; nothing was stored and no decision was made. "
+        "041 §16 R-11 names the blocking severity but specifies no enforcing boundary, and §16 "
+        "amends no downstream contract, so a candidate carrying blocking findings is NOT refused "
+        "by review preparation, final selection, or artifact generation today"
+    )
     return 0
 
 

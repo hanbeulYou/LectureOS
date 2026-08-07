@@ -133,6 +133,15 @@ class ReadabilityValidation:
 
     @property
     def deliverable(self) -> bool:
+        """Whether any finding reached blocking severity — a **derived observation, not a gate**.
+
+        041 §16 R-11 classifies these violations as delivery-blocking but names no boundary that
+        must refuse them, and §16's *Sections Not Re-scoped* clause leaves the Review, Final
+        Selection, SRT Artifact, materialization, delivery and publication contracts unchanged. No
+        boundary consults this value today; reading it as an enforced admission decision would
+        assert a contract that does not exist.
+        """
+
         return not self.blocking
 
 

@@ -3418,4 +3418,15 @@ The readable Candidate was driven through review preparation, an Accept decision
 the SRT Artifact and physical materialization on a copy of the real repository (189,075 bytes, 2,574
 cues), with read-only validation `healthy` over 10,425 objects at schema v53 and every released
 passthrough record unchanged. The released `canonical_srt` v1 serializer is unmodified and carries
-the approved line structure verbatim. The complete 3,413-test suite passes.
+the approved line structure verbatim. The complete 3,415-test suite passes.
+
+**That walk-through carried three findings at blocking severity and no boundary refused it, which is
+an open Blueprint question rather than an implementation gap.** `§16` R-11 classifies those
+violations as delivery-blocking but names no enforcing boundary, and `§16`'s *Sections Not
+Re-scoped* clause leaves the Review, Final Selection, SRT Artifact, materialization, delivery and
+publication contracts unchanged — so §16 cannot have imposed a gate on them. Pointing the other way,
+the released `§4.5` (not in that clause's list) says a Subtitle revision with Validation Failure is
+not treated as Final Subtitle, and `§9.1` says an over-long display unit must not pass as a normal
+result. Implementation cannot choose between two released statements: no boundary was changed, no
+output claims a gate that does not exist, and `EnforcementBoundaryTests` pins the current absence of
+enforcement as an executable fact. **Requires Blueprint Clarification.**

@@ -556,3 +556,51 @@ class BuildReadableCuesTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EnforcementBoundaryTests(unittest.TestCase):
+    """Pins where readability validation is — and is not — consulted (041 §16 R-11).
+
+    §16 names one severity "delivery-blocking" but specifies no boundary that must refuse, and its
+    *Sections Not Re-scoped* clause states that the Review, Final Selection, SRT Artifact,
+    materialization, delivery and publication contracts are unchanged. The released §4.5 and §9.1
+    point the other way. Until that is resolved in the Blueprint, the implementation must neither
+    enforce a gate nor pretend one exists — these tests fix the current state as an observable fact
+    so it cannot drift silently, and they are the anchor a future clarification will move.
+    """
+
+    _DOWNSTREAM = (
+        "lectureos.application.effective_subtitle_review_preparation",
+        "lectureos.application.effective_subtitle_review_decision",
+        "lectureos.application.effective_subtitle_final_selection",
+        "lectureos.application.effective_subtitle_srt_artifact",
+        "lectureos.application.effective_srt_materialization",
+    )
+
+    def test_no_downstream_boundary_consults_readability(self):
+        import ast
+        import importlib
+
+        for module_name in self._DOWNSTREAM:
+            module = importlib.import_module(module_name)
+            tree = ast.parse(Path(module.__file__).read_text(encoding="utf-8"))
+            imported = set()
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and node.module:
+                    imported.add(node.module)
+                elif isinstance(node, ast.Import):
+                    imported.update(alias.name for alias in node.names)
+            self.assertNotIn("readable_subtitle_validation", imported, module_name)
+            self.assertNotIn(
+                "lectureos.application.readable_subtitle_validation", imported, module_name
+            )
+
+    def test_validation_stores_nothing_and_decides_nothing(self):
+        cue = _Cue(0, "가" * 30, 0.0, 3.0, (TranscriptSegmentId("transcript-segment:t:0"),))
+        validation = evaluate_readable_cues([cue])
+        self.assertTrue(validation.blocking)
+        # The outcome is a value, not a command: it exposes findings and a derived boolean only.
+        self.assertEqual(
+            sorted(field for field in validation.__dataclass_fields__),
+            ["findings", "parameters_version"],
+        )

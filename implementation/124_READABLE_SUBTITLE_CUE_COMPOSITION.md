@@ -87,8 +87,18 @@ This is representation handling, not a new threshold.
 R-4 requires the source text to be recoverable; R-6 authorizes carrying an identical-adjacent
 duplicate's text **once**. Recovery is therefore exact against the **merge-normalized** source — the
 source sequence with authorized duplicates collapsed — and `merge_normalized_source_text` computes
-that reference so the invariant is executable. Read alone, R-4's "recover the source text exactly"
-and R-6's merge cannot both hold on a duplicated pair; read together, they define exactly this.
+that reference so the invariant is executable.
+
+**This is derived from the contract, not added to it.** R-6 is a Confirmed decision in the same
+Decision section as R-4 and states in terms that the merged cue "carries the text once". On a
+duplicated pair the two clauses cannot both hold literally: if R-4's "recover the source text
+exactly" were read against the *raw* sequence, R-6 would be inoperative in every case it governs,
+because carrying the text once necessarily yields one copy where the source held two. A reading that
+nullifies an explicit Confirmed decision is not available. The only reading under which both operate
+is recovery against the source with R-6's authorized merges applied — which is what
+"merge-normalized" names. The term is a label for the derived reference, not a new permission: it
+widens nothing, since every deviation it admits is one R-6 already authorizes by name, and any
+deviation R-6 does not authorize still fails `READABILITY_TEXT_NOT_RECOVERABLE`.
 
 ## Validation
 
@@ -141,7 +151,7 @@ a `PATCH` decision and not this milestone's to make.
 
 Short conversational cues are preserved as distinct turns: `저요?` and `응` remain separate cues.
 
-## Downstream
+## Downstream — and an unresolved enforcement question
 
 The readable Candidate was driven through the released path on a copy of the real E2E repository —
 review preparation, an Accept decision, Final Selection, SRT Artifact, and physical materialization
@@ -149,6 +159,33 @@ review preparation, an Accept decision, Final Selection, SRT Artifact, and physi
 schema v53. Both Candidates coexist for the same consumption binding with distinct identities, and
 the passthrough Candidate, its decisions, its selection, its artifact, and the published SRT are
 unchanged.
+
+**That walk-through must not be read as a clean success.** The Candidate carried **three findings at
+blocking severity**, and no boundary refused it. That is not an implementation shortcut — it is an
+open Blueprint question, and the implementation deliberately does not settle it:
+
+- `§16` R-11 classifies those violations as **배포 차단 / delivery-blocking**, but names no boundary
+  that must refuse them and defines no admission rule.
+- `§16`'s *Sections Not Re-scoped* clause states that the **Review, Final Selection, SRT Artifact,
+  materialization, delivery and publication contracts are unchanged**. §16 therefore cannot have
+  imposed an admission gate on them; it explicitly disclaimed amending them.
+- The effective generation's own Final Selection contract enumerates its ineligibility reasons and
+  readability is not among them.
+- Pointing the other way, the released `§4.5` — which is **not** in §16's not-re-scoped list — states
+  that "Validation Failure가 있는 Subtitle revision을 Final Subtitle로 취급하지 않는다", and `§9.1`
+  states that an over-long or incomplete display unit must not be passed off as a normal result. §16's
+  own forward note connects §9.1 to R-10/R-11 for this generation.
+
+Two released statements therefore point in opposite directions for the effective generation. Adding a
+gate would amend a contract §16 says it does not amend; staying silent sits against §4.5 and §9.1.
+Implementation cannot choose between them, so it does neither: **no boundary was changed, and no
+output claims a gate that does not exist.** The CLI states the situation in words, the
+`ReadabilityValidation.deliverable` property is documented as a derived observation rather than an
+admission decision, and `EnforcementBoundaryTests` pins the current absence of enforcement as an
+executable fact so it cannot drift and so a future clarification has a single anchor to move.
+
+On the merits `§4.5` and `§9.1` favour enforcement, but that is an Architect/Blueprint call.
+**Requires Blueprint Clarification** — see the milestone report.
 
 The serialized payload carries the approved line structure verbatim: `verify_serialized_lines`
 returns no finding over the full corpus, and the released `canonical_srt` v1 serializer is unmodified.
