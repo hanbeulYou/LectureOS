@@ -19,6 +19,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Protocol, Sequence
 
+from .provider_transcript_admission import TIMING_BOUNDARY_TOLERANCE_SECONDS
+
 # The on-disk execution format. Not a product version and not part of any canonical identity; an
 # unrecognized value makes a checkpoint incompatible rather than corrupt-in-the-repository (CP-19).
 CHECKPOINT_FORMAT_VERSION = 1
@@ -169,15 +171,26 @@ class CheckpointOwnershipError(RuntimeError):
 
 
 def segments_are_increasing(segments: Sequence[CheckpointSegment]) -> bool:
-    """Whether recorded segments form a usable prefix: contiguous ordinals, non-decreasing time."""
+    """Whether recorded segments form a usable prefix: contiguous ordinals, non-decreasing time.
+
+    Boundaries are compared with the released representation tolerance (040 §14 A-10 /
+    `PATCH-0039` T-2), because the engine derives one segment's ``end`` and the next segment's
+    ``start`` through different floating-point paths and they can differ in the last bits while
+    denoting one instant. An exact comparison rejects a perfectly good checkpoint over 4.5e-13
+    seconds — observed on the real corpus, where 88% of boundaries touch — and would silently
+    turn every long resume into a fresh run.
+    """
 
     previous_end: float | None = None
     for index, segment in enumerate(segments):
         if segment.ordinal != index:
             return False
-        if segment.end < segment.start:
+        if segment.end < segment.start - TIMING_BOUNDARY_TOLERANCE_SECONDS:
             return False
-        if previous_end is not None and segment.start < previous_end:
+        if (
+            previous_end is not None
+            and segment.start < previous_end - TIMING_BOUNDARY_TOLERANCE_SECONDS
+        ):
             return False
         previous_end = segment.end
     return True

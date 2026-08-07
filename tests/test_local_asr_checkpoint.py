@@ -613,3 +613,47 @@ class CliWiringTests(unittest.TestCase):
         help_text = cli._parser().format_help()
         for forbidden in ("--ttl", "--retention", "--max-age"):
             self.assertNotIn(forbidden, help_text)
+
+
+class RepresentationToleranceTests(unittest.TestCase):
+    """The PATCH-0039 boundary shape must not silently turn every long resume into a fresh run."""
+
+    def test_representation_noise_is_not_a_non_increasing_checkpoint(self):
+        from lectureos.application.local_asr_checkpoint import segments_are_increasing
+
+        segments = [
+            CheckpointSegment(0, 3127.34, 3129.1000000000004, "a"),
+            CheckpointSegment(1, 3129.1, 3133.42, "b"),
+        ]
+        self.assertTrue(segments_are_increasing(segments))
+
+    def test_a_real_overlap_is_still_rejected(self):
+        from lectureos.application.local_asr_checkpoint import segments_are_increasing
+
+        segments = [
+            CheckpointSegment(0, 0.0, 2.0, "a"),
+            CheckpointSegment(1, 0.5, 3.0, "b"),
+        ]
+        self.assertFalse(segments_are_increasing(segments))
+
+    def test_out_of_order_ordinals_are_still_rejected(self):
+        from lectureos.application.local_asr_checkpoint import segments_are_increasing
+
+        self.assertFalse(
+            segments_are_increasing(
+                [CheckpointSegment(1, 0.0, 2.0, "a"), CheckpointSegment(0, 2.0, 4.0, "b")]
+            )
+        )
+
+    def test_noise_bearing_checkpoint_resumes_rather_than_restarting(self):
+        """End to end: a store round-trip over the real boundary shape stays resumable."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            store = LocalAsrCheckpointFileStore(directory)
+            binding = _binding()
+            store.begin(binding)
+            store.append(binding, CheckpointSegment(0, 3127.34, 3129.1000000000004, "a"))
+            store.append(binding, CheckpointSegment(1, 3129.1, 3133.42, "b"))
+            loaded = store.load(binding)
+            self.assertTrue(loaded.resumable)
+            self.assertEqual(loaded.resume_from, 3133.42)
