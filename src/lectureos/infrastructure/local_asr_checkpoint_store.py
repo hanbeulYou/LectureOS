@@ -151,11 +151,16 @@ class LocalAsrCheckpointFileStore:
                 continue
             try:
                 record = json.loads(line)
+                raw_values = record.get("values") or {}
+                if not isinstance(raw_values, dict):
+                    raise TypeError("values must be an object")
                 segment = CheckpointSegment(
                     ordinal=int(record["ordinal"]),
                     start=float(record["start"]),
                     end=float(record["end"]),
                     text=record["text"],
+                    window_ref=record.get("window_ref"),
+                    values=tuple(sorted((str(k), float(v)) for k, v in raw_values.items())),
                 )
             except (ValueError, TypeError, KeyError):
                 return LoadedCheckpoint(discard_reason=CheckpointDiscardReason.MALFORMED_SEGMENT)

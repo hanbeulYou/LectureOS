@@ -119,13 +119,41 @@ class LocalAsrProviderConfiguration:
 APPROVED_LOCAL_ASR_CONFIGURATION = LocalAsrProviderConfiguration(condition_on_previous_text=False)
 
 
+# The provider-native evidence family this engine reports (040 §15 QD-5). The name says both who
+# produced the values and at what granularity, so a reader never has to guess whether a value is
+# segment-scoped. The core models the *shape*; these field names stay faster-whisper's own.
+FASTER_WHISPER_DECODE_EVIDENCE_KIND = "faster-whisper/decode-window"
+
+
+@dataclass(frozen=True, slots=True)
+class LocalAsrDecodeEvidence:
+    """Provider-native decode evidence carried alongside a segment, recorded verbatim (QD-5, QD-7).
+
+    Deliberately **not** named or typed as a segment confidence. faster-whisper reports these per
+    *decode window*, and several segments in one window carry the identical values — measured on the
+    preserved fixtures, 32 segments shared just 6 value sets. Renaming them to a segment-level
+    semantic would state something the provider never said, which QD-7 forbids.
+
+    ``window_ref`` is the provider's own window anchor (faster-whisper's ``seek``) stringified as-is.
+    It is evidence for grouping, never an identity.
+    """
+
+    window_ref: str
+    values: tuple[tuple[str, float], ...]
+
+
 @dataclass(frozen=True, slots=True)
 class LocalAsrSegment:
-    """One timestamped segment returned by the local engine (seconds)."""
+    """One timestamped segment returned by the local engine (seconds).
+
+    ``decode_evidence`` is optional: an engine that reports none, or a checkpoint written before
+    `PATCH-0045`, simply yields ``None`` — evidence unavailable, which is never quality-clean (QD-9).
+    """
 
     start: float
     end: float
     text: str
+    decode_evidence: LocalAsrDecodeEvidence | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -225,6 +253,48 @@ def derive_provider_result_ref(
         f"lang={language or 'auto'}:{configuration.reference_fragment}:"
         f"media={source_media_id.value}"
     )
+
+
+def _decode_windows_of(segments) -> dict | None:
+    """Group consecutive segments sharing identical decode evidence into windows (QD-7).
+
+    Grouping is by **run of adjacent segments**, not by ``window_ref`` value, and that is deliberate.
+    A resumed execution decodes from an explicit offset, so its provider-native anchors restart from
+    zero and can repeat an anchor the pre-resume part already used; keying on the value would then
+    merge two genuinely different decode windows into one. Runs cannot: the measured engine emits each
+    window's segments contiguously and never revisits one, so a run is exactly a window, and a repeated
+    anchor after a resume simply becomes a second window entry.
+
+    Returns ``None`` when no segment carried evidence — evidence unavailable, not clean (QD-9).
+    """
+
+    windows: list[dict] = []
+    current: dict | None = None
+    current_key = None
+    for ordinal, segment in enumerate(segments):
+        evidence = getattr(segment, "decode_evidence", None)
+        if evidence is None:
+            # A gap is preserved as a gap: the window simply does not cover this ordinal.
+            current = None
+            current_key = None
+            continue
+        key = (evidence.window_ref, evidence.values)
+        if current is None or key != current_key:
+            current = {
+                "window_ref": evidence.window_ref,
+                "segment_ordinals": [ordinal],
+                "values": {name: float(value) for name, value in evidence.values},
+                "start": float(segment.start),
+                "end": float(segment.end),
+            }
+            current_key = key
+            windows.append(current)
+        else:
+            current["segment_ordinals"].append(ordinal)
+            current["end"] = float(segment.end)
+    if not windows:
+        return None
+    return {"kind": FASTER_WHISPER_DECODE_EVIDENCE_KIND, "windows": windows}
 
 
 class LocalAsrTranscriptionService:
@@ -348,7 +418,17 @@ class LocalAsrTranscriptionService:
                     discard_reason=None if force_fresh else loaded.discard_reason,
                 )
             prior = tuple(
-                LocalAsrSegment(start=s.start, end=s.end, text=s.text) for s in loaded.segments
+                LocalAsrSegment(
+                    start=s.start,
+                    end=s.end,
+                    text=s.text,
+                    decode_evidence=(
+                        None
+                        if s.window_ref is None
+                        else LocalAsrDecodeEvidence(window_ref=s.window_ref, values=s.values)
+                    ),
+                )
+                for s in loaded.segments
             )
             return self._execute(
                 intake_identity, provider_result_ref, model, language, device, compute_type,
@@ -372,9 +452,17 @@ class LocalAsrTranscriptionService:
             nonlocal next_ordinal
             if self._checkpoints is None:
                 return
+            evidence = getattr(segment, "decode_evidence", None)
             self._checkpoints.append(
                 binding,
-                CheckpointSegment(next_ordinal, segment.start, segment.end, segment.text),
+                CheckpointSegment(
+                    next_ordinal,
+                    segment.start,
+                    segment.end,
+                    segment.text,
+                    window_ref=None if evidence is None else evidence.window_ref,
+                    values=() if evidence is None else evidence.values,
+                ),
             )
             next_ordinal += 1
 
@@ -419,19 +507,21 @@ class LocalAsrTranscriptionService:
     def _to_document(
         self, result: LocalAsrResult, model: str, provider_result_ref: str
     ) -> ProviderTranscriptDocument:
+        payload = {
+            "provider": self._provider,
+            "model": model,
+            "language": result.language,
+            "provider_result_ref": provider_result_ref,
+            "segments": [
+                {"start": float(segment.start), "end": float(segment.end), "text": segment.text}
+                for segment in result.segments
+            ],
+        }
+        evidence = _decode_windows_of(result.segments)
+        if evidence is not None:
+            payload["provider_evidence"] = evidence
         try:
-            return build_provider_transcript_document(
-                {
-                    "provider": self._provider,
-                    "model": model,
-                    "language": result.language,
-                    "provider_result_ref": provider_result_ref,
-                    "segments": [
-                        {"start": float(segment.start), "end": float(segment.end), "text": segment.text}
-                        for segment in result.segments
-                    ],
-                }
-            )
+            return build_provider_transcript_document(payload)
         except ProviderTranscriptAdmissionError as error:
             raise LocalAsrOutputError(
                 f"local ASR engine produced inadmissible output: {error}"
@@ -442,8 +532,10 @@ __all__ = [
     "APPROVED_LOCAL_ASR_CONFIGURATION",
     "DEFAULT_COMPUTE_TYPE",
     "DEFAULT_DEVICE",
+    "FASTER_WHISPER_DECODE_EVIDENCE_KIND",
     "FASTER_WHISPER_PROVIDER",
     "PROVIDER_RESULT_REF_VERSION",
+    "LocalAsrDecodeEvidence",
     "LocalAsrDependencyError",
     "LocalAsrEngineError",
     "LocalAsrEngineRunner",

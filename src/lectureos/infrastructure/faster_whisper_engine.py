@@ -24,6 +24,7 @@ from typing import Callable
 
 from lectureos.application.local_asr_transcription import (
     FASTER_WHISPER_PROVIDER,
+    LocalAsrDecodeEvidence,
     LocalAsrDependencyError,
     LocalAsrEngineError,
     LocalAsrError,
@@ -35,6 +36,41 @@ from lectureos.application.local_asr_transcription import (
 # A factory that builds an engine model exposing ``transcribe(media_path, **options)``, where
 # options carry the declared configuration and, when resuming, ``clip_timestamps``.
 ModelFactory = Callable[[str, str, str], object]
+
+
+# The faster-whisper decode-window fields LectureOS preserves (040 §15 QD-5). They are recorded under
+# the library's own names because that is what they are: `avg_logprob` is a mean token log-probability
+# for a decode window, not a confidence, and renaming it would assert a semantic the provider never
+# stated (QD-7). A field the installed library does not expose is simply absent — evidence is
+# preserved as reported, never defaulted into existence.
+_DECODE_EVIDENCE_FIELDS = ("avg_logprob", "compression_ratio", "no_speech_prob", "temperature")
+
+
+def _decode_evidence_of(segment: object) -> LocalAsrDecodeEvidence | None:
+    """Extract one segment's decode-window evidence, or ``None`` when the engine reports none.
+
+    ``seek`` is the window anchor: on the preserved fixtures its 6 distinct values partitioned 32
+    segments into exactly 6 groups with no group ever carrying two different value sets, so it
+    identifies the decode window the values belong to. It is recorded as evidence for grouping and
+    never becomes an identity.
+    """
+
+    values: list[tuple[str, float]] = []
+    for name in _DECODE_EVIDENCE_FIELDS:
+        raw = getattr(segment, name, None)
+        if raw is None:
+            continue
+        try:
+            values.append((name, float(raw)))
+        except (TypeError, ValueError):
+            continue
+    if not values:
+        return None
+    seek = getattr(segment, "seek", None)
+    return LocalAsrDecodeEvidence(
+        window_ref=f"seek={seek}" if seek is not None else "seek=unknown",
+        values=tuple(sorted(values)),
+    )
 
 
 class FasterWhisperEngineRunner:
@@ -106,6 +142,7 @@ class FasterWhisperEngineRunner:
                     start=float(segment.start),
                     end=float(segment.end),
                     text=segment.text,
+                    decode_evidence=_decode_evidence_of(segment),
                 )
                 if on_segment is not None:
                     on_segment(converted)

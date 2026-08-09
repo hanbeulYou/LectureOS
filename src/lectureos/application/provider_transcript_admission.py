@@ -75,6 +75,10 @@ _EXTERNAL_ASR_EXECUTION_PREFIX = "external-asr-execution"
 _TRANSCRIPT_SEGMENT_PREFIX = "transcript-segment"
 _SOURCE_TIMELINE_PREFIX = "source-timeline"
 
+# The `original_content` key under which preserved provider decode evidence lives (040 §15 QD-6).
+# It is absent from the fingerprint basis by construction — see `_logical_admission_content`.
+_PROVIDER_EVIDENCE_KEY = "provider_evidence"
+
 # 040 §14 A-10 / PATCH-0039 T-2: adjacent segment boundaries are compared as instants, so a
 # neighbouring start may precede the previous end by at most this much and still count as touching.
 # One microsecond sits ~5 orders of magnitude above float64 representation noise even for ten-hour
@@ -122,8 +126,111 @@ def derive_source_timeline_id(source_media_id: SourceMediaId) -> SourceTimelineI
 
 
 @dataclass(frozen=True, slots=True)
+class ProviderDecodeWindow:
+    """One decode window's provider-native evidence and the segments it covers (040 §15 QD-5, QD-7).
+
+    This is **provider evidence**, not a diagnostic: values the provider reported during one execution,
+    recorded verbatim under the provider's own field names. It is deliberately *not* a per-segment
+    confidence — QD-7 forbids that, because a window's value is shared by every segment it covers and
+    presenting it as one segment's own confidence states something untrue. The shape keeps the sharing
+    structurally visible: the value lives on the window and the covered segments are listed.
+
+    ``window_ref`` is the provider's own window anchor recorded as-is (faster-whisper's ``seek``). It is
+    evidence, never an identity: window entries are distinguished by their position and covered
+    ordinals, so a resumed execution that re-bases its anchors cannot collide with an earlier window.
+    """
+
+    window_ref: str
+    segment_ordinals: tuple[int, ...]
+    values: tuple[tuple[str, float], ...]
+    start: float | None = None
+    end: float | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.window_ref, str) or not self.window_ref.strip():
+            raise ProviderTranscriptAdmissionError("decode window reference must not be empty")
+        if not self.segment_ordinals:
+            raise ProviderTranscriptAdmissionError(
+                "decode window must cover at least one segment ordinal"
+            )
+        previous: int | None = None
+        for ordinal in self.segment_ordinals:
+            if isinstance(ordinal, bool) or not isinstance(ordinal, int) or ordinal < 0:
+                raise ProviderTranscriptAdmissionError(
+                    "decode window segment ordinal must be a non-negative integer"
+                )
+            if previous is not None and ordinal <= previous:
+                raise ProviderTranscriptAdmissionError(
+                    "decode window segment ordinals must be strictly increasing"
+                )
+            previous = ordinal
+        if not self.values:
+            raise ProviderTranscriptAdmissionError("decode window must carry at least one value")
+        seen: set[str] = set()
+        for name, value in self.values:
+            if not isinstance(name, str) or not name.strip():
+                raise ProviderTranscriptAdmissionError("decode evidence name must not be empty")
+            if name in seen:
+                raise ProviderTranscriptAdmissionError(
+                    f"decode evidence name {name!r} is repeated in one window"
+                )
+            seen.add(name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not isfinite(value):
+                raise ProviderTranscriptAdmissionError(
+                    f"decode evidence {name!r} must be a finite number"
+                )
+        for label, bound in (("start", self.start), ("end", self.end)):
+            if bound is None:
+                continue
+            if isinstance(bound, bool) or not isinstance(bound, (int, float)) or not isfinite(bound):
+                raise ProviderTranscriptAdmissionError(
+                    f"decode window {label} must be a finite number of seconds"
+                )
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderDecodeEvidence:
+    """The provider evidence submitted alongside a result: ordered, non-overlapping decode windows.
+
+    ``kind`` names the provider-native evidence family so a reader knows what the value names mean
+    without the core having to model them. A window need not exist for every segment: a provider may
+    report evidence for part of a result, and the absent part is evidence-unavailable — never
+    quality-clean (QD-9).
+    """
+
+    kind: str
+    windows: tuple[ProviderDecodeWindow, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.kind, str) or not self.kind.strip():
+            raise ProviderTranscriptAdmissionError("provider evidence kind must not be empty")
+        if not self.windows:
+            raise ProviderTranscriptAdmissionError(
+                "provider evidence must contain at least one decode window"
+            )
+        highest: int | None = None
+        for window in self.windows:
+            lowest = window.segment_ordinals[0]
+            if highest is not None and lowest <= highest:
+                raise ProviderTranscriptAdmissionError(
+                    "decode windows must be ordered and must not share segment ordinals"
+                )
+            highest = window.segment_ordinals[-1]
+
+    @property
+    def covered_ordinals(self) -> frozenset[int]:
+        return frozenset(
+            ordinal for window in self.windows for ordinal in window.segment_ordinals
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class ProviderTranscriptSegmentInput:
-    """One submitted provider segment: a source-timeline-aligned span of text (seconds)."""
+    """One submitted provider segment: a source-timeline-aligned span of text (seconds).
+
+    Deliberately carries no confidence or uncertainty field. Provider decode evidence is window-scoped
+    and reaches the boundary through :class:`ProviderDecodeEvidence` instead (QD-6, QD-7).
+    """
 
     start: float
     end: float
@@ -158,6 +265,7 @@ class ProviderTranscriptDocument:
     segments: tuple[ProviderTranscriptSegmentInput, ...]
     model: str | None = None
     language: str | None = None
+    provider_evidence: ProviderDecodeEvidence | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.provider, str) or not self.provider.strip():
@@ -188,6 +296,13 @@ class ProviderTranscriptDocument:
                     "segments must be ordered by start and must not overlap"
                 )
             previous_end = segment.end
+        if self.provider_evidence is not None:
+            limit = len(self.segments)
+            for ordinal in self.provider_evidence.covered_ordinals:
+                if ordinal >= limit:
+                    raise ProviderTranscriptAdmissionError(
+                        "provider evidence references a segment ordinal that does not exist"
+                    )
 
 
 def build_provider_transcript_document(payload: Mapping[str, object]) -> ProviderTranscriptDocument:
@@ -195,7 +310,9 @@ def build_provider_transcript_document(payload: Mapping[str, object]) -> Provide
 
     if not isinstance(payload, Mapping):
         raise ProviderTranscriptAdmissionError("provider result must be a JSON object")
-    allowed = {"provider", "model", "language", "provider_result_ref", "segments"}
+    allowed = {
+        "provider", "model", "language", "provider_result_ref", "segments", "provider_evidence",
+    }
     unknown = set(payload) - allowed
     if unknown:
         raise ProviderTranscriptAdmissionError(
@@ -211,6 +328,51 @@ def build_provider_transcript_document(payload: Mapping[str, object]) -> Provide
         segments=segments,
         model=_optional_str(payload.get("model"), "provider model"),
         language=_optional_str(payload.get("language"), "declared language"),
+        provider_evidence=_build_provider_evidence(payload.get("provider_evidence")),
+    )
+
+
+def _build_provider_evidence(entry: object) -> ProviderDecodeEvidence | None:
+    """Build submitted provider evidence from a decoded JSON mapping, or ``None`` when absent."""
+
+    if entry is None:
+        return None
+    if not isinstance(entry, Mapping):
+        raise ProviderTranscriptAdmissionError("provider evidence must be a JSON object")
+    unknown = set(entry) - {"kind", "windows"}
+    if unknown:
+        raise ProviderTranscriptAdmissionError(
+            f"provider evidence has unknown field(s): {', '.join(sorted(unknown))}"
+        )
+    raw_windows = entry.get("windows")
+    if not isinstance(raw_windows, Sequence) or isinstance(raw_windows, (str, bytes)):
+        raise ProviderTranscriptAdmissionError("provider evidence windows must be a list")
+    return ProviderDecodeEvidence(
+        kind=_require_str(entry.get("kind"), "provider evidence kind"),
+        windows=tuple(_build_decode_window(window) for window in raw_windows),
+    )
+
+
+def _build_decode_window(entry: object) -> ProviderDecodeWindow:
+    if not isinstance(entry, Mapping):
+        raise ProviderTranscriptAdmissionError("each decode window must be a JSON object")
+    unknown = set(entry) - {"window_ref", "segment_ordinals", "values", "start", "end"}
+    if unknown:
+        raise ProviderTranscriptAdmissionError(
+            f"decode window has unknown field(s): {', '.join(sorted(unknown))}"
+        )
+    ordinals = entry.get("segment_ordinals")
+    values = entry.get("values")
+    if not isinstance(ordinals, Sequence) or isinstance(ordinals, (str, bytes)):
+        raise ProviderTranscriptAdmissionError("decode window segment ordinals must be a list")
+    if not isinstance(values, Mapping):
+        raise ProviderTranscriptAdmissionError("decode window values must be a JSON object")
+    return ProviderDecodeWindow(
+        window_ref=_require_str(entry.get("window_ref"), "decode window reference"),
+        segment_ordinals=tuple(ordinals),
+        values=tuple(sorted((str(name), value) for name, value in values.items())),
+        start=entry.get("start"),
+        end=entry.get("end"),
     )
 
 
@@ -388,7 +550,9 @@ class ProviderTranscriptAdmissionService:
             document.model,
             document.provider_result_ref,
         )
-        content_fingerprint = _sha256(_admission_payload(intake_identity, document))
+        # QD-8: the fingerprint basis is the logical content only. Evidence enrichment must never
+        # move a released fingerprint, so these two serializations are deliberately separate.
+        content_fingerprint = _sha256(_logical_admission_content(intake_identity, document))
         admission_identity = ProviderTranscriptAdmissionId(
             f"{PROVIDER_TRANSCRIPT_ADMISSION_IDENTITY_PREFIX}:{digest}"
         )
@@ -426,7 +590,7 @@ class ProviderTranscriptAdmissionService:
             unit_execution_id=unit_execution_id,
             capability=CapabilityReference(ASR_TRANSCRIPTION_CAPABILITY),
             provider_reference=document.provider,
-            original_content=_admission_payload(intake_identity, document),
+            original_content=_original_provider_content(intake_identity, document),
             normalized=False,
         )
         raw_transcript = RawTranscript(
@@ -488,11 +652,22 @@ class ProviderTranscriptAdmissionService:
         return ProviderTranscriptAdmissionResult(admission=existing, created=False)
 
 
-def _admission_payload(
+def _logical_admission_content(
     intake_id: TranscriptSourceIntakeId, document: ProviderTranscriptDocument
 ) -> str:
-    """Canonical serialization of the full admitted payload — the preserved provider evidence and the fingerprint
-    basis. Includes every segment's timing and exact text so any content difference is detectable."""
+    """Canonical serialization of the **logical** admitted result — the A-8 fingerprint basis.
+
+    Includes every segment's timing and exact text so any content difference is detectable, and
+    deliberately nothing else. Provider decode evidence does not appear here (040 §14 A-8 note /
+    §15 QD-8): A-8 identifies "the same logical result", and two executions whose text and timing agree
+    but whose decode statistics differ **are** the same logical result — the statistics say how the
+    result was produced, not what it is. Adding them would make evidence enrichment look like an A-9
+    conflict and would change every released fingerprint.
+
+    This function is therefore the fingerprint basis and nothing else. `_original_provider_content`
+    is what gets preserved; the two were one helper before `PATCH-0045` and are now separate on
+    purpose, so a later change to preserved evidence cannot silently move an identity.
+    """
 
     return _canonical_json(
         {
@@ -509,6 +684,86 @@ def _admission_payload(
     )
 
 
+def _original_provider_content(
+    intake_id: TranscriptSourceIntakeId, document: ProviderTranscriptDocument
+) -> str:
+    """Canonical serialization of the preserved provider evidence — `original_content` (A-4, QD-6).
+
+    The logical content plus whatever decode evidence the provider actually returned. When no evidence
+    was submitted this is byte-identical to the logical content, so a result admitted without evidence
+    is represented exactly as it always was — its absence is what makes it *evidence unavailable*,
+    which is not *quality clean* (QD-9).
+    """
+
+    logical = _logical_admission_content(intake_id, document)
+    evidence = document.provider_evidence
+    if evidence is None:
+        return logical
+    payload = json.loads(logical)
+    payload[_PROVIDER_EVIDENCE_KEY] = {
+        "kind": evidence.kind,
+        "windows": [
+            {
+                "window_ref": window.window_ref,
+                "segment_ordinals": list(window.segment_ordinals),
+                "values": {name: float(value) for name, value in window.values},
+                "start": window.start,
+                "end": window.end,
+            }
+            for window in evidence.windows
+        ],
+    }
+    return _canonical_json(payload)
+
+
+def parse_preserved_provider_evidence(original_content: str) -> ProviderDecodeEvidence | None:
+    """Read back the decode evidence preserved in an `original_content` string, or ``None``.
+
+    ``None`` means **evidence unavailable** — either a result admitted before `PATCH-0045`, or a
+    provider that reported none. It never means the result is clean; callers must keep that
+    distinction (QD-9). Unreadable content also yields ``None`` rather than raising: `original_content`
+    is preserved provider evidence, and failing to interpret it must not make a released record
+    unreadable.
+    """
+
+    try:
+        payload = json.loads(original_content)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    raw = payload.get(_PROVIDER_EVIDENCE_KEY)
+    if not isinstance(raw, dict):
+        return None
+    raw_windows = raw.get("windows")
+    if not isinstance(raw_windows, list) or not raw_windows:
+        return None
+    windows: list[ProviderDecodeWindow] = []
+    for entry in raw_windows:
+        if not isinstance(entry, dict):
+            return None
+        values = entry.get("values")
+        ordinals = entry.get("segment_ordinals")
+        if not isinstance(values, dict) or not isinstance(ordinals, list):
+            return None
+        try:
+            windows.append(
+                ProviderDecodeWindow(
+                    window_ref=entry["window_ref"],
+                    segment_ordinals=tuple(int(ordinal) for ordinal in ordinals),
+                    values=tuple(sorted((str(k), float(v)) for k, v in values.items())),
+                    start=None if entry.get("start") is None else float(entry["start"]),
+                    end=None if entry.get("end") is None else float(entry["end"]),
+                )
+            )
+        except (KeyError, TypeError, ValueError, ProviderTranscriptAdmissionError):
+            return None
+    try:
+        return ProviderDecodeEvidence(kind=str(raw.get("kind") or ""), windows=tuple(windows))
+    except ProviderTranscriptAdmissionError:
+        return None
+
+
 __all__ = [
     "ASR_TRANSCRIPTION_CAPABILITY",
     "AtomicProviderTranscriptAdmissionPersistence",
@@ -520,6 +775,8 @@ __all__ = [
     "ProviderTranscriptAdmissionQuery",
     "ProviderTranscriptAdmissionResult",
     "ProviderTranscriptAdmissionService",
+    "ProviderDecodeEvidence",
+    "ProviderDecodeWindow",
     "ProviderTranscriptDocument",
     "ProviderTranscriptSegmentInput",
     "RAW_TRANSCRIPT_DOMAIN_RESULT_KIND",
@@ -529,5 +786,6 @@ __all__ = [
     "build_provider_transcript_document",
     "derive_provider_transcript_admission_identity",
     "derive_source_timeline_id",
+    "parse_preserved_provider_evidence",
     "require_canonical_intake_id",
 ]

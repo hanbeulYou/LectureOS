@@ -23,7 +23,15 @@ from .provider_transcript_admission import TIMING_BOUNDARY_TOLERANCE_SECONDS
 
 # The on-disk execution format. Not a product version and not part of any canonical identity; an
 # unrecognized value makes a checkpoint incompatible rather than corrupt-in-the-repository (CP-19).
-CHECKPOINT_FORMAT_VERSION = 1
+#
+# v2 (`PATCH-0045`) additionally records each segment's provider decode evidence. The bump is what
+# keeps evidence preservation honest across resume: a v1 checkpoint holds no evidence, so resuming
+# from one would admit a result whose earlier half is silently evidence-free. CP-19 already contracts
+# the outcome — an unknown format version is discarded whole and a fresh execution runs, which is a
+# correct and disclosed fallback. This is a scratch-format version and emphatically **not** a
+# `provider_result_ref` bump: a checkpoint carries no Product identity (CP-2), so nothing released
+# changes and no admission anchor moves.
+CHECKPOINT_FORMAT_VERSION = 2
 
 CHECKPOINT_IDENTITY_PREFIX = "local-asr-checkpoint"
 
@@ -112,21 +120,34 @@ class CheckpointBinding:
 
 @dataclass(frozen=True, slots=True)
 class CheckpointSegment:
-    """One complete engine segment recorded during an execution. Not a canonical segment (CP-2)."""
+    """One complete engine segment recorded during an execution. Not a canonical segment (CP-2).
+
+    ``window_ref`` and ``values`` carry the segment's provider decode evidence verbatim so a resumed
+    execution preserves the same evidence a fresh one would (`PATCH-0045` QD-9). They are recorded,
+    not interpreted: the checkpoint never decides what the numbers mean.
+    """
 
     ordinal: int
     start: float
     end: float
     text: str
+    window_ref: str | None = None
+    values: tuple[tuple[str, float], ...] = ()
 
     def __post_init__(self) -> None:
         if self.ordinal < 0:
             raise ValueError("checkpoint segment ordinal must not be negative")
         if not isinstance(self.text, str):
             raise ValueError("checkpoint segment text must be a string")
+        if self.window_ref is not None and not isinstance(self.window_ref, str):
+            raise ValueError("checkpoint segment window reference must be a string")
 
     def as_payload(self) -> dict:
-        return {"ordinal": self.ordinal, "start": self.start, "end": self.end, "text": self.text}
+        payload = {"ordinal": self.ordinal, "start": self.start, "end": self.end, "text": self.text}
+        if self.window_ref is not None:
+            payload["window_ref"] = self.window_ref
+            payload["values"] = {name: float(value) for name, value in self.values}
+        return payload
 
 
 @dataclass(frozen=True, slots=True)

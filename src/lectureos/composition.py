@@ -51,6 +51,9 @@ from lectureos.application.transcript_source_intake import (
 from lectureos.application.provider_transcript_admission import (
     ProviderTranscriptAdmissionService,
 )
+from lectureos.application.transcript_quality_diagnostic import (
+    TranscriptQualityDiagnosticService,
+)
 from lectureos.application.local_asr_transcription import (
     LocalAsrEngineRunner,
     LocalAsrTranscriptionService,
@@ -586,6 +589,23 @@ def compose_sqlite_provider_transcript_admission_service(
     persistence = SQLiteProviderTranscriptAdmissionCommandPersistence(connection)
     return ProviderTranscriptAdmissionService(
         intakes, source_media, admissions, persistence
+    )
+
+
+def compose_sqlite_transcript_quality_diagnostic_service(
+    connection: sqlite3.Connection,
+) -> TranscriptQualityDiagnosticService:
+    """Build the derived transcript quality diagnostic on one caller connection (040 §15 QD-10).
+
+    Read-only by construction: only queries are wired, and no persistence port exists for a
+    diagnostic to be written through. The result is recomputed from the immutable provider evidence
+    and Raw Transcript on every call rather than stored.
+    """
+
+    return TranscriptQualityDiagnosticService(
+        SQLiteProviderTranscriptAdmissionRepository(connection),
+        SQLiteProviderTranscriptResultRepository(connection),
+        SQLiteRawTranscriptRepository(connection),
     )
 
 
