@@ -1,20 +1,25 @@
 # PATCH-0045
 
 - Title: Local ASR Transcript Quality Diagnostic Boundary (040 §14/§15)
-- Status: Proposed
+- Status: Accepted
 - Priority: Medium
 - Trigger: Architect Decision on the residual hallucination recorded in
   `implementation/122_FULL_LENGTH_REAL_MEDIA_E2E_VALIDATION.md` and left open by `PATCH-0040` P-9
 - Created: 2026-08-09
 - Target Blueprint: `docs/040_TRANSCRIPT_PIPELINE.md` (§14 A-4 and A-8 forward notes; new §14 and
-  §15 quality-diagnostic decisions; §4.2/§4.3 and §11 forward notes; header amended).
+  §15 quality-diagnostic decisions; §4.2/§4.3, §8 and §9 forward notes; header amended).
   `docs/030_DATA_MODEL.md` is **not** amended — see QD-20.
 
 ---
 
 ## Status
 
-**Proposed.** This document exists; `docs/040_TRANSCRIPT_PIPELINE.md` has not yet been amended.
+**Accepted (2026-08-09).** `docs/040_TRANSCRIPT_PIPELINE.md` is amended (Blueprint 0.3) and
+`implementation/070_DIAGNOSTIC_PERSISTENCE_ASSESSMENT.md` carries the split reassessment note. Every
+PATCH Acceptance Criterion below was verified mechanically against the applied diff.
+
+**Implementation Requirements remain unmet** — they belong to a later milestone and are deliberately
+left unchecked.
 
 It introduces **no schema change, no migration, no new aggregate, no new Product Domain record, no
 new lifecycle, no new authority, no threshold, and no downstream gate**. It rewrites no released
@@ -41,8 +46,8 @@ already assign it:
 - **§4.3 Raw Transcript** — "**Produces:** 출처와 가능한 시간 정보 및 **Uncertainty**를 유지한 Raw
   Transcript revision."
 - **§4.x Review Preparation** — "교정 후보, **Uncertainty**, Validation Failure, 누락과 의미 위험을
-  Review Item으로 연결" — and `§11` lists "**낮은 confidence 또는 Uncertainty가 있는 ASR 결과**" among
-  the states that must reach Review.
+  Review Item으로 연결" — and `§8` Review Connection lists "**낮은 confidence 또는 Uncertainty가 있는 ASR
+  결과**" among the states that may reach Review.
 - **§14 downstream constraint** — "**Validation Failure와 Uncertainty를 정상 승인 결과처럼 숨기지
   않아야 한다.**"
 
@@ -139,7 +144,7 @@ authority and adds no gate anywhere.
 
 **QD-2 (Confirmed) — A quality diagnostic is a Quality Warning, never a Validation Failure.** A
 hallucinated segment is **structurally valid** — ordered, non-overlapping, within range, with intact
-lineage. It is `§4.x`/`§11` **Uncertainty**, which the Blueprint already treats as a distinct
+lineage. It is `§4.x`/`§8` **Uncertainty**, which the Blueprint already treats as a distinct
 category. It is not a validation code, not a repository integrity finding, and never reported by
 repository validation.
 
@@ -289,7 +294,7 @@ Applied to `docs/040_TRANSCRIPT_PIPELINE.md` only.
 4. **§14 or §15** — a new subsection carrying QD-1…QD-20 and its own Canonical Invariants.
 5. **§4.2 / §4.3** — released text kept verbatim; forward note recording that the "confidence 또는
    Uncertainty" obligation is realized for this generation by QD-5…QD-7.
-6. **§11** — released text kept verbatim; forward note recording that "낮은 confidence 또는
+6. **§8 / §9** — released text kept verbatim; forward notes recording that "낮은 confidence 또는
    Uncertainty가 있는 ASR 결과" is surfaced as a derived Quality Warning, not a Validation Failure.
 
 `docs/030_DATA_MODEL.md` is not amended (QD-20). `070_DIAGNOSTIC_PERSISTENCE_ASSESSMENT.md` gains a
@@ -297,21 +302,22 @@ reassessment note recording QD-19's split outcome.
 
 ## PATCH Acceptance Criteria
 
-Verified against the Blueprint amendment, before this PATCH may be marked `Accepted`.
+Verified mechanically against the applied Blueprint amendment.
 
-- [ ] §14/§15 carry QD-1…QD-20 as written here.
-- [ ] No released sentence in `docs/040` is deleted or rewritten; prior PATCH notes are treated as
+- [x] §14/§15 carry QD-1…QD-20 as written here.
+- [x] No released sentence in `docs/040` is deleted or rewritten; prior PATCH notes are treated as
       released text and are likewise untouched; verified line by line.
-- [ ] A-4, A-8, §4.2, §4.3 and §11 gain **additive forward notes only**.
-- [ ] The diagnostic is stated a Quality Warning and explicitly not a Validation Failure.
-- [ ] Admission, Raw Transcript, and every downstream boundary are stated unblocked.
-- [ ] Provider evidence and derived diagnostic are stated as distinct, never sharing a representation.
-- [ ] Window-derived scope is stated, with the prohibition on presenting it as segment confidence.
-- [ ] The fingerprint basis is stated unchanged and released records stated untouched and un-backfilled.
-- [ ] Thresholds are stated deferred and **no numeric threshold appears anywhere**.
-- [ ] `070` records the split reassessment: evidence persistence required, Diagnostic record still
-      deferred.
-- [ ] The change set contains no implementation, schema, migration, or test change.
+- [x] A-4, A-8, §4.2, §4.3, §8 and §9 gain **additive forward notes only**.
+- [x] The diagnostic is stated a Quality Warning and explicitly not a Validation Failure.
+- [x] Admission, Raw Transcript, and every downstream boundary are stated unblocked.
+- [x] Provider evidence and derived diagnostic are stated as distinct, never sharing a representation.
+- [x] Window-derived scope is stated, with the prohibition on presenting it as segment confidence.
+- [x] The fingerprint basis is stated unchanged, no `provider_result_ref` version is bumped, and
+      released records are stated untouched and un-backfilled.
+- [x] Thresholds are stated deferred and **no numeric threshold appears anywhere**.
+- [x] Derived diagnostic non-persistence is stated, and `070` records the split reassessment:
+      evidence persistence required, canonical Diagnostic record still deferred.
+- [x] The change set contains no implementation, schema, migration, or test change.
 
 ## Implementation Requirements
 
@@ -337,7 +343,7 @@ Required validation for the implementing milestone. **Not satisfied by this PATC
 
 ## Consequences
 
-- `§14`/`§15` gain a quality diagnostic contract; A-4, A-8, §4.2, §4.3 and §11 gain forward notes;
+- `§14`/`§15` gain a quality diagnostic contract; A-4, A-8, §4.2, §4.3, §8 and §9 gain forward notes;
   nothing else moves.
 - One implementation slice carries the evidence through and adds a derived diagnostic. **No schema
   change is expected.**

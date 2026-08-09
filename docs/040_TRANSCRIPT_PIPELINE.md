@@ -1,8 +1,8 @@
 # 040_TRANSCRIPT_PIPELINE
 
 - Status: Draft
-- Version: Blueprint 0.2
-- Last Updated: 2026-08-07
+- Version: Blueprint 0.3
+- Last Updated: 2026-08-09
 - Layer: L1 — Pipeline
 - Depends On:
   - `000_MANIFESTO.md`
@@ -33,6 +33,7 @@
   - `../patches/PATCH-0039-provider-transcript-admission-timing-representation-tolerance.md`
   - `../patches/PATCH-0040-local-asr-previous-text-conditioning-policy.md`
   - `../patches/PATCH-0044-local-asr-checkpoint-and-resume-boundary.md`
+  - `../patches/PATCH-0045-local-asr-transcript-quality-diagnostic-boundary.md`
 
 ## Purpose
 
@@ -140,6 +141,16 @@ Source Intake는 촬영, 외부 파일의 장기 보관 또는 원본 변환 정
 
 provider 결과는 검증되지 않은 외부 생성 결과다. provider 고유 구조와 식별자는 provenance로 보존할 수 있지만 Transcript의 유일한 identity가 될 수 없다.
 
+> **후속 결정 note (`PATCH-0045`):** 위 문언은 그대로 유효하다. 이 generation의 local ASR은 위 **Produces**의
+> "confidence 또는 Uncertainty" 책임을 **provider quality evidence를 보존하는 방식으로** 실현한다(§15 QD-5…QD-7).
+>
+> - provider quality evidence는 provider가 실행 중 실제로 반환한 **사실**이며, Quality Diagnostic을 재현하기 위한
+>   **입력**이다. Diagnostic 자체가 아니다.
+> - 이 evidence는 **decode window scope일 수 있다.** 같은 window의 여러 segment가 동일한 evidence를 공유할 수 있다.
+> - 따라서 window-level evidence를 해당 segment 고유의 confidence로 **오표현하지 않는다.**
+>
+> 이 note는 §4.2의 책임 범위를 넓히지 않는다. 이미 배정된 책임을 어떤 표현으로 실현하는지만 기록한다.
+
 ### 4.3 Raw Transcript Preservation
 
 - **Responsibility:** External ASR Boundary가 반환한 변경 전 결과를 Raw Transcript로 보존하고 Source Media, Source Timeline, Processing Run과 연결한다.
@@ -147,6 +158,16 @@ provider 결과는 검증되지 않은 외부 생성 결과다. provider 고유 
 - **Does Not Produce:** 교정된 텍스트, 사용자 결정, 승인된 Transcript 상태.
 
 Raw Transcript는 후속 Correction이나 사용자 Modification으로 덮어쓰지 않는다. ASR 결과가 불완전하더라도 실패와 누락을 숨기기 위해 내용을 임의로 보완하지 않는다.
+
+> **후속 결정 note (`PATCH-0045`):** 위 보존 계약은 그대로 유효하며, Quality Diagnostic은 그것을 약화시키지
+> 않는다(§15 QD-2…QD-4, QD-9).
+>
+> - Raw Transcript text는 provider가 출력한 그대로 유지된다. Quality Warning은 text를 삭제·수정·절삭하지 않는다.
+> - Quality Warning이 존재해도 Raw Transcript는 **생성 가능**하다. 품질 의심을 이유로 보존을 거부하면 §14 A-4가
+>   보존하려는 provider 증거 자체가 사라진다.
+> - Diagnostic은 Raw Transcript **이후에** 불변 입력으로부터 파생된다. 보존보다 앞서지 않는다.
+> - **provider evidence unavailable은 quality clean을 뜻하지 않는다.** evidence 없이 기록된 기존 record는 유효하며,
+>   provider 유래 판정은 "판정 불가"로 보고된다.
 
 ### 4.4 Correction
 
@@ -273,6 +294,16 @@ Transcript Pipeline은 공통 Review Architecture에 다음 대상을 제공할 
 
 Transcript Pipeline은 Review UI, 검수 우선순위 전체 또는 다른 Pipeline의 Review 대상을 정의하지 않는다.
 
+> **후속 결정 note (`PATCH-0045`):** 위 목록의 첫 항목 "낮은 confidence 또는 Uncertainty가 있는 ASR 결과"는 이
+> generation에서 **derived Quality Diagnostic**으로 구체화된다(§15 QD-10…QD-15, QD-17).
+>
+> - Quality Diagnostic은 Review 대상을 **연결**할 뿐이며, 자동으로 교정 후보를 만들지 않는다. 사람의 판단 없이는
+>   어떤 결정도 생기지 않는다.
+> - 사람이 finding에서 기존 Correction Candidate 경계(§17)로 이동하는 Application-level 연결만 허용한다. **새로운
+>   Human Authority를 만들지 않으며** §17의 기존 요구(현재 Raw Transcript, 대상 segment 소속, source-text snapshot
+>   일치)는 그대로다.
+> - 이 note는 §8의 Review 대상 목록을 늘리거나 줄이지 않는다.
+
 ## 9. Failure Model
 
 ### 9.1 ASR Failure
@@ -303,6 +334,18 @@ ASR이 일부 Source Media 구간을 충분히 인식하지 못했거나, Correc
 - 실패를 빈 텍스트, 무음 또는 정상 교정으로 해석하지 않는다.
 
 구체적인 재시도 방식과 오류 분류 체계는 이 문서에서 정의하지 않는다.
+
+> **후속 결정 note (`PATCH-0045`):** 위 실패 분류는 그대로 유효하며, **Quality Warning은 그중 어느 것도 아니다**
+> (§15 QD-2, QD-3).
+>
+> hallucination 의심 구간은 순서·비겹침·범위·계보가 모두 온전하므로 **구조적으로 유효**하다. 따라서
+>
+> - §9.3 Validation Failure가 **아니다.** repository validation은 Quality Warning을 알지도, 보고하지도 않는다.
+> - §9.1 ASR Failure가 **아니다.** provider는 결과를 만들었고 admission은 거부되지 않는다.
+> - Blueprint가 이미 Validation Failure와 구분해 둔 **Uncertainty**에 해당하며, §8을 통해 Review·Correction으로
+>   연결된다.
+>
+> 이 note는 §9의 실패 분류를 추가·변경하지 않는다.
 
 ## 10. Reprocessing Strategy
 
@@ -513,6 +556,21 @@ model, declared language, 외부 result 참조, 전체 순서 segment payload)�
 보존하며 **정규화 이전 상태**로 저장한다(`normalized = 0`, 기존 model/schema가 강제). 제출된 provider 증거를 조용히
 버리지 않는다.
 
+> **후속 결정 note (`PATCH-0045`):** 위 문언은 그대로 유효하다. **provider quality evidence는 A-4가 말하는 provider
+> 증거이며, `original_content`의 original provider evidence 영역에 보존된다**(§15 QD-5, QD-6).
+>
+> 근거: `original_content`는 이미 **정규화 이전 provider 증거의 집**이다. decode evidence가 정확히 그것이므로 새
+> Aggregate·새 table·새 identity가 필요하지 않고, provider-specific evidence를 generic transcript segment schema로
+> 끌어올 이유도 없다. 특히 `transcript_segments.confidence` / `uncertainty`에 provider-specific window 값을 단순
+> 투영하는 것은 **금지된다**(QD-7) — 여러 segment가 공유하는 값을 한 segment 고유의 confidence로 진술하게 되기
+> 때문이다.
+>
+> provider evidence(재계산 불가능한 실행 사실)와 derived Quality Diagnostic(versioned algorithm의 해석)은 **서로 다른
+> 것이며 같은 표현을 공유하지 않는다.** 후자는 persist하지 않는다(QD-10).
+>
+> 이 note는 schema를 바꾸지 않는다. `original_content`는 이미 canonical 직렬화를 담는 기존 column이며, 무엇을 담느냐가
+> 달라져도 relation·column·constraint·migration은 변하지 않는다(QD-20).
+
 **Distinct Canonical Transcript (Confirmed, A-5):** canonical `RawTranscript`는 자신의 `TranscriptId`를 가진 **별도**
 record다. provider 결과는 `provider_transcript_result_id` provenance로 참조되며 Transcript의 identity가 되지 않는다
 (§4.2 "provider 결과에서 분리된 내부 conceptual identity"). provider payload를 canonical transcript identity와
@@ -531,6 +589,30 @@ provenance와 연결")과 일관된다. 다만 하나의 provider 결과는 정�
 **Idempotency (Confirmed, A-8):** admission은 **내용 기준으로 idempotent**하다. Provider Transcript Admission은 전체
 canonical admission payload(모든 segment의 timing과 정확한 text 포함)에 대한 SHA-256 `content_fingerprint`를 저장한다.
 동일한 논리적 결과(같은 anchor, 동일 payload)의 재admission은 기존 record를 resolve하여 반환한다(`created = false`).
+
+> **후속 결정 note (`PATCH-0045`):** 위 문언은 그대로 유효하다. **provider quality evidence는 fingerprint basis에
+> 참여하지 않는다**(§15 QD-8, QD-9).
+>
+> `content_fingerprint`의 basis는 기존 logical result basis 그대로다 — intake, provider, model, declared language,
+> provider-result 참조, 그리고 각 segment의 timing과 정확한 text. provider evidence는 `original_content`에 보존되지만
+> 이 basis에 들어가지 않는다.
+>
+> 근거는 A-8 자신의 기준이다. A-8이 식별하려는 것은 "**동일한 논리적 결과**"이며, text와 timing이 같고 decode
+> 통계만 다른 두 실행은 동일한 논리적 결과다 — decode 통계는 결과가 **무엇인가**가 아니라 **어떻게 산출되었는가**에
+> 대한 provenance다. 따라서 evidence를 basis에서 제외하는 것은 A-8을 약화시키는 것이 아니라 충족시키는 것이다.
+>
+> 현재 구현에서 `content_fingerprint`와 `original_content`가 같은 admission payload에서 계산되는 것은 **계약이 아니라
+> 구현상의 결합**이다. Blueprint는 둘을 분리된 것으로 확정한다.
+>
+> 따라서:
+>
+> - 동일 text/timing/provider logical result는 **동일 fingerprint 의미**를 유지한다.
+> - **provider evidence의 유무만으로 새 logical Provider Result가 되지 않는다.**
+> - A-9의 conflict 판정은 변하지 않는다. evidence 유무 차이는 conflict가 아니다.
+> - `provider_result_ref` version을 올리지 않는다. **`local-asr:v3`를 만들지 않는다** — §15 L-7은 그 참조를
+>   *semantic execution request*로 정의했고, provider 응답을 더 많이 포착하는 것은 다른 요청이 아니다.
+> - 기존 v1/v2 record를 **재작성하지 않고 backfill하지 않는다.** evidence 없이 기록된 record는 영구히 유효하며
+>   `evidence unavailable`로 해석된다. **`evidence unavailable`은 `quality clean`을 뜻하지 않는다.**
 
 **Conflict (Confirmed, A-9):** **같은 anchor에 다른 payload**를 admit하면 **conflict**이며 변경 없이 거부된다.
 LectureOS는 admit된 provider 결과나 raw transcript를 조용히 덮어쓰지 않는다(§2 Raw Before Corrected; §10.1 "기존 Raw
@@ -885,6 +967,166 @@ admission 전체 검증을 받고 admission 원자성은 불변이다. (11) resu
 않는다. (12) admission 성공은 checkpoint를 삭제하고 실패·crash는 유지한다. (13) 손상된 checkpoint는 부분 신뢰 없이
 폐기되며 저장소 손상이 아니다. (14) 키당 소유자는 하나이며 heartbeat·job lifecycle은 도입하지 않는다.
 (15) retention은 bounded이고 정확한 기간은 operational configuration이며, 경로 노출은 progress API가 아니다.
+
+### Transcript Quality Diagnostic (`PATCH-0045`)
+
+이 소절은 `PATCH-0045`로 승인된 Architect 결정(QD-1…QD-20)을 기록한다. `PATCH-0040` P-9은 환각이 **감소할 뿐
+계약으로 제거되지 않는다**고 기록했고, 전장 실측은 그 잔여를 관측 가능한 형태로 남겼다. 이 계약이 답하는 질문은
+"어떻게 제거하는가"가 아니라 **"provider가 이미 반환한 품질 증거를 어떻게 보존하고, 그로부터 재현 가능한 경고를
+어떻게 파생하는가"**이다 — 2,564개 segment를 전부 읽지 않고도 사람이 의심 구간을 찾을 수 있어야 하기 때문이다.
+
+이것은 새 제품 도메인이 아니라 **이미 릴리스된 미이행 책임**이다. §4.2는 "confidence 또는 Uncertainty"를 ASR 단계의
+**Produces**로 이미 배정했고, §4.3은 Raw Transcript가 그것을 유지하도록, §8은 낮은 confidence 결과가 Review에
+도달하도록, §12는 Uncertainty를 "정상 승인 결과처럼 숨기지 않도록" 이미 요구한다. 첫 slice가 구현하지 않았을 뿐이다.
+
+새 Aggregate·Product Domain record·lifecycle·Authority·database table·migration·threshold를 도입하지 않는다.
+
+#### 성격과 경계
+
+**Scope (Confirmed, QD-1):** 이 계약은 §14 admission 경계에서의 품질 증거 보존과, admit된 Raw Transcript에 대한
+파생 품질 진단을 규율한다. 어느 단계의 authority도 바꾸지 않고 어디에도 gate를 추가하지 않는다.
+
+**Quality Warning (Confirmed, QD-2):** ASR 품질 진단은 **Quality Warning**이며 다음이 **아니다** — Validation
+Failure, admission refusal, Raw Transcript refusal, automatic correction, automatic deletion, publication gate.
+환각 segment는 순서·비겹침·범위·계보가 온전하므로 **구조적으로 유효**하다. 이는 Blueprint가 이미 Validation
+Failure와 분리해 둔 §4.x/§9의 **Uncertainty**이며, validation code가 아니고 repository 무결성 finding이 아니며
+repository validation이 보고하지 않는다.
+
+**Admission and Raw Transcript Unaffected (Confirmed, QD-3):** 어떤 품질 신호도 admission을 거부하지 않고, Raw
+Transcript 생성을 거부하지 않으며, admission 원자성을 바꾸지 않는다. 거부하면 §14 A-4가 보존하려는 provider 증거를
+파괴하게 된다. Raw Transcript text는 진단을 근거로 삭제·편집·절삭·재작성되지 않는다.
+
+**Derived After Admission (Confirmed, QD-4):** 진단은 **불변**의 admit된 Raw Transcript와 보존된 provider 증거로부터
+계산된다. 그보다 앞서 계산하면 admission이 해석에 의존하게 된다.
+
+#### Provider Evidence
+
+**Provider Evidence Ownership (Confirmed, QD-5):** provider decode evidence는 §14 A-4의 provider 증거다. 하나의
+실행 중에 provider가 보고한 **사실**이며 transcript로부터 재계산할 수 없다. **diagnostic이 아니고, 둘은 결코 같은
+표현을 공유하지 않는다.** 이를 보존하는 것이 §4.2의 "confidence 또는 Uncertainty" 산출 의무를 실현한다.
+
+현재 faster-whisper 1.2.0 기준의 evidence family는 `avg_logprob`, `no_speech_prob`, `compression_ratio`,
+`temperature`이다. 이 목록은 provider-specific이며 provider-neutral 계약이 아니다.
+
+**Persistence (Confirmed, QD-6):** provider evidence는 `ProviderTranscriptResult.original_content`의 original
+provider evidence 영역에 보존된다(A-4 note 참조). `transcript_segments.confidence` / `uncertainty`를 이 목적에
+사용하지 않으며, 새 Aggregate를 도입하지 않고, diagnostics relation을 전용하지 않는다.
+
+**Evidence Granularity (Confirmed, QD-7):** `avg_logprob`·`no_speech_prob`·`compression_ratio`·`temperature`는
+여러 segment가 공유하는 **decode window 값**이다. 실측에서 32개 segment에 대해 각 신호의 고유값은 6개뿐이었고 최대
+8개 segment가 한 값을 공유했으며, 같은 window 안에서 실제 발화와 환각이 동일한 값을 가졌다. 따라서:
+
+- evidence scope는 **decode window일 수 있다.**
+- 동일 window의 여러 segment가 **동일 evidence를 공유할 수 있다.**
+- **window-level evidence를 그 segment 고유의 confidence로 제시하지 않는다.**
+- window-level evidence를 transcript segment의 generic confidence로 저장하지 않는다.
+
+provider가 segment scope evidence를 제공하는 경우 그것은 segment scope로 기록된다. 이 구분은 표현의 문제가 아니라
+계약이다.
+
+**Fingerprint Basis (Confirmed, QD-8):** provider evidence는 `content_fingerprint`의 basis에 참여하지 않는다
+(A-8 note 참조). 결과적으로 릴리스된 fingerprint는 이 계약 전후로 **bit-identical**이고 A-8 idempotency와 A-9
+conflict 동작은 불변이다.
+
+**No Version Bump, No Backfill (Confirmed, QD-9):** `provider_result_ref` version을 올리지 않고 `local-asr:v3`를
+만들지 않는다. 릴리스된 Provider Result와 Raw Transcript는 재작성·재파생·backfill되지 않는다. evidence 없이 기록된
+결과는 영구히 유효하며, 그에 대한 진단은 provider 유래 reason을 **`evidence unavailable`**로 보고한다 —
+**`quality clean`이 아니다.** 이 차이는 실질적이며 반드시 드러나야 한다.
+
+#### Diagnostic
+
+**Derived, Never Persisted (Confirmed, QD-10):** 진단 결과는 저장하지 않는다. 불변 입력과 versioned algorithm으로부터
+결정적이므로, 저장하면 재계산 가능한 내용을 중복시키고 stale diagnostic이 자기 입력과 불일치할 가능성을 만든다.
+canonical record가 아니고 Product identity가 없으며 lifecycle이 없고, 어떤 downstream도 이를 내용으로 소비하지 않는다.
+
+**Algorithm Versioning (Confirmed, QD-11):** persist하지 않지만 **재현 가능해야 한다.** 진단 계산은 algorithm kind,
+algorithm version, provider-specific parameter version을 불변 anchor(Provider Result identity와 Raw Transcript
+identity 또는 동등한 불변 anchor) 위에서 선언한다. **동일 입력 + 동일 version은 동일 결과로 수렴한다.** 이는
+릴리스된 §15 L-7 / `PATCH-0040` P-3의 관용을 따르며 새 identity 기제를 도입하지 않는다. threshold parameter version은
+아직 Deferred 상태일 수 있다.
+
+**Reason Vocabulary (Confirmed, QD-12):** reason 어휘는 이 generation에서 확정하되 threshold는 확정하지 않는다.
+
+| reason | evidence family | scope |
+|---|---|---|
+| `PROVIDER_LOW_CONFIDENCE` | decode confidence | decode window |
+| `PROVIDER_HIGH_NO_SPEECH` | no-speech evidence | decode window |
+| `PROVIDER_HIGH_COMPRESSION` | compression evidence | decode window |
+| `PROVIDER_DECODE_FALLBACK` | decode fallback / temperature | decode window |
+| `REPEATED_TEXT` | transcript sequence | transcript |
+
+각 reason은 독립적이며 자신의 근거를 스스로 진술한다. **이들을 하나의 hallucination score로 합치는 것은 금지된다** —
+실측 증거가 실제 발화 둘과 환각 하나가 동일한 window 값을 공유함을 보였으므로, 단일 점수는 증거가 지지하지 않는
+확신을 주장하게 되고 사람은 분해할 수 없는 숫자로 행동할 수 없다.
+
+**Multiple Reasons (Confirmed, QD-13):** 한 segment에 여러 reason이 붙을 수 있다. 실측에서 가장 명백한 환각은 네
+가지를 동시에 발화시켰고, 그 동시 발생 자체가 사람이 필요로 하는 증거다.
+
+**Thresholds Deferred (Confirmed, QD-14):** 강의 하나, fixture 두 구간, 환각 클러스터 하나는 **신호가 분리된다는
+사실**을 입증하지만 **어디서 자를지**를 입증하지 않는다. 여기서 완벽히 분리된 `temperature > 0`조차 단일
+클러스터로부터 일반화할 수 없다. 이 계약은 **신호 가용성·reason 어휘·algorithm versioning**을 확정하고,
+provider-specific threshold parameter set은 더 넓은 corpus를 근거로 하는 후속 empirical PATCH로 Deferred한다.
+
+실측값은 evidence로 기록할 수 있다. 승인된 configuration 아래 보존된 fixture에서 환각 클러스터는
+`no_speech_prob = 0.813`, `avg_logprob = -0.967`, `compression_ratio = 2.37`, `temperature = 0.4`를, 정상 구간의
+최악값은 각각 `0.467`, `-0.571`, `1.48`, `0.0`을 보였다. **이 값들은 관측 사실이며 threshold로 승격되지 않는다.**
+전문용어 오인식 구간은 어떤 신호도 발화시키지 않았으므로 인식 오류와 환각은 구분 가능하다.
+
+**Finding Shape (Confirmed, QD-15):** finding은 최소한 대상 segment, reason, evidence family, 그리고 evidence가
+decode-window scope인지 transcript scope인지를 식별한다. window scope reason이 해당 segment 단독에 대한 주장으로
+읽혀서는 안 된다.
+
+#### Authority와 Downstream
+
+**No Automatic Deletion or Correction (Confirmed, QD-16):** 진단은 transcript text를 제거·편집·재작성하지 않고
+Correction Candidate를 만들지 않으며 correction text를 발명하지 않는다. 대체 텍스트를 제안하려면 무엇이 옳은지
+알아야 하는데 진단은 그것을 모른다. **false positive가 허용되는 것은 바로 이 금지 때문이며**, 그 허용성은 이 금지에
+조건부이고 금지가 사라지면 함께 사라진다.
+
+**Human Correction Path (Confirmed, QD-17):** 교정 경로는 릴리스된 것을 그대로 사용한다.
+
+```text
+Raw Transcript → Quality Diagnostic → 사람의 확인
+              → §17 Correction Candidate admission → §18 Human Decision → §19 Corrected Revision
+```
+
+사람이 finding에서 릴리스된 §17 경계로 이동하도록 돕는 Application-level 연결은 허용된다. **새 Human Authority는
+만들어지지 않으며** §17의 기존 요구는 변경되지 않는다.
+
+**Downstream Non-blocking, Not Hidden (Confirmed, QD-18):** Quality Warning이 있는 Raw Transcript도 Effective
+Transcript로 선택될 수 있고, Subtitle을 만들 수 있으며, publication될 수 있다. 어떤 경계에도 gate를 도입하지 않는다.
+다만 §12의 "Validation Failure와 Uncertainty를 정상 승인 결과처럼 숨기지 않아야 한다"가 구속하므로 진단은 관측
+가능한 경계로 도달할 수 있어야 한다. **UI 표현·severity 색상·publication blocking·subtitle blocking·export
+blocking은 이 계약에서 확정하지 않는다.**
+
+**Diagnostic Persistence Reassessment (Confirmed, QD-19):** `implementation/070`의 재개 조건은 이 consumer로
+충족되었으나 결론은 **둘로 갈린다** — provider evidence 영속화는 **필요**하고(재계산 불가능하며 A-4가 이미 자리를
+배정), 파생 Diagnostic 영속화는 **여전히 Deferred**다(QD-10이 재계산 가능성을 보장하므로 070의 논거가 그대로 유효).
+재개 조건 충족이 canonical Diagnostic record 도입 의무를 만들지 않는다.
+
+**No Schema Change (Confirmed, QD-20):** `original_content`는 canonical 직렬화를 담는 기존 column이며, 무엇을
+직렬화해 넣느냐가 달라져도 relation·column·constraint·migration은 변하지 않는다. `docs/030_DATA_MODEL.md`는
+개정되지 않는다.
+
+**Deferred:** threshold 값, audio-aware diagnostic, word-level `words`/`probability` evidence, 자동 correction
+제안, diagnostic 인터페이스, publication/export gating, faster-whisper 외 provider의 threshold, canonical
+Diagnostic record, 그리고 `PATCH-0040` L-14/L-16이 이미 유보한 항목 전부.
+
+#### Canonical Invariants (Quality Diagnostic)
+
+(1) 품질 진단은 Quality Warning이며 Validation Failure가 아니고 repository validation이 보고하지 않는다.
+(2) 어떤 신호도 admission·Raw Transcript 생성·Effective Transcript 선택·Subtitle 생성·publication을 차단하지 않는다.
+(3) Raw Transcript text는 provider 출력 그대로 보존되며 진단을 근거로 변경되지 않는다. (4) 진단은 admission 이후
+불변 입력으로부터 파생된다. (5) provider evidence는 A-4의 provider 증거이고 derived diagnostic은 해석이며, 둘은 같은
+표현을 공유하지 않는다. (6) provider evidence는 `original_content`에 보존되고 segment confidence/uncertainty로 투영되지
+않는다. (7) evidence scope는 decode window일 수 있고 window 값은 segment 고유 confidence로 제시되지 않는다.
+(8) `content_fingerprint` basis는 불변이며 evidence는 참여하지 않는다. (9) `provider_result_ref` version bump·backfill·
+기존 record 재작성이 없고 evidence 없는 record는 유효하며 `evidence unavailable`은 `quality clean`이 아니다.
+(10) 파생 진단은 저장하지 않는다. (11) 진단은 versioned algorithm anchor 위에서 재현 가능하다. (12) reason은 독립적이고
+한 segment에 여럿이 붙을 수 있으며 단일 점수를 만들지 않는다. (13) threshold는 이 generation에서 확정하지 않으며
+실측값은 evidence이지 threshold가 아니다. (14) 진단은 자동 삭제·자동 correction·Correction Candidate 생성을 하지 않고
+사람의 경로는 §17→§18→§19 그대로다. (15) 진단은 관측 가능해야 하지만 UI·severity·gating은 확정하지 않는다.
+(16) 스키마 변경 없음.
 
 ## 16. Current Raw Transcript Selection and Downstream Readiness (First Slice)
 

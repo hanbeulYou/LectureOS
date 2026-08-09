@@ -181,3 +181,31 @@ Requires Architect Decision: No
 Requires Blueprint Clarification: No
 Requires Blueprint PATCH: No
 ```
+
+## Reassessment — 2026-08-09 (`PATCH-0045`)
+
+Nothing above is deleted or rewritten. This note records the outcome of the
+reopening condition stated in *Recommendation and Next Candidate*.
+
+**The reopening condition is met.** `PATCH-0045` (Local ASR Transcript Quality
+Diagnostic Boundary, `docs/040` §15) is an executable consumer that needs ASR
+quality information, so the focused assessment this document asked for was
+performed with that consumer as evidence.
+
+**The conclusion splits in two.** The original question — "should Diagnostics be
+persisted?" — turned out to contain two different questions:
+
+| | outcome | reason |
+|---|---|---|
+| **Provider evidence persistence** | **Justified — required** | Obtainable only during provider execution, not recomputable afterwards, required to reproduce any Quality Diagnostic, and already contracted as `original_content` provider evidence by `docs/040` §14 A-4. |
+| **Derived Diagnostic persistence** | **Still deferred** | Recomputable from immutable evidence + Raw Transcript + a versioned algorithm; storing it creates stale-diagnostic risk; no consumer yet requires a canonical Diagnostic row. |
+
+The consumer needs the **evidence**, not a Diagnostic record. This document's own
+reasoning — do not freeze a record shape, retention policy, or
+Diagnostic/Validation-Finding boundary without a consumer-driven contract — is
+therefore unchanged and still governs the derived side.
+
+**Meeting the reopening condition does not by itself introduce a canonical
+Diagnostic record.** The decision in the header (`Diagnostic Persistence:
+DEFERRED`) stands for derived Diagnostics. `PATCH-0045` adds no table, no column,
+no `SQLiteDiagnosticRepository`, and no Diagnostic transaction port.
