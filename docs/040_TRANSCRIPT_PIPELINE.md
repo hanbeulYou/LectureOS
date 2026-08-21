@@ -1,8 +1,8 @@
 # 040_TRANSCRIPT_PIPELINE
 
 - Status: Draft
-- Version: Blueprint 0.3
-- Last Updated: 2026-08-09
+- Version: Blueprint 0.4
+- Last Updated: 2026-08-21
 - Layer: L1 — Pipeline
 - Depends On:
   - `000_MANIFESTO.md`
@@ -34,6 +34,7 @@
   - `../patches/PATCH-0040-local-asr-previous-text-conditioning-policy.md`
   - `../patches/PATCH-0044-local-asr-checkpoint-and-resume-boundary.md`
   - `../patches/PATCH-0045-local-asr-transcript-quality-diagnostic-boundary.md`
+  - `../patches/PATCH-0046-post-silence-transcript-timing-quality-diagnostic-boundary.md`
 
 ## Purpose
 
@@ -151,6 +152,15 @@ provider 결과는 검증되지 않은 외부 생성 결과다. provider 고유 
 >
 > 이 note는 §4.2의 책임 범위를 넓히지 않는다. 이미 배정된 책임을 어떤 표현으로 실현하는지만 기록한다.
 
+> **후속 결정 note (`PATCH-0046`):** 위 문언은 그대로 유효하다. provider가 반환하는 **decode window
+> anchor**도 §4.2의 provider timing 증거이며, `PATCH-0045` QD-6이 이미 보존한다(§15 TD-8).
+>
+> **decode window의 첫 segment가 그 anchor에서 시작하는 것은 provider의 정상 decode 표현이다**(TD-4).
+> 실측에서 window 251개의 첫 segment가 예외 없이 anchor에서 시작했고(251/251), 첫 segment가 아닌
+> 2,118개 중에는 하나도 없었다. 따라서 이 사실 자체는 이상이 아니며 그것만으로 경고가 되지 않는다.
+>
+> provider가 제출한 timestamp는 **그대로 보존된다.** timing 진단은 provider 출력을 변형하지 않는다.
+
 ### 4.3 Raw Transcript Preservation
 
 - **Responsibility:** External ASR Boundary가 반환한 변경 전 결과를 Raw Transcript로 보존하고 Source Media, Source Timeline, Processing Run과 연결한다.
@@ -168,6 +178,13 @@ Raw Transcript는 후속 Correction이나 사용자 Modification으로 덮어쓰
 > - Diagnostic은 Raw Transcript **이후에** 불변 입력으로부터 파생된다. 보존보다 앞서지 않는다.
 > - **provider evidence unavailable은 quality clean을 뜻하지 않는다.** evidence 없이 기록된 기존 record는 유효하며,
 >   provider 유래 판정은 "판정 불가"로 보고된다.
+
+> **후속 결정 note (`PATCH-0046`):** 위 보존 계약은 timing에도 동일하게 적용된다(§15 TD-13, TD-12).
+>
+> - timing 정렬이 의심되는 Raw Transcript도 **그대로 보존되고 생성된다.** 경고는 생성 실패를 뜻하지 않는다.
+> - **provider timestamp는 재작성되지 않는다.** A-11의 정확 보존 요구와 §2 Raw Before Corrected가 그대로 구속한다.
+> - **timing evidence unavailable은 timing clean이 아니다.** decode window anchor가 보존되지 않은 기존
+>   record는 유효하며 판정은 "판정 불가"로 보고된다. backfill하지 않는다.
 
 ### 4.4 Correction
 
@@ -304,6 +321,13 @@ Transcript Pipeline은 Review UI, 검수 우선순위 전체 또는 다른 Pipel
 >   일치)는 그대로다.
 > - 이 note는 §8의 Review 대상 목록을 늘리거나 줄이지 않는다.
 
+> **후속 결정 note (`PATCH-0046`):** 위 목록의 "**Source Timeline 연결 문제**" 항목이 timing 정렬 위험을
+> 이미 포괄한다(§15 TD-2). 새 Review Item 유형을 만들지 않고 새 Human Authority도 만들지 않는다.
+>
+> timing 경고는 사람이 **검토할 이유**를 제공할 뿐이며 자동 교정으로 이어지지 않는다(TD-17). §17
+> Correction Candidate는 `segment_id`·`proposed_text`·`source_text_snapshot` 위에 세워진 **text 계약**이므로
+> timing 보정에 재사용하지 않는다. timing refinement는 계속 Deferred다.
+
 ## 9. Failure Model
 
 ### 9.1 ASR Failure
@@ -344,6 +368,14 @@ ASR이 일부 Source Media 구간을 충분히 인식하지 못했거나, Correc
 > - §9.1 ASR Failure가 **아니다.** provider는 결과를 만들었고 admission은 거부되지 않는다.
 > - Blueprint가 이미 Validation Failure와 구분해 둔 **Uncertainty**에 해당하며, §8을 통해 Review·Correction으로
 >   연결된다.
+>
+> 이 note는 §9의 실패 분류를 추가·변경하지 않는다.
+
+> **후속 결정 note (`PATCH-0046`):** timing Quality Warning도 위 실패 분류 중 어느 것도 아니다(§15 TD-2).
+>
+> - §9.1 ASR Failure가 **아니다.** provider는 결과를 만들었고 그 결과는 사용 가능하다.
+> - §9.3 Validation Failure가 **아니다.** 해당 segment는 A-10의 순서·양수·비겹침을 모두 만족하는
+>   **구조적으로 유효한** segment다.
 >
 > 이 note는 §9의 실패 분류를 추가·변경하지 않는다.
 
@@ -627,6 +659,21 @@ Transcript를 덮어쓰지 않는다").
 adjacency 비교에만 적용되고 segment 내부에는 적용되지 않는다 — `start >= 0`과 `end > start`(zero-length 거부)는
 정확 비교로 유지된다(T-3). ε는 admission 판정에만 관여하며 제출된 값은 **그대로** 보존된다: 어떤 timestamp도
 snap·반올림·정규화·재작성되지 않고, `content_fingerprint`·identity·anchor에 ε는 참여하지 않는다(T-4, T-5).
+
+> **후속 결정 note (`PATCH-0046`):** 위 문언은 그대로 유효하며, A-10이 계약하는 것과 timing 진단이 관측하는
+> 것을 구분한다(§15 TD-2, TD-7).
+>
+> | | |
+> |---|---|
+> | **structural timing validity** — A-10이 계약 | 초 단위 finite, `start >= 0`, `end > start`, 비내림차순, 비겹침 |
+> | **acoustic timing alignment quality** — 이 진단이 관측 | provider timestamp가 실제 발화 시작과 정렬되는가 |
+>
+> **A-10의 어떤 문장도 `segment.start`가 acoustic speech onset을 표시한다고 말하지 않는다.** 두 조건을
+> 모두 만족하면서 정렬이 의심스러운 segment가 존재할 수 있고, 그것이 이 진단의 대상이다.
+>
+> `PATCH-0039`의 ε(`1e-6`초)은 **동일 시각에 대한 표현 오차** tolerance이며(T-2), 수초~수십 초 규모의 이
+> 의미 문제와 무관하다. ε의 의미는 변경되지 않으며, timing 진단은 ε를 **동일 시각 비교에만** 재사용하고
+> 새 tolerance를 만들지 않는다(TD-5).
 
 **Text Semantics (Confirmed, A-11):** segment text는 필수이며 공백만으로 이루어질 수 없고 제출된 그대로 **정확히
 보존**된다(trim·정규화·재배치 없음). 비ASCII/한국어 text는 그대로 보존된다.
@@ -1127,6 +1174,165 @@ Diagnostic record, 그리고 `PATCH-0040` L-14/L-16이 이미 유보한 항목 �
 실측값은 evidence이지 threshold가 아니다. (14) 진단은 자동 삭제·자동 correction·Correction Candidate 생성을 하지 않고
 사람의 경로는 §17→§18→§19 그대로다. (15) 진단은 관측 가능해야 하지만 UI·severity·gating은 확정하지 않는다.
 (16) 스키마 변경 없음.
+
+### Post-Silence Timing Quality Diagnostic (`PATCH-0046`)
+
+이 소절은 `PATCH-0046`으로 승인된 Architect 결정(TD-1…TD-20)을 기록한다. 위 Transcript Quality
+Diagnostic(`PATCH-0045`)과 **같은 framework 아래의 sibling reason family**이며 새 Aggregate·Product
+Domain record·lifecycle·Authority·table·migration·threshold를 만들지 않는다.
+
+계기는 사람이 다른 일을 하다 발견한 것이다. 구조 기반 전수 라벨링 중 라벨러가 요청받지 않았는데도
+"전사가 주장하는 시작 시각보다 실제 발화가 7~27초 늦다"고 반복 기록했고, 모두 긴 무발화 직후 첫
+segment였다.
+
+#### 선행 해석의 정정
+
+초기 측정은 `segment.start == window.start`를 이상 현상으로 읽었으나, `PATCH-0045`의 window 표현은
+window의 `start`를 **그 window 첫 segment의 start로 정의**하므로 그 비교는 표현상의 항등식이었다.
+provider의 실제 anchor(faster-whisper `seek`, QD-6이 `window_ref`로 보존)로 다시 측정한 결과는
+다음과 같다.
+
+```text
+decode window 첫 segment      251개 중 anchor에서 시작 : 251  (100.0%)
+첫 segment가 아닌 segment    2,118개 중 anchor에서 시작 :   0
+```
+
+**모든 decode window가 예외 없이 첫 segment를 자신의 anchor에서 시작한다.** 이것은 이상이 아니라
+provider의 정상 decode 표현이며, 이 계약은 그 잘못된 해석을 계승하지 않는다(TD-4).
+
+#### 성격과 경계
+
+**Scope (Confirmed, TD-1):** 이 계약은 이 generation의 local ASR에 대한 파생 timing 품질 진단을
+규율한다. 어느 단계의 authority도 바꾸지 않고 어디에도 gate를 추가하지 않는다.
+
+**Meaning (Confirmed, TD-2):** timing 진단은 **Quality Warning**이며 "정렬을 사람이 검토할 가치가
+있다"까지만 주장한다. Validation Failure·Admission Failure·Raw Transcript Failure·publication
+gate·correction authority가 **아니다.** 실측에서 사람이 `REAL_SPEECH`로 판정한 75개 중 5개가 이
+술어를 발화시켰다 — **실제 발화도 발화시킬 수 있으므로** `DRIFT_CONFIRMED`·`WRONG_TIMESTAMP`·
+`EARLY_BY_N_SECONDS` 류의 이름과 의미는 **금지**된다.
+
+**Framework Reuse (Confirmed, TD-3):** `PATCH-0045`의 QD-2(Quality Warning), QD-3(admission 무영향),
+QD-4(admission 이후 파생), QD-10(비영속), QD-11(versioned algorithm), QD-16(자동 삭제·교정 금지),
+QD-17(릴리스된 교정 경로), QD-18(non-blocking이되 은폐 금지)이 **그대로 적용된다.**
+
+**P1 Is Normal (Confirmed, TD-4):** decode window의 첫 segment가 provider anchor에서 시작하는 것은
+정상 decode 표현이며 **그것만으로는 경고가 아니다.** 전체 segment의 10.6%가 이에 해당한다.
+
+#### 발화 술어
+
+**Predicate (Confirmed, TD-5):** 술어는 구조적이며 **임계값이 없다.**
+
+```text
+P1  segment가 자기 provider decode window의 첫 segment이고
+    segment.start == provider window anchor            (ε 이내)
+P2  provider window anchor > 직전 admitted segment.end   (ε 이내)
+P   P1 AND P2
+```
+
+ε는 릴리스된 `PATCH-0039`의 `1e-6`초이며 **동일 시각 비교에만** 쓴다(T-2). 새 tolerance를 만들지 않는다.
+
+**No Duration Threshold (Confirmed, TD-6):** P2는 엄격 부등호이지 지속시간 검사가 아니다.
+`gap >= 3s`·`>= 5s`·`>= 10s`·`duration >= 7s`·`window == 30s`는 **관측값이지 발화 조건이 아니다.**
+직전 coverage보다 0.10초 뒤인 segment도 85.5초 뒤인 segment와 **동일하게** 발화한다.
+
+**What P Claims (Confirmed, TD-7):**
+
+> 이 segment는 provider decode window anchor에서 시작하며, 그 anchor는 직전 admitted transcript
+> coverage의 끝보다 뒤에 있다. 따라서 provider timestamp가 실제 발화 시작과 정렬되는지 사람이 검토할
+> 가치가 있다.
+
+P는 다음을 주장하지 **않는다** — 밀림이 존재한다, 밀림이 N초다, 발화가 어디서 시작한다, text가
+환각이다, segment를 수정해야 한다.
+
+#### provider 경계와 어휘
+
+**Provider Boundary (Confirmed, TD-8):** QD-5/QD-6의 선례대로 reason은 provider-neutral하고 detector는
+faster-whisper의 `seek` anchor를 읽는 **provider-specific**이다. 다른 provider가 `seek`를 제공하거나
+30초 window를 쓰거나 같은 anchoring 동작을 한다고 **가정하지 않는다.** window anchor가 보존되지 않은
+provider는 **unavailable**이며 *clean*이 아니다(QD-9).
+
+**Reason Vocabulary (Confirmed, TD-9):** 이 generation의 reason은 하나다.
+
+| reason | evidence family | scope |
+|---|---|---|
+| `TIMING_ALIGNMENT_REVIEW_REQUIRED` | provider decode window anchor 대 직전 transcript coverage | segment |
+
+QD-12의 window-scoped provider reason과 달리 **scope가 segment**다 — anchor 관계는 한 segment의
+위치에 대한 성질이지 window가 공유하는 값이 아니다. 단일 점수는 만들지 않는다.
+
+#### 영속성·식별자·버전
+
+**Not Persisted (Confirmed, TD-10):** 보존된 decode window anchor(QD-6), segment timing, ordering으로부터
+결정적으로 재계산된다. canonical Diagnostic record를 만들지 않으며 `070`의 유보는 그대로다.
+
+**Versioned (Confirmed, TD-11):** threshold가 없어도 detector는 algorithm kind와 version을 불변 anchor
+위에서 선언한다. provider parameter version은 **`None`**이다 — 어떤 threshold도 참여하지 않는다.
+
+**Legacy (Confirmed, TD-12):** anchor가 보존되기 전에 admit된 결과는 `unavailable`이다. **backfill하지
+않으며** 릴리스된 record를 재작성하지 않는다. `content_fingerprint`·`provider_result_ref`·Raw
+Transcript identity는 영향받지 않는다 — 저장된 증거 위의 read-time 파생은 backfill이 아니다.
+
+#### 보존되는 경계
+
+**Non-blocking (Confirmed, TD-13):** timing 경고는 admission·Raw Transcript·Effective Transcript
+Selection·subtitle 생성·publication 중 어느 것도 거부하지 않는다. **Raw Transcript timestamp는 결코
+수정되지 않는다** — A-11과 §2 Raw Before Corrected가 그대로 구속한다. repository validation은 timing
+경고를 알지도 보고하지도 않는다.
+
+**`041` Untouched (Confirmed, TD-14):** Subtitle Time Representation은 upstream 경고를 근거로 source
+timing을 재해석하지 않는다. `041` §7의 릴리스된 원칙이 이미 이를 담고 있으므로 `041`은 개정되지 않는다.
+
+**Readability Coexistence (Confirmed, TD-15):** `READABILITY_DURATION_ABOVE_MAXIMUM`은 발화할 때
+**정확하다** — cue가 실제로 길다. timing 경고는 upstream 원인을 설명할 뿐 면제를 주지 않는다. 양방향
+모두 금지: `readability > 7s → timing 경고`, `timing 경고 → duration 경고 억제`. readability v2
+parameter는 변경되지 않는다.
+
+**Hallucination Separation (Confirmed, TD-16):** 한 segment가 둘 다 가질 수 있으나 어느 신호도 다른 쪽을
+결정하지 않는다. `no_speech_prob`이 밀림을 확정하지 않고, `avg_logprob`이 timing 변경을 정당화하지 않으며,
+window anchored timing이 환각을 확정하지 않는다. 둘은 무발화 위에서 window가 열릴 때 함께 나타날 뿐
+서로 다른 근거를 가진 서로 다른 reason이다.
+
+**No Correction (Confirmed, TD-17):** 자동 timestamp 변경·Final Subtitle 조정·Raw Transcript 재작성·
+Correction Candidate 생성을 하지 않는다. §17 Correction Candidate는 `segment_id`·`proposed_text`·
+`source_text_snapshot` 위에 세워지고 §19가 교정 **revision**을 적용하는 **text 계약**이며 timing 변경을
+모델링하지 않는다. 억지로 끼워 넣으면 릴리스된 semantics가 왜곡되므로, timing 교정은 연결할 경로 없이
+Deferred로 남는다.
+
+**Immutable History (Confirmed, TD-18):** 기존 Raw Transcript·Provider Result·Final Selection·SRT
+Artifact·Materialization은 변경되지 않고 **재생성되지 않는다.**
+
+**No Schema Change (Confirmed, TD-19):** anchor는 QD-6으로 이미 `original_content`에 보존되고 파생
+경고는 저장되지 않는다. table·column·constraint·migration이 없고 generic column을 전용하지 않는다.
+`docs/030_DATA_MODEL.md`는 개정되지 않는다.
+
+**Measurement Basis (Confirmed, TD-20):** 전수 특이성은 **강의 1편·강사 1명·모델 1개·configuration
+1개**에서 측정됐다(P = 전체 segment의 1.31%, 시간당 15.8건). 이 값은 TD-5를 사용 가능하다고 판단한
+근거이며 **threshold도, 허용 기준도, 다른 provider/강사/모델에 대한 보장도 아니다.** P가 숫자 cut이
+아니라 구조적 관측이고, 의미가 *검토 필요*로 제한되며, 아무것도 차단하지 않고, 교정이 뒤따르지 않으며,
+detector가 provider-specific으로 선언되었기에 이 근거 수준으로 계약한다. 나머지 강의에서의 측정은
+가치 있으나 **선행 조건이 아니다.**
+
+**Deferred:** VAD 채택, audio-grounded alignment/refinement, 실제 speech onset 검출, 밀림 크기,
+교정량, gap-duration threshold, 자동 timing 교정, timing 전용 Human Modify 흐름, 기존 SRT 재생성,
+publication/export gating, provider-independent detector, word timestamp, 새 provider/tool 도입,
+환각 threshold, readability parameter 변경, 그리고 `PATCH-0040` L-14/L-16과 `PATCH-0045`가 이미
+유보한 항목 전부.
+
+#### Canonical Invariants (Timing Quality Diagnostic)
+
+(1) timing 진단은 Quality Warning이며 Validation Failure·Admission Failure가 아니고 repository
+validation이 보고하지 않는다. (2) decode window 첫 segment가 provider anchor에서 시작하는 것은 정상
+decode 표현이며 그것만으로 경고가 되지 않는다. (3) 발화 술어는 P1과 "anchor가 직전 coverage 끝보다
+뒤"의 결합이며 임계값을 포함하지 않는다. (4) ε는 `PATCH-0039`의 릴리스된 값을 동일 시각 비교에만
+재사용하고 새 tolerance를 만들지 않는다. (5) 경고는 "정렬 검토가 필요하다"까지만 주장하고 밀림·크기·
+발화 위치·환각·교정 필요를 주장하지 않는다. (6) reason은 provider-neutral하고 detector는
+provider-specific이며 anchor가 없으면 unavailable이지 clean이 아니다. (7) 파생 진단은 저장하지 않고
+versioned algorithm anchor 위에서 재현 가능하다. (8) admission·Raw Transcript·selection·subtitle·
+publication 중 무엇도 차단하지 않는다. (9) Raw Transcript timestamp는 결코 수정되지 않는다.
+(10) 자동 교정·자동 삭제·자동 Correction Candidate가 없고 §17은 text 계약이므로 재사용되지 않는다.
+(11) readability 경고와 병존하며 어느 쪽도 다른 쪽을 억제하지 않는다. (12) 환각 진단과 분리되며 한쪽
+증거로 다른 쪽을 판정하지 않는다. (13) 기존 릴리스 artifact는 불변이고 재생성되지 않는다. (14) 스키마
+변경 없음. (15) 측정 근거는 강의 1편이며 그 수치는 threshold가 아니다.
 
 ## 16. Current Raw Transcript Selection and Downstream Readiness (First Slice)
 
