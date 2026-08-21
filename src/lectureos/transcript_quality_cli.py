@@ -5,6 +5,9 @@ Two read-only views over an already-admitted provider transcript result:
 * ``inspect`` — what provider decode evidence was preserved with the result, and at what granularity.
 * ``diagnose`` — the derived quality diagnostic: its algorithm anchor, what it could decide, and
   **why it could not decide the rest**.
+* ``timing`` — the derived timing-alignment diagnostic (`PATCH-0046`): which segments begin at a
+  provider decode anchor that opened after the previous admitted coverage, and therefore merit a
+  listen. It reports no drift magnitude, because the evidence does not contain one.
 
 Neither command writes anything. `PATCH-0045` QD-10 makes the diagnostic a derived observation that is
 never stored, and QD-16 forbids any automatic correction or deletion, so there is deliberately no
@@ -30,7 +33,10 @@ from lectureos.application.transcript_quality_diagnostic import (
     DiagnosticCompleteness,
     TranscriptQualityDiagnosticError,
 )
-from lectureos.composition import compose_sqlite_transcript_quality_diagnostic_service
+from lectureos.composition import (
+    compose_sqlite_transcript_quality_diagnostic_service,
+    compose_sqlite_transcript_timing_diagnostic_service,
+)
 from lectureos.persistence import PersistenceError, open_sqlite_database
 
 
@@ -38,6 +44,15 @@ def run_diagnostic(*, database: str, admission_id: str):
     connection = open_sqlite_database(database)
     try:
         service = compose_sqlite_transcript_quality_diagnostic_service(connection)
+        return service.diagnose(admission_id=admission_id)
+    finally:
+        connection.close()
+
+
+def run_timing_diagnostic(*, database: str, admission_id: str):
+    connection = open_sqlite_database(database)
+    try:
+        service = compose_sqlite_transcript_timing_diagnostic_service(connection)
         return service.diagnose(admission_id=admission_id)
     finally:
         connection.close()
@@ -62,6 +77,7 @@ def _parser() -> argparse.ArgumentParser:
     for name, help_text in (
         ("inspect", "show the preserved provider decode evidence and its granularity"),
         ("diagnose", "compute the derived quality diagnostic and report what it could not decide"),
+        ("timing", "compute the derived timing-alignment diagnostic (040 §15 PATCH-0046)"),
     ):
         sub = subparsers.add_parser(name, help=help_text)
         sub.add_argument(
@@ -135,10 +151,45 @@ def _print_diagnostic(result) -> None:
         )
 
 
+def _print_timing(result) -> None:
+    print(f"algorithm: {result.algorithm_kind} v{result.algorithm_version}")
+    print(
+        "provider parameter version: "
+        + (
+            "none (this detector uses no threshold)"
+            if result.provider_parameter_version is None
+            else result.provider_parameter_version
+        )
+    )
+    print(f"provider transcript result: {result.provider_transcript_result_id}")
+    print(f"raw transcript: {result.raw_transcript_id}")
+    print(f"segments: {result.segment_count}")
+    if not result.evidence_available:
+        # TD-12: no preserved decode anchor means the question cannot be asked at all.
+        print("provider decode anchors: unavailable (admitted without preserved anchors)")
+        print("  note: timing evidence unavailable is NOT the same as timing clean")
+        return
+    print(f"provider decode anchors: available ({result.decode_window_count} windows)")
+    print(f"completeness: {result.completeness.value}")
+    print(f"findings: {len(result.findings)}")
+    for finding in result.findings:
+        target = finding.segment_id.value if finding.segment_id else f"ordinal {finding.segment_ordinal}"
+        print(f"  - {finding.reason.value} [{finding.evidence_scope.value}] {target}")
+        print(f"      {finding.detail}")
+    # TD-2/TD-7: the warning is an invitation to listen, not a verdict, and it carries no magnitude.
+    print(
+        "note: this reports a structure worth reviewing, not confirmed drift. It does not state "
+        "how late any speech is, where speech begins, or that anything should be corrected."
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
-        result = run_diagnostic(database=args.database, admission_id=args.admission)
+        if args.command == "timing":
+            result = run_timing_diagnostic(database=args.database, admission_id=args.admission)
+        else:
+            result = run_diagnostic(database=args.database, admission_id=args.admission)
     except (
         TranscriptQualityDiagnosticError,
         KeyError,
@@ -150,6 +201,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
     if args.command == "inspect":
         _print_inspection(result)
+    elif args.command == "timing":
+        _print_timing(result)
     else:
         _print_diagnostic(result)
     return 0

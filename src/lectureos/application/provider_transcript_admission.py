@@ -716,6 +716,35 @@ def _original_provider_content(
     return _canonical_json(payload)
 
 
+def parse_preserved_segment_timings(original_content: str) -> tuple[tuple[float, float], ...]:
+    """Read back the ordered ``(start, end)`` pairs preserved in an `original_content` string.
+
+    The logical admission content records every segment's timing verbatim (A-4), so a derived
+    read-time observation can reconstruct segment ordering and boundaries without re-reading the
+    canonical segment rows. Returns an empty tuple when the content is unreadable — this is preserved
+    provider evidence, and failing to interpret it must never make a released record unreadable.
+    """
+
+    try:
+        payload = json.loads(original_content)
+    except (TypeError, ValueError):
+        return ()
+    if not isinstance(payload, dict):
+        return ()
+    raw = payload.get("segments")
+    if not isinstance(raw, list):
+        return ()
+    out: list[tuple[float, float]] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            return ()
+        try:
+            out.append((float(entry["start"]), float(entry["end"])))
+        except (KeyError, TypeError, ValueError):
+            return ()
+    return tuple(out)
+
+
 def parse_preserved_provider_evidence(original_content: str) -> ProviderDecodeEvidence | None:
     """Read back the decode evidence preserved in an `original_content` string, or ``None``.
 
@@ -787,5 +816,6 @@ __all__ = [
     "derive_provider_transcript_admission_identity",
     "derive_source_timeline_id",
     "parse_preserved_provider_evidence",
+    "parse_preserved_segment_timings",
     "require_canonical_intake_id",
 ]

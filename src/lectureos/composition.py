@@ -53,6 +53,7 @@ from lectureos.application.provider_transcript_admission import (
 )
 from lectureos.application.transcript_quality_diagnostic import (
     TranscriptQualityDiagnosticService,
+    TranscriptTimingDiagnosticService,
 )
 from lectureos.application.local_asr_transcription import (
     LocalAsrEngineRunner,
@@ -603,6 +604,22 @@ def compose_sqlite_transcript_quality_diagnostic_service(
     """
 
     return TranscriptQualityDiagnosticService(
+        SQLiteProviderTranscriptAdmissionRepository(connection),
+        SQLiteProviderTranscriptResultRepository(connection),
+        SQLiteRawTranscriptRepository(connection),
+    )
+
+
+def compose_sqlite_transcript_timing_diagnostic_service(
+    connection: sqlite3.Connection,
+) -> TranscriptTimingDiagnosticService:
+    """Build the derived transcript timing diagnostic on one caller connection (040 §15 TD-10).
+
+    Read-only by construction, like its sibling: only queries are wired and no persistence port
+    exists, so a timing observation cannot be stored and no timestamp can be altered.
+    """
+
+    return TranscriptTimingDiagnosticService(
         SQLiteProviderTranscriptAdmissionRepository(connection),
         SQLiteProviderTranscriptResultRepository(connection),
         SQLiteRawTranscriptRepository(connection),
