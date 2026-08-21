@@ -1,7 +1,7 @@
 # PATCH-0046
 
 - Title: Post-Silence Transcript Timing Quality Diagnostic Boundary (040 §14/§15)
-- Status: Proposed
+- Status: Accepted
 - Priority: Medium
 - Trigger: `implementation/131` §5 (labeler-reported post-silence drift), `implementation/132`
   (drift measurement), `implementation/133` (`MORE_EVIDENCE_REQUIRED` gate),
@@ -15,7 +15,18 @@
 
 ## Status
 
-**Proposed.** This document exists; no Blueprint file has been amended.
+**Accepted (2026-08-21).** `docs/040_TRANSCRIPT_PIPELINE.md` is amended (Blueprint 0.4): §15 carries
+TD-1…TD-20 and its Canonical Invariants as a sibling subsection beside the `PATCH-0045` diagnostic
+block, and §4.2, §4.3, §8, §9 and §14 A-10 gained additive forward notes. Every PATCH Acceptance
+Criterion below was verified mechanically against the applied diff.
+
+**Implementation Requirements remain intentionally incomplete** — they belong to the subsequent
+implementation milestone and are deliberately left unchecked.
+
+Acceptance does not retire the measurement limitation in TD-20. Full-corpus specificity was measured
+on **one lecture, one instructor, one model and one configuration**, and that remains true. What
+acceptance means is narrower: at the present level of evidence, a non-blocking structural Quality
+Warning contract is adopted into the released Blueprint.
 
 It introduces **no schema change, no migration, no new aggregate, no new Product Domain record, no
 new lifecycle, no new authority, no numeric threshold, and no downstream gate**. It rewrites no
@@ -283,25 +294,25 @@ Applied to `docs/040_TRANSCRIPT_PIPELINE.md` only.
 
 ## PATCH Acceptance Criteria
 
-Verified against the Blueprint amendment, before this PATCH may be marked `Accepted`.
+Verified mechanically against the applied Blueprint amendment.
 
-- [ ] The warning's meaning is limited to **review-worthy alignment risk**; `DRIFT_CONFIRMED`,
+- [x] The warning's meaning is limited to **review-worthy alignment risk**; `DRIFT_CONFIRMED`,
       `WRONG_TIMESTAMP` and `EARLY_BY_N_SECONDS` style names appear nowhere.
-- [ ] It is stated **not** a Validation Failure and **not** an Admission Failure.
-- [ ] P1 alone is stated to be **normal provider decode semantics and never a warning**, with the
+- [x] It is stated **not** a Validation Failure and **not** an Admission Failure.
+- [x] P1 alone is stated to be **normal provider decode semantics and never a warning**, with the
       251/251 vs 0/2,118 evidence recorded.
-- [ ] The threshold-free predicate P is defined exactly, using only the released `PATCH-0039` ε.
-- [ ] **No gap-duration threshold** is introduced anywhere.
-- [ ] Automatic correction, deletion and Correction Candidate creation are prohibited.
-- [ ] Raw Transcript preservation is intact; timestamps are stated never modified.
-- [ ] Provider-neutral reason and provider-specific detector are stated as separate.
-- [ ] Derived diagnostic non-persistence is stated; no canonical Diagnostic record appears.
-- [ ] Coexistence with `READABILITY_DURATION_ABOVE_MAXIMUM` is stated in both directions.
-- [ ] Separation from the hallucination diagnostic is stated, with no cross-signal inference.
-- [ ] No schema change, no migration, and `docs/030` unamended.
-- [ ] Released artifacts are stated immutable and not regenerated.
-- [ ] Correction and refinement are stated Deferred.
-- [ ] No released sentence in `docs/040` is deleted or rewritten — prior PATCH notes included —
+- [x] The threshold-free predicate P is defined exactly, using only the released `PATCH-0039` ε.
+- [x] **No gap-duration threshold** is introduced anywhere.
+- [x] Automatic correction, deletion and Correction Candidate creation are prohibited.
+- [x] Raw Transcript preservation is intact; timestamps are stated never modified.
+- [x] Provider-neutral reason and provider-specific detector are stated as separate.
+- [x] Derived diagnostic non-persistence is stated; no canonical Diagnostic record appears.
+- [x] Coexistence with `READABILITY_DURATION_ABOVE_MAXIMUM` is stated in both directions.
+- [x] Separation from the hallucination diagnostic is stated, with no cross-signal inference.
+- [x] No schema change, no migration, and `docs/030` unamended.
+- [x] Released artifacts are stated immutable and not regenerated.
+- [x] Correction and refinement are stated Deferred.
+- [x] No released sentence in `docs/040` is deleted or rewritten — prior PATCH notes included —
       verified line by line; §4.2, §4.3, §8, §9 and A-10 gain **additive forward notes only**.
 
 ## Implementation Requirements
