@@ -1,8 +1,8 @@
 # 040_TRANSCRIPT_PIPELINE
 
 - Status: Draft
-- Version: Blueprint 0.4
-- Last Updated: 2026-08-21
+- Version: Blueprint 0.5
+- Last Updated: 2026-08-22
 - Layer: L1 — Pipeline
 - Depends On:
   - `000_MANIFESTO.md`
@@ -35,6 +35,7 @@
   - `../patches/PATCH-0044-local-asr-checkpoint-and-resume-boundary.md`
   - `../patches/PATCH-0045-local-asr-transcript-quality-diagnostic-boundary.md`
   - `../patches/PATCH-0046-post-silence-transcript-timing-quality-diagnostic-boundary.md`
+  - `../patches/PATCH-0047-human-transcript-timing-correction-boundary.md`
 
 ## Purpose
 
@@ -1470,6 +1471,136 @@ snapshot은 persist된 segment text와 일치해야 한다. (5) Raw Transcript t
 (11) 실패는 부분 상태를 남기지 않는다. (12) admission은 아무것도 적용·수락·ranking·review하지 않는다. (13) 기존
 CorrectionCandidate를 재사용한다. (14) deferred 개념의 placeholder는 없다.
 
+> **후속 결정 note (`PATCH-0047`):** 위 K-1…K-14는 그대로 유효하며 **text 교정** 계약이다.
+>
+> - K-2는 `proposed_text`를 필수·비공백으로 요구하고 **no-op을 거부**하며, 저장 계층의
+>   `correction_candidates.proposed_text`는 `TEXT NOT NULL`이다. 따라서 source text를 그대로 실어
+>   보내는 timing 교정은 **릴리스된 admission이 거부**하고, 그 column을 nullable로 바꾸는 것은
+>   additive 변경이 아니다. timing을 `proposed_text`에 직렬화하는 것은 K-2가 막으려는 의미 왜곡
+>   그 자체다.
+> - 그러므로 **timing 교정은 이 record가 표현할 수 없으며 sibling 후보가 담는다**(아래 소절).
+>   §17의 기존 column·제약·의미는 바뀌지 않고 어느 것도 nullable하거나 polymorphic해지지 않는다.
+
+### Human Timing Correction Candidate (`PATCH-0047`)
+
+이 소절은 `PATCH-0047`로 승인된 Architect/Product 결정(TC-1…TC-21)을 기록한다. 위 text Correction
+Candidate의 **sibling**이며, 새 Human Authority 개념·새 revision aggregate·새 downstream gate·임계값을
+만들지 않는다.
+
+계기는 `PATCH-0046`이 `TIMING_ALIGNMENT_REVIEW_REQUIRED`를 릴리스했으나 사람이 내린 결론을 기록할
+canonical 경로가 없다는 것이다. `implementation/137`은 한 강의의 31건 P 집단에서 16건이 1초 미만,
+8건이 2초 이상, 4건이 5초 이상(최대 19.05초)임을 측정했다 — 강의당 약 8건의 실질 사례이며 사람이
+감당할 규모다. 이 수치는 근거이지 **임계값이 아니다**: 같은 기록 §2가 energy 추정기가 사람 관측 4건
+중 **0건**만 ±5초 내에서 일치했음을 남겼으므로 개별 값은 ground truth가 아니고, `0.68`·`2.64`·
+`19.05`와 구간 경계 중 어느 것도 제품 숫자가 될 수 없다. anchor gap 상관도 0.90초 gap에서 6.60초
+drift가 관측되어 반증되었으므로 적격성 규칙이 되지 않는다.
+
+**Scope (Confirmed, TC-1):** 이 계약은 하나의 경로만 규정한다 — 하나의 source segment의 표시 timing을
+교체하려는 **사람이 작성한 제안**, 그에 대한 사람의 accept/reject, 그리고 수락된 제안이 생성하는
+corrected revision. gate를 추가하지 않고, 어떤 단계의 authority도 바꾸지 않으며, 여기서 이름 붙인
+sibling record 외의 Product Domain 개념을 만들지 않는다.
+
+**Sibling Aggregate, Not an Extension (Confirmed, TC-2):** 릴리스된 text 후보는 timing 교정을 표현할 수
+없으므로(위 note의 K-2 / `NOT NULL` 근거) timing 교정은 **자신의 record로 admit된다**. §17의 릴리스된
+text 의미(K-1…K-4)는 **바뀌지 않는다**.
+
+**Complete Replacement Interval (Confirmed, TC-3):** 후보는 **완전한 교체 구간**을 제안하며 start만
+제안하지 않는다. start만 바꾸면 duration이 조용히 재정의되고, duration은 `041`의 readability가 측정하는
+값이므로 제안자가 말하지 않은 채 cue의 읽기 속도를 바꾸게 된다. 관측된 사례도 표현할 수 없다:
+`137`의 최대 사례는 20.7초 segment에서 발화가 약 19초 지점에 시작하며, 원래 end를 유지하면 1.6초
+cue가 남는다. 들은 사람은 두 경계를 모두 안다.
+
+**Human-Authored Only (Confirmed, TC-4):** 제안은 값을 진술하며, 현재 증거 중 그 값을 공급할 수 있는
+것이 없다 — energy 추정기는 ground truth가 아니고(`137` §2), anchor gap은 교정량이 아니며,
+`PATCH-0046` TD-2는 진단의 의미를 *검토 가치*로 한정한다. 기계가 제시하고 사람이 승인하는 제안은
+**거부가 아니라 Deferred**다.
+
+**Diagnostic Is Not a Prerequisite (Confirmed, TC-5):** 사람은 의심할 이유가 있는 어떤 segment에 대해서도
+timing 교정을 작성할 수 있다. `TIMING_ALIGNMENT_REVIEW_REQUIRED` finding을 선행 조건으로 요구하면
+provider-specific 파생 관측이 사람의 판단을 gate하게 되고, TD-2 자신의 한계가 그런 무게를 주는 것에
+반대한다. 반대 방향도 마찬가지로 **finding이 자동으로 후보가 되지 않는다** — 진단 → 선택적 단서,
+후보 → 명시적 사람 제안, 결정 → canonical authority로 분리된다.
+
+**Structural Admission (Confirmed, TC-6):** admission은 media 없이 알 수 있는 것만 검증한다: target
+segment가 존재하고 intake의 **현재 Raw Transcript**에 속할 것(K-1의 lineage 규칙), 제안 값이 유한할 것,
+`start >= 0`이고 `end > start`일 것(A-10의 구조 어휘), 구간이 그 segment의 source timeline 위에 있을 것.
+
+제안 구간이 **실제 발화와 일치하는지는 검증하지 않는다.** §14 A-14가 provider admission을 media에서
+떼어놓는 것과 같은 절제를 다른 이유로 적용한다: **그 판단은 사람의 몫이고 §18에서 canonical해진다.**
+drift·anchor gap·readability 임계값은 어느 것도 관여하지 않는다.
+
+**Neighbour Non-Overlap (Confirmed, TC-7):** 제안 구간은 대상 transcript의 인접 segment와 **겹치지
+않아야 한다**. 순서와 비겹침은 릴리스된 `PATCH-0039` ε로 두 값이 같은 시각을 가리키는지만 판단하여
+검사하므로 경계가 맞닿는 것은 계속 허용되고 새 tolerance는 생기지 않는다.
+
+이것을 열어두지 않고 계약하는 이유는 결과가 구체적이기 때문이다: `READABILITY_CUES_OVERLAP`은
+**BLOCKING** 심각도이고 `PATCH-0042`는 blocking finding을 Final Selection에서 강제한다. 겹치는
+corrected revision은 admit되고 accept되고 generate된 뒤 **전달이 거부**된다. 자막에 도달할 수 없는
+교정을 받아들이는 것은 사람이 아직 조정할 수 있는 지점에서 거부하는 것보다 나쁜 실패다.
+
+**Timing No-Op Rejected (Confirmed, TC-8):** 릴리스된 ε 안에서 source 구간과 동일한 제안 구간은 아무것도
+제안하지 않으므로 거부된다. "후보는 실제 교정 제안이어야 한다"는 K-2의 원리는 text 전용이 아니며,
+no-op을 admit하면 결정할 것이 없는 결정이 생긴다.
+
+**Source Timing Snapshot (Confirmed, TC-9):** 후보는 자신이 교체한다고 믿는 구간을 함께 싣고, admission은
+persist된 segment와의 정확한 일치를 요구한다. K-3의 text snapshot과 같은 목적이고 같은 실패를 막는다 —
+그 사이 바뀐 segment를 대상으로 작성된 제안은 다른 것에 적용되지 않고 거부된다.
+
+**Raw Transcript Immutability (Confirmed, TC-16):** provider timing과 text는 결코 재작성되지 않는다.
+§2 Raw Before Corrected·A-11·`PATCH-0046` TD-13이 그대로 구속하며, 교정은 전적으로 revision lineage
+안에 존재하고 자신의 source Raw Transcript까지 추적 가능하다.
+
+**Released Artifacts (Confirmed, TC-17):** 기존 Final Selection·SRT Artifact·Materialization은 **stale해지지
+않으며 자동으로 재생성되지 않는다.** 그것들은 만들어질 당시 선택된 revision의 유효한 산출물로 남는다.
+새 artifact는 사람이 corrected revision을 선택하고 다시 materialize할 때만, 릴리스된 identity 체인을 통해
+생긴다. **소급 변경·자동 재선택·자동 재materialization은 없다.**
+
+**Composition (Confirmed, and deliberately narrow, TC-18):** 한 segment에 대한 **경쟁 교정은 이 계약이
+합성하지 않는다.** 같은 source segment에 text 교정과 timing 교정이 모두 작성될 수 있고, 어느 한쪽이
+수락되면 다른 쪽의 snapshot이 현재 segment와 더 이상 일치하지 않아 TC-9와 K-3의 stale 검사가 거부한다 —
+이는 **탐지이지 해소가 아니다.** 따라서 이 계약은 안전한 경계만 고정한다:
+
+- **자동 합성 없음.** 구현은 두 교정을 병합하거나, 임의로 고른 순서로 적용하거나, stale 후보를 스스로
+  retarget할 수 없다.
+- **릴리스된 lineage를 통한 순차 교정은 가능하다.** §19는 이미 부모가 다른 revision인 revision을
+  지원하므로, 사람은 text를 교정한 뒤 그 결과 revision에 대해 새 timing 후보를 작성할 수 있다.
+- **경쟁 교정으로 stale해진 후보를 제품이 어떻게 다룰지**(retarget·재작성·거부)는 **Deferred**이며 자신의
+  결정을 갖는다.
+
+**Schema (Confirmed, TC-19):** 진화는 **strictly additive**이며 세 sibling relation(timing 후보, 그 결정,
+그 generation record)을 더한다. 기존 correction relation의 column·제약·의미는 유지되고 어느 것도
+nullable하거나 polymorphic해지지 않는다. 이름은 저장소 관례를 따르고 migration은 여기가 아니라 구현
+시점에 작성된다.
+
+**No Backfill (Confirmed, TC-20):** 기존 correction·decision·revision·artifact row는 손대지 않는다. 이
+capability가 존재하기 전에 만들어진 record는 "timing 교정됨"·"검토됨"·"clean"이 **아니며** 단지 timing
+교정이 없을 뿐이고, 무엇도 그 반대를 추론할 수 없다.
+
+**Refinement Deferred (Confirmed, TC-21):** provider refinement는 Deferred로 남고 여기서 선택되지 않는다 —
+VAD·word timestamp·forced alignment·energy alignment·어떤 refinement 알고리즘도 없다.
+`implementation/136` TR-1…TR-4는 refinement를 §15 provider 실행에 두어 distinct Raw Transcript를 만들게
+했으며, 그것은 §15 L-16의 두 조건(timestamp 개선 **그리고** 실제 발화 보존) 뒤에 있고 그중 두 번째만
+정량화되었다. 수락된 사람 교정이 사람이 검증한 구간을 부수적으로 형성해 이후 평가의 참조가 될 수는
+있으나 그것은 **부수 효과이지 목적이 아니다**: 이 계약은 labeling 프로그램도 새 persistence 의무도
+만들지 않는다.
+
+**Deferred (이후 milestone):** 자동 timing 제안·drift/anchor gap/readability 임계값·timing 편집 인터페이스·
+Modify·경쟁 교정 합성(TC-18)·릴리스 artifact 재생성 또는 무효화·발행/export 정책·refinement 메커니즘·
+timing 및 환각 진단 변경·readability 파라미터 변경. placeholder는 도입하지 않는다.
+
+**Canonical Invariants (Confirmed):** (1) timing 후보는 text 후보의 sibling이며 §17의 K-1…K-4 의미는
+바뀌지 않는다. (2) 후보는 완전한 교체 구간을 제안하고 start만 제안하지 않는다. (3) 제안은 사람이
+작성하며 진단은 선행 조건이 아니고 finding이 자동으로 후보가 되지 않는다. (4) admission은 구조만
+검사하고 acoustic 진실은 검사하지 않으며 어떤 임계값도 관여하지 않는다. (5) 인접 비겹침은 릴리스된
+`PATCH-0039` ε로 검사하고 새 tolerance를 만들지 않는다. (6) timing no-op은 거부되고 source timing
+snapshot이 staleness를 막는다. (7) §18의 accept/reject 의미는 그대로이며 rejection은 정상 결과이고 새
+상태가 없다. (8) 수락된 후보는 source text를 정확히 보존하고 제안 구간을 갖는 replacement segment를
+만든다. (9) corrected revision의 segment timing이 그 segment의 canonical 교정 timing이다. (10) identity는
+릴리스된 provenance 관용구를 따르고 새 hash 방식을 고정하지 않는다. (11) Raw Transcript는 불변이다.
+(12) 릴리스 artifact는 stale해지지 않고 자동 재선택·재생성되지 않는다. (13) 경쟁 교정 합성은 Deferred이며
+자동 합성과 구현이 고른 순서는 금지된다. (14) 스키마 진화는 strictly additive이고 backfill과 legacy
+추론이 없다. (15) provider refinement는 Deferred이고 메커니즘은 선택되지 않는다.
+
 ## 18. First Human Authority Decision on a Correction Candidate (First Slice)
 
 이 절은 `PATCH-0025`(GOAL-009)로 승인된 Architect/Product 결정(H-1…H-14)을 기록한다. §17의 admitted Correction
@@ -1535,6 +1666,24 @@ revision 선택·후보 Modify·후보 merge/ensemble·ranking/recommended 선�
 content는 conflict로 거부된다. (10) Accepted만 이후 revision 대상이다. (11) 실패는 부분 상태를 남기지 않는다. (12) 결정은
 아무것도 적용·revision·decision 생성하지 않는다. (13) canonical CorrectionCandidate를 재사용하며 두 번째 계층이 없다.
 (14) deferred 개념의 placeholder는 없다.
+
+> **후속 결정 note (`PATCH-0047`):** 위 H-1…H-14의 의미는 timing 교정 후보(§17 sibling 소절)에
+> **변경 없이 적용된다**(TC-10).
+>
+> - 결정은 사람이 하나의 timing 후보를 accept 또는 reject했다는 사실을 기록한다.
+>   `DecisionKind`(accept/reject)·`HumanActorReference`·append-only supersession·H-2의 세 상태
+>   (부재로 파생되는 Undecided, Accepted, Rejected)가 모두 개정 없이 성립하며 **Modify는 H-2가 남긴
+>   그대로 deferred**다.
+> - sibling persistence relation이 필요한 이유는 **오직 foreign key 때문이다**:
+>   `correction_candidate_decisions`는 `correction_candidates(identity)`를 참조하므로 자신의 record에
+>   있는 timing 후보를 가리킬 수 없다. H-1이 같은 문제를 만났을 때 한 candidate 계층을 다른 계층으로
+>   감싸기를 거부하고 기존 value type을 재사용하는 smallest additive aggregate를 도입했으며,
+>   **여기서도 같은 선택을 하고 새 authority·역할·계층을 만들지 않는다.**
+> - **Rejection은 정상 결과이며 특별한 상태를 얻지 않는다**(TC-11). 진단이 낸 finding의 약 절반은
+>   기각될 것으로 예상된다(`implementation/137`). "source timing이 옳다"는 완전하고 유용한 사람의
+>   판단이며 `reject`로 온전히 표현된다. `ignored`·`dismissed`·`false_positive` 같은 상태는 도입하지
+>   않는다 — 그런 상태를 만들면 진단이 무언가를 주장했다가 틀린 것처럼 함의하게 되는데,
+>   `PATCH-0046` TD-2는 진단이 아무 주장도 하지 않았음을 명시한다.
 
 ## 19. First Corrected Transcript Revision — One-Candidate Explicit Application (First Slice)
 
@@ -1617,6 +1766,24 @@ anchor(candidate, authorizing decision)에서 결정적으로 파생된다. (8) 
 무효화하지 않는다. (11) revision들은 공존하며 current 선택은 존재하지 않는다. (12) 생성은 atomic이고 상위 record를
 변경하지 않는다. (13) revision은 물리 파일이 아니다. (14) deferred 개념의 placeholder는 없다.
 
+> **후속 결정 note (`PATCH-0047`):** 위 V-1…V-14는 그대로 유효하다. V-5의 "text 교정만 지원한다"와
+> 생성기가 `start`/`end`를 source segment에서 복사하는 것은 **후보가 text를 제안하기 때문**이며
+> lineage가 timing을 담지 못해서가 아니다 — `TranscriptSegment`는 `start`/`end`를 갖고
+> `CorrectedTranscriptRevision`은 `segment_ids`를 가지며 replacement는 `replaces_segment_id`를 선언한다.
+>
+> - **수락된 timing 후보는 기존 §19 모델을 통해 replacement segment를 만든다**(TC-12). replacement는
+>   **source segment의 text를 정확히** 싣고(A-11의 보존 요구, 재해석·정규화·trim 없음), 수락된 제안
+>   구간을 자신의 `start`/`end`로 가지며, `replaces_segment_id`가 자신의 source를 가리킨다. 새 revision
+>   aggregate도 새 revision 종류도 없다 — `CorrectedTranscriptRevision`을 릴리스된 그대로 사용한다.
+> - sibling generation relation이 필요한 이유는 TC-10과 같은 foreign key 이유이며, candidate → decision →
+>   replaced segment → replacement segment → revision의 provenance 사슬을 보존한다.
+> - **identity는 릴리스된 provenance 관용구를 따르고 새 hash 방식을 계약하지 않는다**(TC-15).
+>   replacement segment identity는 오늘과 같이 (candidate, decision) generation digest에서 파생되므로
+>   timing만 바꾼 replacement도 자동으로 자신의 source와 구분되고 릴리스된
+>   `replaced_segment_id <> replacement_segment_id` invariant가 특별 처리 없이 성립한다. 한 source
+>   segment에 대한 서로 다른 두 timing 제안은 두 후보이므로 두 identity다 — Blueprint는 그 **요구**를
+>   고정하고 파생은 릴리스된 관용구에 맡긴다.
+
 ## 20. Current Corrected Revision Selection and Effective Transcript Resolution (First Slice)
 
 이 절은 `PATCH-0027`(GOAL-011)로 승인된 Architect/Product 결정(S2-1…S2-14)을 기록한다. §19의 immutable Corrected
@@ -1690,6 +1857,19 @@ revision·sequence)이다. (6) 동일 대상 재요청은 reused, 다른 대상�
 만든다. (9) resolver는 inapplicable 선택을 명시적으로 보고하며 조용한 fallback이 없다. (10) 선택은 revision·후보·
 결정·Raw Transcript·Raw 선택을 변경하지 않는다. (11) 비선택 revision은 supersede되지 않는다. (12) append는 atomic이다.
 (13) 이 slice는 downstream 소비자를 전환하지 않는다. (14) deferred 개념의 placeholder는 없다.
+
+> **후속 결정 note (`PATCH-0047`):** 위 S2-1…S2-14는 그대로 유효하고 선택은 **correction kind에
+> 무관하다** — §20은 revision을 고를 뿐 그 revision의 timing이 무엇에서 왔는지 묻지 않는다.
+>
+> - **corrected revision의 segment timing이 그 segment의 canonical 교정 timing이다**(TC-13). downstream
+>   경계가 그 revision을 선택하면, 자신이 파생의 근거로 삼는 transcript timing으로 그 값을 사용한다.
+> - 이것은 행동을 더하는 것이 아니라 빈틈을 메운다: 생성 경로는 이미 revision segment의
+>   `start`/`end`를 읽고, `041` §7은 이미 Subtitle Unit의 Time Range가 "근거가 된 Transcript 시간
+>   구조"까지 추적 가능할 것을 요구한다. 이 문장은 **교정이 수락되었을 때 그 구조가 무엇인지**를 말할
+>   뿐이다. `041` §7의 읽기 속도 기반 조정 허용은 영향받지 않는다 — 그 조정은 transcript 구조에서
+>   *출발*하며 이 문장은 어느 구조인지만 지목한다.
+> - **`041`은 개정되지 않는다**(TC-14). Subtitle Time Representation은 source segment를 재-timing할
+>   authority를 얻지 않으며 `PATCH-0046` TD-14가 그대로 선다.
 
 ## 21. Effective Transcript Consumption Boundary (First Slice)
 

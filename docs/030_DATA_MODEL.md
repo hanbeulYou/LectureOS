@@ -161,6 +161,8 @@ Corrected Transcript는 원본 발화의 의미를 사람이 읽고 교정할 �
 
 Corrected Transcript는 Subtitle이 아니다. 발화 의미 보존과 교정이 주 책임이며, 학생에게 표시할 줄 분할, 읽기 속도, 표시 시간은 Subtitle의 책임이다.
 
+Corrected Transcript가 반영하는 사람의 교정은 발화 text에 한정되지 않는다. 하나의 Transcript 단위가 Source Timeline 위에서 차지하는 구간에 대한 교정도 같은 계보 안에서 표현될 수 있으며, 그 제안과 사람의 판단과 결과 revision을 담는 canonical record의 형태·admission 규칙·저장 구조는 `040_TRANSCRIPT_PIPELINE.md §17`(`patches/PATCH-0047`)이 정한다. 이 문서는 그 저장 구조를 정의하지 않는다.
+
 ### 6.3 Transcript Unit
 
 Transcript Unit은 Transcript 안의 발화 또는 텍스트를 안정적으로 참조하기 위한 최소 개념적 단위의 자리다. 이 문서는 그 단위를 Word, Utterance, Sentence, Block 중 하나로 확정하지 않는다.
