@@ -1,7 +1,7 @@
 # PATCH-0047
 
 - Title: Human Transcript Timing Correction Boundary (040 §17/§18/§19/§20)
-- Status: Proposed
+- Status: Accepted
 - Priority: Medium
 - Trigger: `PATCH-0046` released a timing diagnostic with no way to act on it;
   `implementation/137` measured the population it flags; `implementation/138` closed the boundary
@@ -15,7 +15,23 @@
 
 ## Status
 
-**Proposed.** This document exists; no Blueprint file has been amended.
+**Accepted.** Applied to `docs/040_TRANSCRIPT_PIPELINE.md` (Blueprint 0.5, 2026-08-22) as a `§17`
+forward note, the `Human Timing Correction Candidate` sibling subsection carrying TC-1…TC-9 and
+TC-16…TC-21 with its own Canonical Invariants, and forward notes on `§18` (TC-10, TC-11), `§19`
+(TC-12, TC-15) and `§20` (TC-13, TC-14). `docs/030_DATA_MODEL.md` `§6.2` gains one conceptual
+cross-reference clause. `docs/041_SUBTITLE_PIPELINE.md` is not amended (TC-14).
+
+**Acceptance means the contract has been applied to the Blueprint. It does not mean the capability
+has been implemented.** The Implementation Requirements below remain outstanding and are the
+implementing milestone's gate: no schema relation exists, `SQLITE_SCHEMA_VERSION` stays **53**, and
+no production code or test was changed by the application.
+
+One divergence from *Required Blueprint Changes*, recorded rather than resolved silently: item 6
+names `docs/030_DATA_MODEL.md` as gaining "the new relations", but `030`'s released Purpose states it
+"is not a physical or logical storage schema" and "does not define tables, fields, ID formats". Every
+prior PATCH that added relations (`PATCH-0030`…`PATCH-0037`) gave `030` a single conceptual
+cross-reference clause instead, and that precedent was followed here. The three relations themselves
+are contracted by TC-19 and written at implementation time, exactly as TC-19 states.
 
 It introduces **no numeric threshold, no automatic proposal, no media access at admission, no new
 Human Authority concept, no new revision aggregate, and no downstream gate**. It rewrites no released
@@ -294,32 +310,32 @@ Applied to `docs/040_TRANSCRIPT_PIPELINE.md`, plus `docs/030_DATA_MODEL.md` for 
 
 Verified against the Blueprint amendment, before this PATCH may be marked `Accepted`.
 
-- [ ] `§17`'s released text-correction semantics (K-1…K-4) are unchanged, and the timing candidate is
+- [x] `§17`'s released text-correction semantics (K-1…K-4) are unchanged, and the timing candidate is
       stated a **sibling** with the K-2 / `NOT NULL` evidence recorded.
-- [ ] The candidate is stated to propose a **complete replacement interval**, with the start-only
+- [x] The candidate is stated to propose a **complete replacement interval**, with the start-only
       rejection reasoned rather than asserted.
-- [ ] The proposal is stated **human-authored**, and the diagnostic is stated **not a prerequisite**
+- [x] The proposal is stated **human-authored**, and the diagnostic is stated **not a prerequisite**
       and never automatically converted into a candidate.
-- [ ] Admission is stated to check structure only and **never acoustic truth**, with no threshold of
+- [x] Admission is stated to check structure only and **never acoustic truth**, with no threshold of
       any kind.
-- [ ] Non-overlap against neighbours is contracted, using the released `PATCH-0039` ε and no new
+- [x] Non-overlap against neighbours is contracted, using the released `PATCH-0039` ε and no new
       tolerance.
-- [ ] A timing no-op is rejected, and a source-timing snapshot guards staleness.
-- [ ] `§18` accept/reject semantics are stated unchanged, the sibling relation is stated to exist only
+- [x] A timing no-op is rejected, and a source-timing snapshot guards staleness.
+- [x] `§18` accept/reject semantics are stated unchanged, the sibling relation is stated to exist only
       for the foreign key, and **rejection is stated a normal outcome with no new state**.
-- [ ] An accepted candidate is stated to produce a replacement segment **preserving source text
+- [x] An accepted candidate is stated to produce a replacement segment **preserving source text
       exactly**, with the proposed interval and `replaces_segment_id` lineage.
-- [ ] **Corrected revision timing authority is stated** (TC-13), and `041` is confirmed unamended.
-- [ ] Identity is stated to follow the released provenance idiom, with distinct proposals yielding
+- [x] **Corrected revision timing authority is stated** (TC-13), and `041` is confirmed unamended.
+- [x] Identity is stated to follow the released provenance idiom, with distinct proposals yielding
       distinct identities and no new hash recipe fixed in the Blueprint.
-- [ ] Raw Transcript immutability is stated intact.
-- [ ] Released artifacts are stated not stale, never auto-selected, never auto-regenerated.
-- [ ] Text + timing composition is stated **Deferred with an explicit safe boundary** — no automatic
+- [x] Raw Transcript immutability is stated intact.
+- [x] Released artifacts are stated not stale, never auto-selected, never auto-regenerated.
+- [x] Text + timing composition is stated **Deferred with an explicit safe boundary** — no automatic
       composition, no implementation-chosen ordering.
-- [ ] Schema evolution is stated **strictly additive**, with no existing column made nullable or
+- [x] Schema evolution is stated **strictly additive**, with no existing column made nullable or
       polymorphic, and **no backfill or inference over legacy records**.
-- [ ] Provider refinement is stated Deferred and no mechanism is selected.
-- [ ] No released sentence in `docs/040` is deleted or rewritten — prior PATCH notes included —
+- [x] Provider refinement is stated Deferred and no mechanism is selected.
+- [x] No released sentence in `docs/040` is deleted or rewritten — prior PATCH notes included —
       verified line by line; §17, §18, §19 and §20 gain **additive forward notes and subsections
       only**.
 
