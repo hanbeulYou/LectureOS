@@ -40,7 +40,7 @@ _UNTOUCHED = (
 
 _ADDITION_BLOCKS = tuple(
     (level, getattr(sqlite_lifecycle, f"_V{level}_ADDITION_STATEMENTS"))
-    for level in range(2, 54)
+    for level in range(2, 55)
 )
 
 
@@ -77,8 +77,9 @@ class SQLiteSchemaVersionFiftyThreeTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
 
-    def test_schema_version_is_fifty_three(self) -> None:
-        self.assertEqual(SQLITE_SCHEMA_VERSION, 53)
+    def test_v53_remains_a_supported_version(self) -> None:
+        self.assertIn(53, sqlite_lifecycle._SUPPORTED_SCHEMA_VERSIONS)
+        self.assertLessEqual(53, SQLITE_SCHEMA_VERSION)
 
     def test_fresh_database_initializes_with_v53_tables(self) -> None:
         connection = initialize_sqlite_database(self.database_path)
@@ -183,7 +184,8 @@ class SQLiteSchemaVersionFiftyThreeTests(unittest.TestCase):
             connection.close()
 
     def test_v53_no_op_migration_is_allowed(self) -> None:
-        initialize_sqlite_database(self.database_path).close()
+        create_legacy_database(self.database_path, 52)
+        migrate_sqlite_database(self.database_path, 53)
         migrate_sqlite_database(self.database_path, 53)
         connection = open_sqlite_database(self.database_path)
         try:
@@ -207,7 +209,7 @@ class SQLiteSchemaVersionFiftyThreeTests(unittest.TestCase):
     def test_unsupported_target_is_rejected(self) -> None:
         initialize_sqlite_database(self.database_path).close()
         with self.assertRaises(PersistenceError):
-            migrate_sqlite_database(self.database_path, 54)
+            migrate_sqlite_database(self.database_path, 55)
 
     def test_repository_rejects_pre_v53_schema(self) -> None:
         create_legacy_database(self.database_path, 52)

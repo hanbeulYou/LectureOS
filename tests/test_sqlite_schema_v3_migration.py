@@ -23,6 +23,7 @@ from lectureos.execution.models import (
     ProcessingUnit,
 )
 from lectureos.persistence import (
+    SQLITE_SCHEMA_VERSION,
     PersistenceError,
     SQLiteProcessingRunRepository,
     SQLiteProcessingUnitRepository,
@@ -154,7 +155,7 @@ class SQLiteSchemaVersionThreeTests(unittest.TestCase):
         try:
             self.assertEqual(
                 connection.execute("SELECT version FROM schema_metadata").fetchone(),
-                (53,),
+                (SQLITE_SCHEMA_VERSION,),
             )
             self.assertTrue(V3_TABLES.issubset(table_names(connection)))
             unit = self._unit()
