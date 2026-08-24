@@ -7,8 +7,8 @@ from pathlib import Path
 
 from .errors import PersistenceError, UnsupportedSchemaVersionError
 
-SQLITE_SCHEMA_VERSION = 53
-_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53)
+SQLITE_SCHEMA_VERSION = 54
+_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54)
 
 _V1_TABLE_STATEMENTS = (
     """CREATE TABLE schema_metadata (
@@ -1717,6 +1717,72 @@ _V53_ADDITION_STATEMENTS = (
 )""",
 )
 
+# 040 §17 Human Timing Correction Candidate (`PATCH-0047`, TC-19): three sibling relations beside the
+# released text-correction family. `correction_candidates.proposed_text` is TEXT NOT NULL and K-2
+# rejects a no-op, so a timing proposal cannot ride the released candidate; nothing here alters,
+# widens, or reinterprets any released correction relation.
+_V54_ADDITION_STATEMENTS = (
+    """CREATE TABLE timing_correction_candidates (
+    identity TEXT PRIMARY KEY,
+    transcript_source_intake_id TEXT NOT NULL,
+    raw_transcript_id TEXT NOT NULL,
+    segment_id TEXT NOT NULL,
+    author TEXT NOT NULL CHECK (length(trim(author)) > 0),
+    candidate_ref TEXT NOT NULL CHECK (length(trim(candidate_ref)) > 0),
+    source_start_snapshot REAL NOT NULL,
+    source_end_snapshot REAL NOT NULL,
+    proposed_start REAL NOT NULL CHECK (proposed_start >= 0),
+    proposed_end REAL NOT NULL,
+    rationale TEXT NOT NULL CHECK (length(trim(rationale)) > 0),
+    content_fingerprint TEXT NOT NULL CHECK (length(content_fingerprint) = 64),
+    CHECK (proposed_end > proposed_start),
+    CHECK (source_end_snapshot >= source_start_snapshot),
+    CHECK (source_start_snapshot >= 0),
+    UNIQUE (transcript_source_intake_id, segment_id, author, candidate_ref),
+    FOREIGN KEY (transcript_source_intake_id)
+        REFERENCES transcript_source_intakes(identity),
+    FOREIGN KEY (raw_transcript_id) REFERENCES raw_transcripts(identity),
+    FOREIGN KEY (segment_id) REFERENCES transcript_segments(identity)
+)""",
+    """CREATE TABLE timing_correction_candidate_decisions (
+    identity TEXT PRIMARY KEY,
+    timing_correction_candidate_id TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('accept', 'reject')),
+    reviewer TEXT NOT NULL CHECK (length(trim(reviewer)) > 0),
+    sequence INTEGER NOT NULL CHECK (sequence >= 0),
+    previous_decision_id TEXT,
+    rationale TEXT CHECK (rationale IS NULL OR length(trim(rationale)) > 0),
+    content_fingerprint TEXT NOT NULL CHECK (length(content_fingerprint) = 64),
+    UNIQUE (timing_correction_candidate_id, sequence),
+    CHECK ((sequence = 0 AND previous_decision_id IS NULL) OR
+           (sequence > 0 AND previous_decision_id IS NOT NULL)),
+    FOREIGN KEY (timing_correction_candidate_id)
+        REFERENCES timing_correction_candidates(identity)
+)""",
+    """CREATE TABLE timing_correction_revision_generations (
+    identity TEXT PRIMARY KEY,
+    corrected_revision_id TEXT NOT NULL,
+    timing_correction_candidate_id TEXT NOT NULL,
+    authorizing_decision_id TEXT NOT NULL,
+    parent_raw_transcript_id TEXT NOT NULL,
+    replaced_segment_id TEXT NOT NULL,
+    replacement_segment_id TEXT NOT NULL,
+    content_fingerprint TEXT NOT NULL CHECK (length(content_fingerprint) = 64),
+    UNIQUE (corrected_revision_id),
+    UNIQUE (timing_correction_candidate_id, authorizing_decision_id),
+    CHECK (replaced_segment_id <> replacement_segment_id),
+    FOREIGN KEY (corrected_revision_id)
+        REFERENCES corrected_transcript_revisions(identity),
+    FOREIGN KEY (timing_correction_candidate_id)
+        REFERENCES timing_correction_candidates(identity),
+    FOREIGN KEY (authorizing_decision_id)
+        REFERENCES timing_correction_candidate_decisions(identity),
+    FOREIGN KEY (parent_raw_transcript_id) REFERENCES raw_transcripts(identity),
+    FOREIGN KEY (replaced_segment_id) REFERENCES transcript_segments(identity),
+    FOREIGN KEY (replacement_segment_id) REFERENCES transcript_segments(identity)
+)""",
+)
+
 _V52_ADDITION_STATEMENTS = (
     """CREATE TABLE lecture_review_authority_positions (
     identity TEXT PRIMARY KEY,
@@ -3108,6 +3174,44 @@ _V53_EXPECTED_COLUMNS = {
     ),
 }
 
+_V54_EXPECTED_COLUMNS = {
+    **_V53_EXPECTED_COLUMNS,
+    "timing_correction_candidates": (
+        ("identity", "TEXT", 0, 1),
+        ("transcript_source_intake_id", "TEXT", 1, 0),
+        ("raw_transcript_id", "TEXT", 1, 0),
+        ("segment_id", "TEXT", 1, 0),
+        ("author", "TEXT", 1, 0),
+        ("candidate_ref", "TEXT", 1, 0),
+        ("source_start_snapshot", "REAL", 1, 0),
+        ("source_end_snapshot", "REAL", 1, 0),
+        ("proposed_start", "REAL", 1, 0),
+        ("proposed_end", "REAL", 1, 0),
+        ("rationale", "TEXT", 1, 0),
+        ("content_fingerprint", "TEXT", 1, 0),
+    ),
+    "timing_correction_candidate_decisions": (
+        ("identity", "TEXT", 0, 1),
+        ("timing_correction_candidate_id", "TEXT", 1, 0),
+        ("kind", "TEXT", 1, 0),
+        ("reviewer", "TEXT", 1, 0),
+        ("sequence", "INTEGER", 1, 0),
+        ("previous_decision_id", "TEXT", 0, 0),
+        ("rationale", "TEXT", 0, 0),
+        ("content_fingerprint", "TEXT", 1, 0),
+    ),
+    "timing_correction_revision_generations": (
+        ("identity", "TEXT", 0, 1),
+        ("corrected_revision_id", "TEXT", 1, 0),
+        ("timing_correction_candidate_id", "TEXT", 1, 0),
+        ("authorizing_decision_id", "TEXT", 1, 0),
+        ("parent_raw_transcript_id", "TEXT", 1, 0),
+        ("replaced_segment_id", "TEXT", 1, 0),
+        ("replacement_segment_id", "TEXT", 1, 0),
+        ("content_fingerprint", "TEXT", 1, 0),
+    ),
+}
+
 def initialize_sqlite_database(database_path: str | Path) -> sqlite3.Connection:
     """Create the latest schema for a new path; validate existing databases."""
 
@@ -3146,7 +3250,7 @@ def migrate_sqlite_database(
 ) -> None:
     """Explicitly perform one approved migration step or validate a no-op target."""
 
-    if target_version not in (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53):
+    if target_version not in (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54):
         raise PersistenceError(f"unsupported SQLite migration target: {target_version}")
     path = _validate_database_path(database_path)
     if not path.is_file():
@@ -3312,6 +3416,9 @@ def migrate_sqlite_database(
         if current_version == 52 and target_version == 53:
             _migrate_v52_to_v53(connection)
             return
+        if current_version == 53 and target_version == 54:
+            _migrate_v53_to_v54(connection)
+            return
         raise PersistenceError(
             f"unsupported SQLite migration: {current_version} to {target_version}"
         )
@@ -3412,6 +3519,7 @@ def _initialize_latest_schema(connection: sqlite3.Connection) -> None:
             *_V51_ADDITION_STATEMENTS,
             *_V52_ADDITION_STATEMENTS,
             *_V53_ADDITION_STATEMENTS,
+            *_V54_ADDITION_STATEMENTS,
         ):
             connection.execute(statement)
         connection.execute(
@@ -4076,6 +4184,33 @@ def _migrate_v36_to_v37(connection: sqlite3.Connection) -> None:
         raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
 
 
+def _migrate_v53_to_v54(connection: sqlite3.Connection) -> None:
+    """v53 → v54: strictly additive (040 §17 Human Timing Correction Candidate, `PATCH-0047` TC-19).
+
+    Adds only the three timing-correction sibling relations. No released row is altered, re-keyed,
+    backfilled, dual-written, or reinterpreted — in particular the released text-correction family
+    (`correction_candidates`, `correction_candidate_admissions`, `correction_candidate_decisions`,
+    `corrected_revision_generations`) keeps every column, constraint and meaning, and nothing becomes
+    nullable or polymorphic (TC-2, TC-20).
+    """
+
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        for statement in _V54_ADDITION_STATEMENTS:
+            connection.execute(statement)
+        connection.execute(
+            "UPDATE schema_metadata SET version = 54 WHERE singleton = 1"
+        )
+        _validate_initialized_connection(connection)
+        _commit(connection)
+    except PersistenceError:
+        _rollback(connection)
+        raise
+    except sqlite3.Error as error:
+        _rollback(connection)
+        raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
+
+
 def _migrate_v52_to_v53(connection: sqlite3.Connection) -> None:
     """v52 → v53: strictly additive (044 §23 EA-10).
 
@@ -4456,6 +4591,7 @@ def _validate_schema_shape(connection: sqlite3.Connection, version: int) -> None
         51: _V51_EXPECTED_COLUMNS,
         52: _V52_EXPECTED_COLUMNS,
         53: _V53_EXPECTED_COLUMNS,
+        54: _V54_EXPECTED_COLUMNS,
     }[version]
     for table, expected in expected_columns.items():
         actual = tuple(

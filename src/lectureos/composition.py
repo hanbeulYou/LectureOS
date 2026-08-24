@@ -100,6 +100,27 @@ from lectureos.application.effective_transcript_consumption import (
     EffectiveTranscriptConsumptionService,
     EffectiveTranscriptInputService,
 )
+from lectureos.application.timing_correction_candidate_admission import (
+    TimingCorrectionCandidateAdmissionService,
+)
+from lectureos.application.timing_correction_candidate_decision import (
+    TimingCorrectionDecisionService,
+)
+from lectureos.application.timing_correction_revision_generation import (
+    TimingCorrectionRevisionGenerationService,
+)
+from lectureos.persistence.timing_correction_candidate import (
+    SQLiteTimingCorrectionCandidateCommandPersistence,
+    SQLiteTimingCorrectionCandidateRepository,
+)
+from lectureos.persistence.timing_correction_candidate_decision import (
+    SQLiteTimingCorrectionDecisionCommandPersistence,
+    SQLiteTimingCorrectionDecisionRepository,
+)
+from lectureos.persistence.timing_correction_revision_generation import (
+    SQLiteTimingCorrectionGenerationCommandPersistence,
+    SQLiteTimingCorrectionGenerationRepository,
+)
 from lectureos.application.corrected_revision_selection import (
     CorrectedRevisionSelectionService,
 )
@@ -776,8 +797,73 @@ def compose_sqlite_corrected_revision_selection_service(
     raw_selections = SQLiteRawTranscriptSelectionRepository(connection)
     selections = SQLiteCorrectedRevisionSelectionRepository(connection)
     persistence = SQLiteCorrectedRevisionSelectionCommandPersistence(connection)
+    # `PATCH-0047` §20 note: selection is correction-kind-agnostic, so the sibling timing lineage is
+    # wired in beside the released one. Text revisions resolve exactly as before.
     return CorrectedRevisionSelectionService(
-        intakes, generations, admissions, decisions, raw_selections, selections, persistence
+        intakes, generations, admissions, decisions, raw_selections, selections, persistence,
+        timing_generation_query=SQLiteTimingCorrectionGenerationRepository(connection),
+        timing_decision_query=SQLiteTimingCorrectionDecisionRepository(connection),
+    )
+
+
+def compose_sqlite_timing_correction_candidate_admission_service(
+    connection: sqlite3.Connection,
+) -> TimingCorrectionCandidateAdmissionService:
+    """Build Human Timing Correction Candidate admission on one caller connection (040 §17, PATCH-0047).
+
+    Admits a human-authored replacement interval for one segment of the intake's current Raw Transcript —
+    a sibling of the released text candidate, never a reuse of it. It reads intake readiness, the target
+    segment and its neighbours, and writes only `timing_correction_candidates`; it reads no media, consults
+    no diagnostic, and mutates no Raw Transcript, segment, revision, or selection.
+    """
+
+    intakes = SQLiteTranscriptSourceIntakeRepository(connection)
+    selections = SQLiteRawTranscriptSelectionRepository(connection)
+    segments = SQLiteTranscriptSegmentRepository(connection)
+    raw_transcripts = SQLiteRawTranscriptRepository(connection)
+    candidates = SQLiteTimingCorrectionCandidateRepository(connection)
+    persistence = SQLiteTimingCorrectionCandidateCommandPersistence(connection)
+    return TimingCorrectionCandidateAdmissionService(
+        intakes, selections, segments, raw_transcripts, candidates, persistence
+    )
+
+
+def compose_sqlite_timing_correction_decision_service(
+    connection: sqlite3.Connection,
+) -> TimingCorrectionDecisionService:
+    """Build Timing Correction Human Decision on one caller connection (040 §18, PATCH-0047 TC-10).
+
+    Records append-only Human Accept/Reject authority on admitted timing candidates and derives the
+    current authority — reusing DecisionKind and HumanActorReference unchanged, with Modify still
+    deferred and rejection a normal outcome carrying no new state.
+    """
+
+    candidates = SQLiteTimingCorrectionCandidateRepository(connection)
+    decisions = SQLiteTimingCorrectionDecisionRepository(connection)
+    persistence = SQLiteTimingCorrectionDecisionCommandPersistence(connection)
+    return TimingCorrectionDecisionService(candidates, decisions, persistence)
+
+
+def compose_sqlite_timing_correction_revision_generation_service(
+    connection: sqlite3.Connection,
+) -> TimingCorrectionRevisionGenerationService:
+    """Build Timing Correction revision generation on one caller connection (040 §19, PATCH-0047 TC-12).
+
+    Explicitly applies one currently Accepted timing candidate, producing a replacement segment that
+    preserves the source text exactly and carries the accepted interval, inside one immutable canonical
+    CorrectedTranscriptRevision. Read-only over the candidate, decision history, raw transcript, segments,
+    and current selection; the revision is never selected as current.
+    """
+
+    candidates = SQLiteTimingCorrectionCandidateRepository(connection)
+    decisions = SQLiteTimingCorrectionDecisionRepository(connection)
+    selections = SQLiteRawTranscriptSelectionRepository(connection)
+    raw_transcripts = SQLiteRawTranscriptRepository(connection)
+    segments = SQLiteTranscriptSegmentRepository(connection)
+    generations = SQLiteTimingCorrectionGenerationRepository(connection)
+    persistence = SQLiteTimingCorrectionGenerationCommandPersistence(connection)
+    return TimingCorrectionRevisionGenerationService(
+        candidates, decisions, selections, raw_transcripts, segments, generations, persistence
     )
 
 

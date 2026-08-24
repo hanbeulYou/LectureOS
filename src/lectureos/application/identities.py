@@ -205,6 +205,23 @@ class CorrectedRevisionSelectionId(OpaqueIdentity):
     pass
 
 
+# 040 §17 Human Timing Correction Candidate (`PATCH-0047`): siblings of the text-correction
+# identities above, deliberately distinct types so a timing record can never stand in for a text one.
+@dataclass(frozen=True, slots=True)
+class TimingCorrectionCandidateId(OpaqueIdentity):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class TimingCorrectionCandidateDecisionId(OpaqueIdentity):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class TimingCorrectionRevisionGenerationId(OpaqueIdentity):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class EffectiveTranscriptConsumptionId(OpaqueIdentity):
     pass

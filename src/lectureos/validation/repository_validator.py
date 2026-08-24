@@ -1140,6 +1140,196 @@ def _check_corrected_revision_generation(
     return diagnostics
 
 
+def _check_timing_correction(connection: sqlite3.Connection) -> list[Diagnostic]:
+    """Integrity of the `PATCH-0047` timing-correction sibling relations (040 §17/§18/§19).
+
+    Integrity only. Application-level product policy — whether a proposal is acoustically right, whether
+    a candidate is currently applicable, whether a person should have accepted it — is **not** moved here:
+    staleness and applicability are query semantics (K-9, H-12, S2-9), never repository corruption.
+    """
+
+    diagnostics: list[Diagnostic] = []
+
+    def _flag(code: str, table: str, identity: str, message: str) -> None:
+        diagnostics.append(
+            Diagnostic(
+                code=code,
+                severity=Severity.ERROR,
+                location=f"{table}:{identity}",
+                message=message,
+            )
+        )
+
+    # Dangling references — also foreign-key enforced; checked for defense in depth.
+    for table, target, column, code, message in (
+        ("timing_correction_candidates", "transcript_source_intakes",
+         "transcript_source_intake_id", "TIMING_CORRECTION_DANGLING_INTAKE",
+         "timing candidate references a missing transcript source intake"),
+        ("timing_correction_candidates", "raw_transcripts", "raw_transcript_id",
+         "TIMING_CORRECTION_DANGLING_RAW_TRANSCRIPT",
+         "timing candidate references a missing raw transcript"),
+        ("timing_correction_candidates", "transcript_segments", "segment_id",
+         "TIMING_CORRECTION_DANGLING_SEGMENT",
+         "timing candidate references a missing transcript segment"),
+        ("timing_correction_candidate_decisions", "timing_correction_candidates",
+         "timing_correction_candidate_id", "TIMING_CORRECTION_DECISION_DANGLING_CANDIDATE",
+         "timing decision references a missing timing correction candidate"),
+        ("timing_correction_revision_generations", "corrected_transcript_revisions",
+         "corrected_revision_id", "TIMING_CORRECTION_GENERATION_DANGLING_REVISION",
+         "timing generation references a missing corrected transcript revision"),
+        ("timing_correction_revision_generations", "timing_correction_candidates",
+         "timing_correction_candidate_id", "TIMING_CORRECTION_GENERATION_DANGLING_CANDIDATE",
+         "timing generation references a missing timing correction candidate"),
+        ("timing_correction_revision_generations", "timing_correction_candidate_decisions",
+         "authorizing_decision_id", "TIMING_CORRECTION_GENERATION_DANGLING_DECISION",
+         "timing generation references a missing authorizing decision"),
+        ("timing_correction_revision_generations", "raw_transcripts",
+         "parent_raw_transcript_id", "TIMING_CORRECTION_GENERATION_DANGLING_PARENT",
+         "timing generation references a missing parent raw transcript"),
+    ):
+        if not _table_exists(connection, table) or not _table_exists(connection, target):
+            continue
+        for (identity,) in connection.execute(
+            f"""
+            SELECT t.identity
+            FROM {table} t
+            LEFT JOIN {target} r ON t.{column} = r.identity
+            WHERE r.identity IS NULL
+            ORDER BY t.identity
+            """
+        ).fetchall():
+            _flag(code, table, identity, message)
+
+    # A timing candidate's target segment must belong to the raw transcript it names.
+    if _table_exists(connection, "timing_correction_candidates") and _table_exists(
+        connection, "transcript_segments"
+    ):
+        for (identity,) in connection.execute(
+            """
+            SELECT c.identity
+            FROM timing_correction_candidates c
+            JOIN transcript_segments s ON s.identity = c.segment_id
+            WHERE s.transcript_id <> c.raw_transcript_id
+            ORDER BY c.identity
+            """
+        ).fetchall():
+            _flag(
+                "TIMING_CORRECTION_SEGMENT_NOT_IN_RAW_TRANSCRIPT",
+                "timing_correction_candidates",
+                identity,
+                "target segment does not belong to the target raw transcript",
+            )
+
+    # The append-only history must chain: a superseding decision points at its own candidate's predecessor.
+    if _table_exists(connection, "timing_correction_candidate_decisions"):
+        for (identity,) in connection.execute(
+            """
+            SELECT d.identity
+            FROM timing_correction_candidate_decisions d
+            LEFT JOIN timing_correction_candidate_decisions p
+                ON p.identity = d.previous_decision_id
+            WHERE d.previous_decision_id IS NOT NULL
+              AND (p.identity IS NULL
+                   OR p.timing_correction_candidate_id <> d.timing_correction_candidate_id
+                   OR p.sequence <> d.sequence - 1)
+            ORDER BY d.identity
+            """
+        ).fetchall():
+            _flag(
+                "TIMING_CORRECTION_DECISION_BROKEN_HISTORY",
+                "timing_correction_candidate_decisions",
+                identity,
+                "decision does not supersede its candidate's immediately preceding decision",
+            )
+
+    if not _table_exists(connection, "timing_correction_revision_generations"):
+        return diagnostics
+
+    # The AUTHORIZING decision must be an Accept belonging to the generation's candidate. A later Reject
+    # never makes a historical revision corruption (V-11 / H-12 semantics, unchanged).
+    if _table_exists(connection, "timing_correction_candidate_decisions"):
+        for (identity,) in connection.execute(
+            """
+            SELECT g.identity
+            FROM timing_correction_revision_generations g
+            JOIN timing_correction_candidate_decisions d
+                ON d.identity = g.authorizing_decision_id
+            WHERE d.kind <> 'accept'
+               OR d.timing_correction_candidate_id <> g.timing_correction_candidate_id
+            ORDER BY g.identity
+            """
+        ).fetchall():
+            _flag(
+                "TIMING_CORRECTION_GENERATION_UNAUTHORIZED",
+                "timing_correction_revision_generations",
+                identity,
+                "authorizing decision is not an Accept belonging to the generation's candidate",
+            )
+
+    # The replacement segment must declare the replaced one, and the revision must carry the replacement
+    # instead of its source — the lineage `§19` requires, applied to a timing-only replacement.
+    if _table_exists(connection, "transcript_segments"):
+        for (identity,) in connection.execute(
+            """
+            SELECT g.identity
+            FROM timing_correction_revision_generations g
+            JOIN transcript_segments s ON s.identity = g.replacement_segment_id
+            WHERE s.replaces_segment_id IS NULL
+               OR s.replaces_segment_id <> g.replaced_segment_id
+            ORDER BY g.identity
+            """
+        ).fetchall():
+            _flag(
+                "TIMING_CORRECTION_GENERATION_BROKEN_REPLACEMENT",
+                "timing_correction_revision_generations",
+                identity,
+                "replacement segment does not declare the generation's replaced segment",
+            )
+
+    if _table_exists(connection, "corrected_transcript_revision_segments"):
+        for (identity,) in connection.execute(
+            """
+            SELECT g.identity
+            FROM timing_correction_revision_generations g
+            WHERE NOT EXISTS (
+                    SELECT 1 FROM corrected_transcript_revision_segments m
+                    WHERE m.transcript_revision_id = g.corrected_revision_id
+                      AND m.transcript_segment_id = g.replacement_segment_id)
+               OR EXISTS (
+                    SELECT 1 FROM corrected_transcript_revision_segments m
+                    WHERE m.transcript_revision_id = g.corrected_revision_id
+                      AND m.transcript_segment_id = g.replaced_segment_id)
+            ORDER BY g.identity
+            """
+        ).fetchall():
+            _flag(
+                "TIMING_CORRECTION_GENERATION_BROKEN_MEMBERSHIP",
+                "timing_correction_revision_generations",
+                identity,
+                "revision must carry the replacement segment and not its replaced source",
+            )
+
+    # A revision is produced by exactly one correction kind; a shared identity would be a lineage collision.
+    if _table_exists(connection, "corrected_revision_generations"):
+        for (identity,) in connection.execute(
+            """
+            SELECT g.identity
+            FROM timing_correction_revision_generations g
+            JOIN corrected_revision_generations t
+                ON t.corrected_revision_id = g.corrected_revision_id
+            ORDER BY g.identity
+            """
+        ).fetchall():
+            _flag(
+                "TIMING_CORRECTION_GENERATION_KIND_COLLISION",
+                "timing_correction_revision_generations",
+                identity,
+                "corrected revision is bound to both a text and a timing generation",
+            )
+
+    return diagnostics
+
+
 def _check_corrected_revision_selection(
     connection: sqlite3.Connection,
 ) -> list[Diagnostic]:
@@ -1195,21 +1385,36 @@ def _check_corrected_revision_selection(
         )
 
     # A selected revision must belong to the selection's own intake context (via its generation lineage).
+    # `PATCH-0047`: a revision may come from either correction kind, so the context is satisfied when
+    # *either* lineage resolves to the selection's intake. On a repository with no timing rows this is
+    # exactly the released condition.
     if _table_exists(connection, "corrected_revision_generations") and _table_exists(
         connection, "correction_candidate_admissions"
     ):
+        timing_clause = ""
+        if _table_exists(connection, "timing_correction_revision_generations") and _table_exists(
+            connection, "timing_correction_candidates"
+        ):
+            timing_clause = """
+              AND NOT EXISTS (
+                    SELECT 1
+                    FROM timing_correction_revision_generations tg
+                    JOIN timing_correction_candidates tc
+                        ON tc.identity = tg.timing_correction_candidate_id
+                    WHERE tg.corrected_revision_id = s.corrected_revision_id
+                      AND tc.transcript_source_intake_id = s.transcript_source_intake_id)"""
         for (identity,) in connection.execute(
-            """
+            f"""
             SELECT s.identity
             FROM corrected_revision_selections s
-            LEFT JOIN corrected_revision_generations g
-                ON g.corrected_revision_id = s.corrected_revision_id
-            LEFT JOIN correction_candidate_admissions a
-                ON a.correction_candidate_id = g.correction_candidate_id
             WHERE s.corrected_revision_id IS NOT NULL
-              AND (g.identity IS NULL
-                   OR a.identity IS NULL
-                   OR a.transcript_source_intake_id <> s.transcript_source_intake_id)
+              AND NOT EXISTS (
+                    SELECT 1
+                    FROM corrected_revision_generations g
+                    JOIN correction_candidate_admissions a
+                        ON a.correction_candidate_id = g.correction_candidate_id
+                    WHERE g.corrected_revision_id = s.corrected_revision_id
+                      AND a.transcript_source_intake_id = s.transcript_source_intake_id){timing_clause}
             ORDER BY s.identity
             """
         ).fetchall():
@@ -3626,6 +3831,7 @@ def validate_repository(connection: sqlite3.Connection) -> ValidationReport:
     diagnostics += _check_correction_candidate_decision(connection)
     diagnostics += _check_corrected_revision_generation(connection)
     diagnostics += _check_corrected_revision_selection(connection)
+    diagnostics += _check_timing_correction(connection)
     diagnostics += _check_effective_transcript_consumption(connection)
     diagnostics += _check_effective_subtitle_candidates(connection)
     diagnostics += _check_effective_subtitle_review_subjects(connection)

@@ -205,6 +205,18 @@ class CorrectedRevisionGenerationQuery(Protocol):
     def get_by_revision(self, revision_id: TranscriptRevisionId): ...
 
 
+class TimingCorrectionGenerationQuery(Protocol):
+    """The `PATCH-0047` sibling generation relation, consulted only when the text one has no binding."""
+
+    def get_by_revision(self, revision_id: TranscriptRevisionId): ...
+
+    def candidate(self, candidate_id): ...
+
+
+class TimingCorrectionDecisionQuery(Protocol):
+    def get_current(self, candidate_id): ...
+
+
 class CorrectionCandidateAdmissionQuery(Protocol):
     def get_by_candidate(self, candidate_id): ...
 
@@ -229,6 +241,21 @@ class AtomicCorrectedRevisionSelectionPersistence(Protocol):
     def persist_selection(self, *, selection: CorrectedRevisionSelection) -> None: ...
 
 
+@dataclass(frozen=True, slots=True)
+class _RevisionLineage:
+    """A revision's generation binding, normalised across correction kinds (`PATCH-0047` TC-13/§20 note).
+
+    Selection is **correction-kind-agnostic**: `§20` chooses a revision and never asks what produced
+    its timing. The released S2-8 eligibility facts — the revision's parent raw transcript and its
+    candidate's current `§18` authority — exist for both kinds, so they are resolved here through the
+    kind's own generation relation and decision history, and the released rules then apply unchanged.
+    """
+
+    parent_raw_transcript_id: TranscriptId
+    candidate_id: object
+    decisions: object  # the decision query owning this candidate kind
+
+
 class CorrectedRevisionSelectionService:
     """Explicit append-only selection of the current corrected revision, with effective resolution."""
 
@@ -241,6 +268,8 @@ class CorrectedRevisionSelectionService:
         raw_selection_query: RawTranscriptSelectionQuery,
         selection_query: CorrectedRevisionSelectionQuery,
         persistence: AtomicCorrectedRevisionSelectionPersistence | None = None,
+        timing_generation_query: "TimingCorrectionGenerationQuery | None" = None,
+        timing_decision_query: "TimingCorrectionDecisionQuery | None" = None,
     ) -> None:
         self._intakes = intake_query
         self._generations = generation_query
@@ -249,6 +278,10 @@ class CorrectedRevisionSelectionService:
         self._raw_selections = raw_selection_query
         self._selections = selection_query
         self._persistence = persistence
+        # Optional so every released construction keeps its exact behaviour; when absent, a timing
+        # revision simply has no resolvable lineage, exactly as before this capability existed.
+        self._timing_generations = timing_generation_query
+        self._timing_decisions = timing_decision_query
 
     # -- context resolution -------------------------------------------------------------------------
 
@@ -267,28 +300,79 @@ class CorrectedRevisionSelectionService:
         """Resolve a revision's generation binding + owning intake (its own authoritative lineage)."""
 
         generation = self._generations.get_by_revision(revision_id)
-        if generation is None:
+        if generation is not None:
+            admission = self._admissions.get_by_candidate(generation.correction_candidate_id)
+            if admission is None:
+                raise CorrectedRevisionSelectionError(
+                    "corrected revision lineage is incomplete: its candidate admission is missing"
+                )
+            return (
+                _RevisionLineage(
+                    parent_raw_transcript_id=generation.parent_raw_transcript_id,
+                    candidate_id=generation.correction_candidate_id,
+                    decisions=self._decisions,
+                ),
+                admission.transcript_source_intake_id,
+            )
+        timing = self._timing_lineage(revision_id)
+        if timing is None:
             raise CorrectedRevisionSelectionError(
                 "unknown corrected revision: no generation binding exists for this identity"
             )
-        admission = self._admissions.get_by_candidate(generation.correction_candidate_id)
-        if admission is None:
+        return timing
+
+    def _timing_lineage(self, revision_id: TranscriptRevisionId):
+        """The `PATCH-0047` sibling lineage, when this revision came from a timing correction."""
+
+        if self._timing_generations is None or self._timing_decisions is None:
+            return None
+        generation = self._timing_generations.get_by_revision(revision_id)
+        if generation is None:
+            return None
+        candidate = self._timing_generations.candidate(
+            generation.timing_correction_candidate_id
+        )
+        if candidate is None:
             raise CorrectedRevisionSelectionError(
-                "corrected revision lineage is incomplete: its candidate admission is missing"
+                "corrected revision lineage is incomplete: its timing candidate is missing"
             )
-        return generation, admission.transcript_source_intake_id
+        return (
+            _RevisionLineage(
+                parent_raw_transcript_id=generation.parent_raw_transcript_id,
+                candidate_id=generation.timing_correction_candidate_id,
+                decisions=self._timing_decisions,
+            ),
+            candidate.transcript_source_intake_id,
+        )
+
+    def _lineage_for(self, revision_id: TranscriptRevisionId) -> "_RevisionLineage":
+        """The lineage of an already-selected revision (a missing one is repository corruption)."""
+
+        generation = self._generations.get_by_revision(revision_id)
+        if generation is not None:
+            return _RevisionLineage(
+                parent_raw_transcript_id=generation.parent_raw_transcript_id,
+                candidate_id=generation.correction_candidate_id,
+                decisions=self._decisions,
+            )
+        timing = self._timing_lineage(revision_id)
+        if timing is None:
+            raise CorrectedRevisionSelectionError(
+                "selected corrected revision has no generation binding (repository integrity failure)"
+            )
+        return timing[0]
 
     # -- applicability (shared derivation; never mutates history) ----------------------------------
 
-    def _applicability_of(self, generation, intake_id) -> SelectionApplicability:
+    def _applicability_of(self, lineage: "_RevisionLineage", intake_id) -> SelectionApplicability:
         current_raw = self._raw_selections.get_current(intake_id)
         if current_raw is None or (
-            current_raw.raw_transcript_id != generation.parent_raw_transcript_id
+            current_raw.raw_transcript_id != lineage.parent_raw_transcript_id
         ):
             return SelectionApplicability(
                 applicable=False, reason="parent_raw_transcript_not_current"
             )
-        decision = self._decisions.get_current(generation.correction_candidate_id)
+        decision = lineage.decisions.get_current(lineage.candidate_id)
         if decision is None or decision.kind is not DecisionKind.ACCEPT:
             return SelectionApplicability(applicable=False, reason="candidate_not_accepted")
         return SelectionApplicability(applicable=True)
@@ -299,14 +383,14 @@ class CorrectedRevisionSelectionService:
         self, *, revision_id: str, reviewer: str, rationale: str | None = None
     ) -> CorrectedRevisionSelectionResult:
         revision_identity = require_canonical_corrected_revision_id(revision_id)
-        generation, intake_identity = self._revision_context(revision_identity)
+        lineage, intake_identity = self._revision_context(revision_identity)
         if self._intakes.get(intake_identity) is None:
             raise CorrectedRevisionSelectionError(
                 "corrected revision lineage references an unknown intake"
             )
 
         # Eligibility at selection time: new selection must be applicable NOW (no --force).
-        applicability = self._applicability_of(generation, intake_identity)
+        applicability = self._applicability_of(lineage, intake_identity)
         if not applicability.applicable:
             raise RevisionNotEligibleError(
                 "corrected revision is not currently eligible for selection: "
@@ -409,12 +493,9 @@ class CorrectedRevisionSelectionService:
         current = self._selections.get_current(intake_identity)
         if current is None or current.kind is not SelectionKind.CORRECTED_REVISION:
             return None
-        generation = self._generations.get_by_revision(current.corrected_revision_id)
-        if generation is None:
-            raise CorrectedRevisionSelectionError(
-                "selected corrected revision has no generation binding (repository integrity failure)"
-            )
-        return self._applicability_of(generation, intake_identity)
+        return self._applicability_of(
+            self._lineage_for(current.corrected_revision_id), intake_identity
+        )
 
     def resolve_effective_transcript(self, intake_id: str) -> EffectiveTranscript:
         intake_identity = self._resolve_intake(intake_id)
@@ -435,12 +516,9 @@ class CorrectedRevisionSelectionService:
                 raw_selection_id=current_raw.identity,
                 corrected_selection_id=None if current is None else current.identity,
             )
-        generation = self._generations.get_by_revision(current.corrected_revision_id)
-        if generation is None:
-            raise CorrectedRevisionSelectionError(
-                "selected corrected revision has no generation binding (repository integrity failure)"
-            )
-        applicability = self._applicability_of(generation, intake_identity)
+        applicability = self._applicability_of(
+            self._lineage_for(current.corrected_revision_id), intake_identity
+        )
         if applicability.applicable:
             return EffectiveTranscript(
                 transcript_source_intake_id=intake_identity,
