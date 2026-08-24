@@ -1,7 +1,7 @@
 # PATCH-0048
 
 - Title: Human Timing Correction Composition Rationale Correction (040 §17 TC-18)
-- Status: Proposed
+- Status: Accepted
 - Priority: Low
 - Trigger: `PATCH-0047`'s implementation (`implementation/139`) and the follow-up Architect Decision
   (`implementation/140`) disproved two factual premises inside the released TC-18 paragraph
@@ -14,7 +14,19 @@
 
 ## Status
 
-**Proposed.** This document exists; no Blueprint file has been amended.
+**Accepted.** Applied to `docs/040_TRANSCRIPT_PIPELINE.md` (Blueprint 0.6, 2026-08-25) as one additive
+follow-up note after the §17 Human Timing Correction Candidate subsection's Composition paragraph,
+carrying RC-1…RC-8. The released TC-18 paragraph is preserved verbatim, including both sentences the
+note corrects. `docs/041_SUBTITLE_PIPELINE.md` and `docs/030_DATA_MODEL.md` are not amended.
+
+**Acceptance means the correction has been applied to the Blueprint.** Because this PATCH changes no
+behaviour, there is no implementing milestone to follow: `SQLITE_SCHEMA_VERSION` stays **54**, no
+migration exists, and no production code or test was changed by the application. The three
+Implementation Requirements below are documentation invariants already asserted by released tests,
+not outstanding work.
+
+Composition and revision chaining remain Deferred, and their Product Decision gate remains
+`MORE_EVIDENCE_REQUIRED` (`implementation/140`). This PATCH does not move that gate.
 
 **This is a factual correction, not a policy change.** TC-18's conclusion — no automatic composition,
 no implementation-chosen ordering — is preserved exactly. Only the reasoning offered for it is
@@ -163,23 +175,23 @@ touched). `docs/030_DATA_MODEL.md` is not amended (no new data-model concept app
 
 Verified against the Blueprint amendment, before this PATCH may be marked `Accepted`.
 
-- [ ] The staleness premise is stated **disproved by implementation evidence**, with the reason
+- [x] The staleness premise is stated **disproved by implementation evidence**, with the reason
       (generation does not mutate the source segment) recorded.
-- [ ] The released TC-18 paragraph is present **verbatim**, deleted and rewritten nowhere.
-- [ ] The prohibition on automatic composition is stated **unchanged**.
-- [ ] The real gap is stated as the **absence of a canonical composition / pairing / provenance
+- [x] The released TC-18 paragraph is present **verbatim**, deleted and rewritten nowhere.
+- [x] The prohibition on automatic composition is stated **unchanged**.
+- [x] The real gap is stated as the **absence of a canonical composition / pairing / provenance
       rule**, not staleness.
-- [ ] Sibling corrections are stated **independently applicable** after either generation.
-- [ ] **No latest-wins**, recency, or sequence-based pairing is introduced.
-- [ ] **No application order** is chosen.
-- [ ] Revision-on-revision chaining is stated **Deferred**, and the released claim that sequential
+- [x] Sibling corrections are stated **independently applicable** after either generation.
+- [x] **No latest-wins**, recency, or sequence-based pairing is introduced.
+- [x] **No application order** is chosen.
+- [x] Revision-on-revision chaining is stated **Deferred**, and the released claim that sequential
       correction is available is recorded as disproved.
-- [ ] **No new composition authority** is invented, and no new Human Decision kind appears.
-- [ ] Schema is stated unchanged (**v54**), with no relation, column or constraint touched.
-- [ ] No migration is introduced.
-- [ ] No production or test behaviour changes.
-- [ ] Existing records and artifacts are stated **not reinterpreted** and never back-filled.
-- [ ] **No released sentence in `docs/040` is deleted or rewritten** — prior PATCH notes included —
+- [x] **No new composition authority** is invented, and no new Human Decision kind appears.
+- [x] Schema is stated unchanged (**v54**), with no relation, column or constraint touched.
+- [x] No migration is introduced.
+- [x] No production or test behaviour changes.
+- [x] Existing records and artifacts are stated **not reinterpreted** and never back-filled.
+- [x] **No released sentence in `docs/040` is deleted or rewritten** — prior PATCH notes included —
       verified line by line; `§17` gains an **additive note only**.
 
 ## Implementation Requirements
