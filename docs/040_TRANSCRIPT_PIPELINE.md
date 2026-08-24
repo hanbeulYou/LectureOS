@@ -1,8 +1,8 @@
 # 040_TRANSCRIPT_PIPELINE
 
 - Status: Draft
-- Version: Blueprint 0.5
-- Last Updated: 2026-08-22
+- Version: Blueprint 0.6
+- Last Updated: 2026-08-25
 - Layer: L1 — Pipeline
 - Depends On:
   - `000_MANIFESTO.md`
@@ -36,6 +36,7 @@
   - `../patches/PATCH-0045-local-asr-transcript-quality-diagnostic-boundary.md`
   - `../patches/PATCH-0046-post-silence-transcript-timing-quality-diagnostic-boundary.md`
   - `../patches/PATCH-0047-human-transcript-timing-correction-boundary.md`
+  - `../patches/PATCH-0048-timing-correction-composition-rationale-correction.md`
 
 ## Purpose
 
@@ -1566,6 +1567,42 @@ persist된 segment와의 정확한 일치를 요구한다. K-3의 text snapshot�
   지원하므로, 사람은 text를 교정한 뒤 그 결과 revision에 대해 새 timing 후보를 작성할 수 있다.
 - **경쟁 교정으로 stale해진 후보를 제품이 어떻게 다룰지**(retarget·재작성·거부)는 **Deferred**이며 자신의
   결정을 갖는다.
+
+> **후속 결정 note (`PATCH-0048`):** 위 TC-18의 **결론은 그대로 유효하다**. 다만 그 문단이 근거로 든
+> 두 진술은 `PATCH-0047` 구현(`implementation/139`)과 후속 조사(`implementation/140`)에서
+> **사실이 아님이 확인**되었다. 두 사실 모두 문서 추론이 아니라 릴리스된 chain을 실행해 재현했다(RC-2, RC-3).
+>
+> - **stale 전제는 반증되었다.** §19 V-1의 complete snapshot 모델은 새 replacement segment를 새
+>   revision 안에 만들 뿐 **source segment를 변경하지 않는다.** 따라서 text 교정을 generate한 뒤에도
+>   timing 후보의 snapshot은 여전히 일치하고, timing revision은 stale 거부 없이 생성되며, **두 후보는
+>   각각 독립적으로 계속 applicable하다.** TC-9와 K-3의 stale 검사는 그대로 유효하며 단지 이 상황에서
+>   발화하지 않는다.
+> - **"릴리스된 lineage를 통한 순차 교정이 가능하다"는 진술도 반증되었다.** §17 K-1은 후보의 target
+>   segment가 intake의 **현재 Raw Transcript**에 속할 것을 요구하고 §19 V-14는 revision-on-revision
+>   chaining을 Deferred로 둔다. revision의 replacement segment는 둘 중 어느 것도 아니므로 그것을 대상으로
+>   한 후보는 **admission에서 거부된다.** V-12는 `parent_revision_id`가 미래 chaining을 *모델링한다*고
+>   말할 뿐 chaining을 도달 가능하게 만들지 않는다. 두 규칙 모두 **바뀌지 않으며 어떤 deferral도 해제되지
+>   않는다**(RC-5).
+> - **금지가 성립하는 실제 이유는 보호 장치가 아니라 구조다.** §19 V-2에 따라 생성은 **정확히 하나의
+>   후보를 지명하는 명시적 요청**이므로, 수락된 두 교정은 두 sibling revision을 만들고 **어떤 code path도
+>   둘을 병합하지 않는다.**
+> - **따라서 실제로 계약되지 않은 것은 canonical composition rule의 부재다**(RC-4): 어느 accepted text
+>   교정과 어느 accepted timing 교정이 한 쌍인지(§18 H-6의 current authority는 **후보별** 파생이므로
+>   "그 segment의 accepted 교정"에는 지시 대상이 없고, 한 segment가 각 종류의 accepted 후보를 여럿 가질 수
+>   있다), 복수일 때 어느 조합인지, composition이 별도 operation인지 chaining인지, composition의
+>   provenance와 identity, 새 Human Decision이 필요한지, 의미상 동등한 composed revision의 identity 정책,
+>   그리고 composition과 §20 selection의 책임 경계.
+> - **금지 결론은 유지된다**(RC-1, RC-6). 후속 Product Decision 전까지 구현은 두 교정을 병합하거나, 임의로
+>   고른 순서로 적용하거나, 최신·sequence 기준으로 쌍을 고르거나, 스스로 후보를 retarget하거나, §20에서
+>   revision을 병합할 수 없다. §20은 persist된 revision **하나**를 선택할 뿐 내용을 파생하지 않는다.
+> - **composition과 chaining은 계속 Deferred**이며 그 Product Decision의 gate는
+>   **`MORE_EVIDENCE_REQUIRED`**다(`implementation/140`). 실제 사례 1건이면 다시 열린다.
+> - **기존 record는 정상 immutable history다**(RC-7). `PATCH-0047` 아래 만들어진 교정·결정·sibling
+>   revision·Final Selection·SRT Artifact·Materialization은 유효하며 재해석·재파생·미완 표시·합성 대기로
+>   취급되지 않고 backfill되지 않는다. 한 segment에 sibling revision이 둘 존재하는 것은 **결함이 아니라
+>   올바른 상태**다.
+> - **동작·스키마·구현은 바뀌지 않는다**(RC-8). `SQLITE_SCHEMA_VERSION`은 **54**로 유지되고 relation·
+>   column·제약·migration은 어느 것도 변경되지 않는다.
 
 **Schema (Confirmed, TC-19):** 진화는 **strictly additive**이며 세 sibling relation(timing 후보, 그 결정,
 그 generation record)을 더한다. 기존 correction relation의 column·제약·의미는 유지되고 어느 것도
