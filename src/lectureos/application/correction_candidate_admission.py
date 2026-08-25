@@ -8,8 +8,9 @@ A Correction Candidate is a suggestion, not canonical transcript content. Admiss
 
 * requires the intake to be **ready** (a valid current Raw Transcript selection, 040 §16) and the target Raw
   Transcript to be that current selection;
-* targets one **immutable** Raw Transcript segment and stores a **source-text snapshot** that must match the
-  persisted segment exactly (stale detection);
+* targets one **immutable** Raw Transcript segment — one that belongs to that transcript's canonical ordered
+  membership, so a corrected revision's replacement segment is not a valid target (K-1) — and stores a
+  **source-text snapshot** that must match the persisted segment exactly (stale detection);
 * **never** mutates Raw Transcript text, changes the current selection, creates a corrected revision or a
   candidate decision, ranks candidates, applies anything, runs ASR, or reads media.
 
@@ -361,6 +362,10 @@ class CorrectionCandidateAdmissionService:
                 "target raw transcript is not the intake's current selection"
             )
 
+        raw_transcript = self._raw_transcripts.get(transcript_identity)
+        if raw_transcript is None:  # defensive: the current selection guarantees this exists
+            raise RawTranscriptNotCurrentError("current raw transcript could not be resolved")
+
         segment_identity = require_canonical_segment_id(candidate.segment_id)
         segment = self._segments.get(segment_identity)
         if segment is None:
@@ -369,14 +374,21 @@ class CorrectionCandidateAdmissionService:
             raise SegmentLineageError(
                 "segment does not belong to the target raw transcript"
             )
+        if segment_identity not in raw_transcript.segment_ids:
+            # K-1 requires the target to *belong to* the Raw Transcript, which means membership in
+            # its canonical ordered segments — not merely naming it. A `§19` replacement segment
+            # carries its parent Raw Transcript's identity (V-1's revision-scoped segment) while
+            # living only in a corrected revision, so the `transcript_id` comparison above lets it
+            # through. Admitting one produces a candidate V-4 can never apply, and accepting it as
+            # a target would be revision-on-revision chaining, which V-14 and S2-14 defer.
+            raise SegmentLineageError(
+                "segment is not part of the target raw transcript "
+                "(a corrected revision's replacement segment is not a Raw Transcript segment)"
+            )
         if candidate.source_text_snapshot != segment.text:
             raise SourceTextMismatchError(
                 "source text snapshot does not match the current segment text (stale target)"
             )
-
-        raw_transcript = self._raw_transcripts.get(transcript_identity)
-        if raw_transcript is None:  # defensive: the current selection guarantees this exists
-            raise RawTranscriptNotCurrentError("current raw transcript could not be resolved")
 
         digest = _anchor_digest(
             intake_identity,
