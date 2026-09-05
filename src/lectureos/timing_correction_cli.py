@@ -10,7 +10,10 @@ One CLI over an existing repository (identities only — never media paths):
 * ``decide`` — record one explicit human ``accept``/``reject`` over one timing candidate. **Reject is a
   normal, complete judgement** meaning "the source timing is correct", not an error;
 * ``generate`` — explicitly apply one currently Accepted timing candidate into one immutable corrected
-  revision. The revision is **not** selected as current; selection stays an explicit separate act.
+  revision. The revision is **not** selected as current; selection stays an explicit separate act;
+* ``inspect`` — print one Raw Transcript segment's canonical snapshot (identity, ordinal, text, current
+  interval, and its neighbours' intervals) so a person can author a proposal without opening the
+  database by hand. Read-only, and it proposes no interval.
 
 The CLI proposes nothing on its own: the interval is always supplied by the person. It never converts a
 timing diagnostic finding into a candidate, never reads media, and never estimates a speech onset.
@@ -21,6 +24,7 @@ Invocation (src layout)::
     PYTHONPATH=src python3 -m lectureos.timing_correction_cli list --intake <id> --database <db>
     PYTHONPATH=src python3 -m lectureos.timing_correction_cli decide --candidate <id> --kind accept --reviewer <who> --database <db>
     PYTHONPATH=src python3 -m lectureos.timing_correction_cli generate --candidate <id> --database <db>
+    PYTHONPATH=src python3 -m lectureos.timing_correction_cli inspect --raw-transcript <id> --segment <id> --database <db>
 """
 
 from __future__ import annotations
@@ -46,12 +50,118 @@ from lectureos.composition import (
     compose_sqlite_timing_correction_decision_service,
     compose_sqlite_timing_correction_revision_generation_service,
 )
-from lectureos.persistence import PersistenceError, open_sqlite_database
+from lectureos.persistence import (
+    PersistenceError,
+    SQLiteRawTranscriptRepository,
+    SQLiteTranscriptSegmentRepository,
+    open_sqlite_database,
+)
+from lectureos.persistence.provider_transcript_admission import (
+    SQLiteProviderTranscriptAdmissionRepository,
+)
+from lectureos.transcript.identities import TranscriptId, TranscriptSegmentId
 
 
 def _open(database: str, compose):
     connection = open_sqlite_database(database)
     return connection, compose(connection)
+
+
+def _run_inspect(args) -> int:
+    """Print the canonical snapshot of one Raw Transcript segment (read-only).
+
+    This is a **query**, not a judgement: it reports what the repository holds so a person can author
+    a proposal without opening the database by hand. It proposes no interval, consults no diagnostic,
+    and re-implements no admission rule — `§17` K-1, TC-7, TC-8 and TC-9 stay with the admission
+    service. It refuses to describe a segment as part of a transcript it is not a member of, because
+    that would be reporting the canonical state untruthfully.
+    """
+
+    connection = open_sqlite_database(args.database)
+    try:
+        raw = SQLiteRawTranscriptRepository(connection).get(
+            TranscriptId(args.raw_transcript)
+        )
+        if raw is None:
+            print("error: unknown raw transcript", file=sys.stderr)
+            return 1
+        segment_identity = TranscriptSegmentId(args.segment)
+        if segment_identity not in raw.segment_ids:
+            print(
+                "error: segment is not part of this raw transcript's canonical membership "
+                "(a corrected revision's replacement segment is not a Raw Transcript segment)",
+                file=sys.stderr,
+            )
+            return 1
+        segments = SQLiteTranscriptSegmentRepository(connection)
+        ordinal = raw.segment_ids.index(segment_identity)
+        segment = segments.get(segment_identity)
+        if segment is None:  # defensive: membership guarantees the row exists
+            print("error: segment record could not be resolved", file=sys.stderr)
+            return 1
+        neighbours = {}
+        for label, position in (("previous", ordinal - 1), ("next", ordinal + 1)):
+            if 0 <= position < len(raw.segment_ids):
+                neighbours[label] = segments.get(raw.segment_ids[position])
+            else:
+                neighbours[label] = None
+        # The intake is the context `admit` requires; it is a released lineage read, not new meaning.
+        admission = SQLiteProviderTranscriptAdmissionRepository(
+            connection
+        ).get_by_raw_transcript(raw.identity)
+        intake = (
+            None if admission is None else admission.transcript_source_intake_id.value
+        )
+    finally:
+        connection.close()
+
+    def _describe(record):
+        if record is None:
+            return None
+        return {
+            "segment_id": record.identity.value,
+            "start": record.start,
+            "end": record.end,
+            "text": record.text,
+        }
+
+    snapshot = {
+        "transcript_source_intake_id": intake,
+        "raw_transcript_id": raw.identity.value,
+        "segment_id": segment.identity.value,
+        "ordinal": ordinal,
+        "segment_count": len(raw.segment_ids),
+        "text": segment.text,
+        "start": segment.start,
+        "end": segment.end,
+        "previous": _describe(neighbours["previous"]),
+        "next": _describe(neighbours["next"]),
+    }
+    if args.format == "json":
+        # `json.dumps` renders floats with `repr`, so the values round-trip exactly into a proposal.
+        print(json.dumps(snapshot, ensure_ascii=False, indent=2))
+        return 0
+
+    print(f"intake: {intake if intake is not None else '(no provider admission binds this transcript)'}")
+    print(f"raw transcript: {snapshot['raw_transcript_id']}")
+    print(f"segment: {snapshot['segment_id']}")
+    print(f"ordinal: {ordinal} of {snapshot['segment_count']}")
+    print(f"text: {snapshot['text']}")
+    print(f"current interval: [{segment.start}, {segment.end}]")
+    for label in ("previous", "next"):
+        record = neighbours[label]
+        if record is None:
+            print(f"{label}: none (this is the {'first' if label == 'previous' else 'last'} segment)")
+        else:
+            print(f"{label}: [{record.start}, {record.end}] {record.identity.value}")
+    print()
+    print("to author a proposal, carry this segment's current interval as the source snapshot:")
+    print(f'  "source_start_snapshot": {segment.start}, "source_end_snapshot": {segment.end}')
+    print(
+        "the proposed interval is yours to decide by listening — this command proposes nothing "
+        "and reads no media"
+    )
+    return 0
 
 
 def _run_admit(args) -> int:
@@ -199,6 +309,19 @@ def _parser() -> argparse.ArgumentParser:
     generate.add_argument("--candidate", required=True)
     generate.add_argument("--database", required=True)
     generate.set_defaults(handler=_run_generate)
+
+    inspect = subparsers.add_parser(
+        "inspect",
+        help="print one Raw Transcript segment's canonical snapshot (read-only, proposes nothing)",
+    )
+    inspect.add_argument("--raw-transcript", required=True, dest="raw_transcript")
+    inspect.add_argument("--segment", required=True)
+    inspect.add_argument(
+        "--format", choices=("text", "json"), default="text",
+        help="output format (default: text)",
+    )
+    inspect.add_argument("--database", required=True)
+    inspect.set_defaults(handler=_run_inspect)
     return parser
 
 

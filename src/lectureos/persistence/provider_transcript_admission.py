@@ -81,6 +81,31 @@ class SQLiteProviderTranscriptAdmissionRepository:
                 f"could not read Provider Transcript Admission: {error}"
             ) from error
 
+    def get_by_raw_transcript(self, raw_transcript_id) -> "ProviderTranscriptAdmission | None":
+        """The admission that introduced a Raw Transcript — its owning intake context.
+
+        Well-defined: the schema enforces UNIQUE(raw_transcript_id). This is a lineage read over a
+        released relation and introduces no new meaning.
+        """
+
+        try:
+            row = self._connection.execute(
+                """
+                SELECT identity, transcript_source_intake_id, source_media_id,
+                       provider_transcript_result_id, raw_transcript_id,
+                       provider_reference, provider_model, declared_language,
+                       provider_result_ref, segment_count, content_fingerprint
+                FROM provider_transcript_admissions
+                WHERE raw_transcript_id = ?
+                """,
+                (raw_transcript_id.value,),
+            ).fetchone()
+            return None if row is None else _restore(row)
+        except sqlite3.Error as error:
+            raise PersistenceError(
+                f"could not read Provider Transcript Admission: {error}"
+            ) from error
+
 
 class SQLiteProviderTranscriptAdmissionCommandPersistence:
     """Owns one atomic v32 transaction persisting a complete External ASR Boundary admission."""
