@@ -192,17 +192,63 @@ class SQLiteTimingCorrectionGenerationRepository:
 
     def generations_for_candidate(
         self, candidate_id: TimingCorrectionCandidateId
-    ) -> "tuple[TimingCorrectionRevisionGeneration, ...]":
+    ) -> tuple:
+        """Every generation this candidate was actually applied by, at either cardinality.
+
+        Participation is decided by persisted candidate identity and stored generation membership —
+        never by a shared source segment, equal timing, equal replacement content, being part of the
+        currently selected revision, or the candidate's current authority. A historical generation
+        stays in this list after a later Reject or a current-Raw switch; those change applicability,
+        not what was generated.
+
+        Returns normalised `TimingCorrectionGenerationView`s: a released singleton row is derived as
+        a one-member view (never back-filled) and an aggregate carries its **complete** membership.
+        The queried candidate filters *which* generations appear; it never trims the other members
+        out of one. Each generation appears exactly once, ordered by generation identity — the
+        released singleton ordering, extended over both relations. That is a stable order, not a
+        chronology.
+        """
+
+        from lectureos.application.timing_correction_revision_generation import (
+            view_of_singleton,
+        )
+
         try:
             rows = self._connection.execute(
                 f"{_SELECT_COLUMNS} WHERE timing_correction_candidate_id = ? ORDER BY identity",
                 (candidate_id.value,),
             ).fetchall()
+            aggregate_ids = (
+                [
+                    row[0]
+                    for row in self._connection.execute(
+                        "SELECT DISTINCT aggregate_generation_id "
+                        "FROM timing_correction_revision_generation_members "
+                        "WHERE timing_correction_candidate_id = ? "
+                        "ORDER BY aggregate_generation_id",
+                        (candidate_id.value,),
+                    ).fetchall()
+                ]
+                if self._aggregate_available()
+                else []
+            )
         except sqlite3.Error as error:
             raise PersistenceError(
                 f"could not list Timing Correction Revision Generations: {error}"
             ) from error
-        return tuple(_restore(row) for row in rows)
+
+        views = [view_of_singleton(_restore(row)) for row in rows]
+        for identity in aggregate_ids:
+            view = self._aggregate_view("identity", identity)
+            if view is None:
+                # The member row references a header that does not exist. That is repository
+                # corruption, not an absent history entry; it is surfaced rather than skipped.
+                raise PersistenceError(
+                    "generation member references a missing aggregate generation: "
+                    f"{identity}"
+                )
+            views.append(view)
+        return tuple(sorted(views, key=lambda view: view.identity.value))
 
     def _one(
         self, column: str, value: str

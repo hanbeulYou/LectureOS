@@ -297,7 +297,9 @@ class TimingCorrectionGenerationQuery(Protocol):
 
     def revision(self, revision_id: TranscriptRevisionId): ...
 
-    def generations_for_candidate(self, candidate_id) -> tuple: ...
+    def generations_for_candidate(
+        self, candidate_id
+    ) -> "tuple[TimingCorrectionGenerationView, ...]": ...
 
     def view(self, identity) -> "TimingCorrectionGenerationView | None": ...
 
@@ -910,7 +912,18 @@ class TimingCorrectionRevisionGenerationService:
         if revision.parent_raw_transcript_id != expected.parent_raw_transcript_id:
             refuse("the stored revision's parent raw transcript differs")
 
-    def generations_for_candidate(self, candidate_id: str) -> tuple:
+    def generations_for_candidate(
+        self, candidate_id: str
+    ) -> "tuple[TimingCorrectionGenerationView, ...]":
+        """This candidate's complete generation history: its singleton **and** every aggregate it is
+        a member of.
+
+        A malformed identity is rejected as before; a well-formed identity with no history — whether
+        the candidate exists or not — returns an empty tuple, exactly as the released query did. This
+        is a pure read: it records no generation, member, Decision, or selection, and it applies no
+        current-authority guard, because reading what was generated is not generating.
+        """
+
         try:
             candidate_identity = require_canonical_timing_candidate_id(candidate_id)
         except TimingCorrectionDecisionError as error:
