@@ -163,6 +163,8 @@ Corrected Transcript는 Subtitle이 아니다. 발화 의미 보존과 교정이
 
 Corrected Transcript가 반영하는 사람의 교정은 발화 text에 한정되지 않는다. 하나의 Transcript 단위가 Source Timeline 위에서 차지하는 구간에 대한 교정도 같은 계보 안에서 표현될 수 있으며, 그 제안과 사람의 판단과 결과 revision을 담는 canonical record의 형태·admission 규칙·저장 구조는 `040_TRANSCRIPT_PIPELINE.md §17`(`patches/PATCH-0047`)이 정한다. 이 문서는 그 저장 구조를 정의하지 않는다.
 
+하나의 Corrected Transcript는 하나 이상의 교정을 반영할 수 있다. 그 revision을 만든 **generation**이 어떤 교정들이 적용되었는지에 대한 단일 소유자이며, 하나의 generation은 하나 이상의 **member**를 갖는다. 각 member는 수락된 교정 제안 하나, 그것을 승인한 사람의 판단 하나, 그 제안이 대체하는 source 단위, 그리고 그 결과로 생기는 대체 단위를 하나로 연결한다. revision이 가지는 **순서 있는 단위 구성**과 generation이 가지는 **교정 member 계보**는 서로 다른 관계이며, 하나의 revision에 상충하는 복수의 canonical generation 소유자를 두지 않는다. 교정 하나만 반영하던 기존 기록은 재작성 없이 member가 하나인 generation으로 읽는다. 이 관계의 admission·authority·identity·정합성·replay·검증 계약은 `040_TRANSCRIPT_PIPELINE.md §19`(`patches/PATCH-0049`)가 정하며, 이 문서는 그 동작 계약을 중복해서 정의하지 않는다.
+
 ### 6.3 Transcript Unit
 
 Transcript Unit은 Transcript 안의 발화 또는 텍스트를 안정적으로 참조하기 위한 최소 개념적 단위의 자리다. 이 문서는 그 단위를 Word, Utterance, Sentence, Block 중 하나로 확정하지 않는다.

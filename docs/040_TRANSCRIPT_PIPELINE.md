@@ -1,8 +1,8 @@
 # 040_TRANSCRIPT_PIPELINE
 
 - Status: Draft
-- Version: Blueprint 0.6
-- Last Updated: 2026-08-25
+- Version: Blueprint 0.7
+- Last Updated: 2026-09-23
 - Layer: L1 — Pipeline
 - Depends On:
   - `000_MANIFESTO.md`
@@ -37,6 +37,7 @@
   - `../patches/PATCH-0046-post-silence-transcript-timing-quality-diagnostic-boundary.md`
   - `../patches/PATCH-0047-human-transcript-timing-correction-boundary.md`
   - `../patches/PATCH-0048-timing-correction-composition-rationale-correction.md`
+  - `../patches/PATCH-0049-multi-candidate-timing-correction-revision-generation.md`
 
 ## Purpose
 
@@ -1583,9 +1584,11 @@ persist된 segment와의 정확한 일치를 요구한다. K-3의 text snapshot�
 >   한 후보는 **admission에서 거부된다.** V-12는 `parent_revision_id`가 미래 chaining을 *모델링한다*고
 >   말할 뿐 chaining을 도달 가능하게 만들지 않는다. 두 규칙 모두 **바뀌지 않으며 어떤 deferral도 해제되지
 >   않는다**(RC-5).
-> - **금지가 성립하는 실제 이유는 보호 장치가 아니라 구조다.** §19 V-2에 따라 생성은 **정확히 하나의
->   후보를 지명하는 명시적 요청**이므로, 수락된 두 교정은 두 sibling revision을 만들고 **어떤 code path도
->   둘을 병합하지 않는다.**
+> - **금지가 성립하는 실제 이유는 보호 장치가 아니라 구조다.** §19 V-2에 따라 생성은 **명시적으로 지명된
+>   후보에 대해서만** 수행되고, 지명 가능한 집합은 **동일 종류**로 제한된다(`PATCH-0049`가 여는 것은
+>   timing 전용·서로 다른 source segment의 집합뿐이며 text+timing 혼합 집합은 열리지 않는다). 따라서 한
+>   segment에 대한 text 교정과 timing 교정은 여전히 두 sibling revision을 만들고 **어떤 code path도 둘을
+>   병합하지 않는다.**
 > - **따라서 실제로 계약되지 않은 것은 canonical composition rule의 부재다**(RC-4): 어느 accepted text
 >   교정과 어느 accepted timing 교정이 한 쌍인지(§18 H-6의 current authority는 **후보별** 파생이므로
 >   "그 segment의 accepted 교정"에는 지시 대상이 없고, 한 segment가 각 종류의 accepted 후보를 여럿 가질 수
@@ -1637,6 +1640,16 @@ snapshot이 staleness를 막는다. (7) §18의 accept/reject 의미는 그대�
 (12) 릴리스 artifact는 stale해지지 않고 자동 재선택·재생성되지 않는다. (13) 경쟁 교정 합성은 Deferred이며
 자동 합성과 구현이 고른 순서는 금지된다. (14) 스키마 진화는 strictly additive이고 backfill과 legacy
 추론이 없다. (15) provider refinement는 Deferred이고 메커니즘은 선택되지 않는다.
+
+> **후속 결정 note (`PATCH-0049`):** 위 TC-7의 개별 admission 검사는 **바뀌지 않는다.** 그것은 제안을
+> **원본** Raw Transcript의 인접 segment와 비교하는 검사로 남으며, 릴리스된 `PATCH-0039` ε 외의
+> tolerance를 얻지 않는다.
+>
+> 다만 개별 admission이 유효하다는 사실이 **여러 교정을 함께 적용한 결과**도 유효함을 뜻하지는 않는다.
+> 둘 사이에 간격이 있는 두 segment를 각각 교정하면, 각 제안은 원본 이웃 기준으로 통과하면서도 함께
+> 적용하면 겹칠 수 있다. **결과 complete snapshot 전체의 구조 검증은 §19가 소유한다**(§19
+> Multi-Candidate Timing Correction Revision Generation 소절). §17은 후보 하나의 admission을, §19는
+> 적용된 결과의 정합성을 책임진다.
 
 ## 18. First Human Authority Decision on a Correction Candidate (First Slice)
 
@@ -1739,8 +1752,10 @@ RUNNING execution을 요구하는 기존 service는 사용하지 않는다(가�
 Revision Generation** binding record(v36)뿐이다.
 
 **Explicit Application (Confirmed, V-2):** 수락은 권한 부여이고 생성은 적용이다 — 별개의 authority 경계다. Accept만으로
-revision이 생기지 않으며(`Accepted ≠ Applied ≠ Current`) 생성은 정확히 **하나의** 후보를 지명하는 명시적 요청이다.
-apply-all/best/latest·암묵적 후보 발견·multiple-candidate merge·ranking·overlap 해소는 없다.
+revision이 생기지 않으며(`Accepted ≠ Applied ≠ Current`) 생성은 **명시적으로 지명된 후보에 대해서만** 수행되는
+요청이다. text 교정은 정확히 **하나의** 후보를 지명한다(릴리스된 계약, 불변). timing 교정은 `PATCH-0049` 범위의
+**비어 있지 않은 명시적 집합**을 받으며, 단일 후보 입력은 singleton으로 해석되어 릴리스된 identity를 보존한다.
+개수와 무관하게 apply-all/best/latest·암묵적 후보 발견·multiple-candidate merge·ranking·overlap 해소는 없다.
 
 **Eligibility (Confirmed, V-3):** 생성은 후보의 **현재** Human Authority(§18 파생)가 Accepted일 때만 허용된다.
 Undecided·Rejected는 부적격이며, 이후 Reject 뒤의 과거 수락은 불충분하다.
@@ -1795,13 +1810,203 @@ membership + candidate 참조 + domain result + generation binding — 전부 �
 mutable 편집·segment 삭제/분할/병합·timing 교정·subtitle 재생성·export 변경. placeholder는 도입하지 않는다.
 
 **Canonical Invariants (Confirmed):** (1) canonical CorrectedTranscriptRevision을 재사용하며 두 번째 표현이 없다.
-(2) 생성은 명시적이고 수락만으로 revision이 생기지 않는다. (3) revision당 정확히 하나의 후보가 적용된다. (4) 현재
+(2) 생성은 명시적이고 수락만으로 revision이 생기지 않는다. (3) revision에는 명시적으로 지명된 후보만 적용된다 —
+text는 정확히 하나, timing은 `PATCH-0049`가 정의하는 명시적 집합이며 N=1은 singleton이다. (4) 현재
 Accepted authority가 필수다(Undecided/Rejected 부적격). (5) 후보 lineage에 대한 구조적 적용 가능성이 필수이며
 staleness는 손상이 아니다. (6) 적용은 결정적이고 정확하며 비변경 내용·timing을 보존한다. (7) identity는
 anchor(candidate, authorizing decision)에서 결정적으로 파생된다. (8) revision은 특정 authorizing Accepted Decision을
 참조한다. (9) 동일 anchor 재요청은 재사용하고 다른 content는 conflict다. (10) 이후 Reject는 historical revision을
 무효화하지 않는다. (11) revision들은 공존하며 current 선택은 존재하지 않는다. (12) 생성은 atomic이고 상위 record를
 변경하지 않는다. (13) revision은 물리 파일이 아니다. (14) deferred 개념의 placeholder는 없다.
+
+> **후속 결정 note (`PATCH-0049`):** 위 V-1…V-14는 그대로 유효하며 **하나의 후보를 적용하는 text
+> 경로는 어떤 것도 바뀌지 않는다.** 아래 소절이 여는 것은 **timing 교정 후보로만 구성되고 서로 다른
+> source segment를 대상으로 하는 명시적 집합**에 한정된다.
+>
+> - **V-2의 원칙은 그대로 구속한다** — 생성은 여전히 **명시적으로 지명된** 요청이고, apply-all·best·
+>   latest·암묵적 후보 발견·ranking·자동 overlap 해소는 새 cardinality에서도 금지된다. 바뀌는 것은
+>   "정확히 하나"라는 **개수**뿐이다(normative extension). 지명된 각 후보의 현재 authority를 §18
+>   경로로 파생하는 것은 금지 대상이 아니라 **필수**다.
+> - **V-1의 complete snapshot 형태는 바뀌지 않는다**(clarification). 달라지는 것은 치환되는 위치의
+>   개수뿐이며 patch/delta 표현은 여전히 금지된다.
+> - **V-7/V-8**: N=1 집합은 릴리스된 single-candidate identity encoding을 그대로 쓰고, N≥2는 base와
+>   canonical member authority set으로 identity를 정한다. replacement identity는 member별
+>   (후보, authorizing Decision) anchor에서 파생되며, entity identity와 content identity의 구분은
+>   바뀌지 않는다. revision은 **모든** member의 후보와 authorizing Decision을 provenance로 보존한다.
+> - **V-9/V-10/V-11**: guard가 identity 파생과 기존 결과 조회보다 **먼저** 수행된다. 재사용과 충돌은
+>   아래 소절이 정의하는 **complete-result integrity**로 판정하며, **content fingerprint 일치는
+>   provenance·membership 조건을 대체하지 않는다.** persistence collision 이후 경로에도 같은 기준이
+>   적용된다. V-11의 조회 가능성 보장은 generation 명령을 guard에서 면제하지 않는다(clarification).
+> - **V-13의 atomicity는 이번 요청이 새로 만드는 결과에 적용된다**(clarification). 실패 시 이미 존재하던
+>   generation·revision·공유 replacement·다른 revision의 membership·기존 Human Decision과 선택은
+>   보존된다.
+> - **V-14의 deferred 중 un-defer되는 것은 "multiple-candidate 적용" 하나뿐이며, 그것도 timing 전용·
+>   서로 다른 source segment에 한정된다**(normative extension, narrow). merge·구성·overlap 해소·
+>   ranking·revision-on-revision chaining은 **그대로 Deferred**다.
+
+### Multi-Candidate Timing Correction Revision Generation (`PATCH-0049`)
+
+이 소절은 `PATCH-0049`로 승인된 Architect/Product 결정(MG-1…MG-38)을 기록한다. 위 §19 generation의
+**timing 전용 explicit set 확장**이며, 새 revision aggregate·새 Human Authority·새 lifecycle·chaining·
+selection merge·임계값을 만들지 않는다.
+
+계기는 `implementation/144`의 실미디어 E2E다. 한 강의에서 사람이 승인한 timing 교정 3건이 각각 sibling
+revision을 만들었고, 두 번째를 선택하자 첫 번째 교정이 effective transcript에서 빠졌다. **여러 교정이
+필요하다고 사람이 판단해도 하나만 전달된다**는 것이 측정된 천장이었다.
+
+**Scope (Confirmed, MG-1…MG-6):** 확장 대상은 **timing 교정 후보로만 구성된 명시적 집합**이다. 모든
+member는 **하나의 Raw Transcript**를 공유하고 source timeline과 lineage가 일관되어야 하며, 그 Raw
+Transcript는 V-4의 릴리스된 규칙대로 intake의 **current Raw 선택**이어야 한다. 한 aggregate 안에는
+**source segment당 timing 후보 하나**만 포함되고 member들은 **서로 다른** segment를 대상으로 한다.
+결과는 V-1 형태의 complete snapshot 하나이며, 미변경 text·segment 참조·순서·lineage는 그대로
+보존된다. **기존 Corrected Revision을 base로 받지 않으며**, 선택된 text-corrected revision의 교정을
+암묵적으로 상속하지 않는다(둘 다 chaining이며 V-14가 Deferred로 둔다). 릴리스된 text single-candidate
+경로는 변경되지 않는다.
+
+**Explicit Set (Confirmed, MG-7…MG-10):** 호출자가 포함할 후보 identity를 **전부 열거**한다. **빈 입력은
+거부**되고, **같은 후보 identity의 반복도 거부**된다(조용한 중복 제거 없음). singleton과 명시적
+부분집합은 허용되며, 지명되지 않은 후보는 참여하지 않고 그 Decision도 변경되지 않는다. membership은
+**요청 접수 시점에 고정**되고 이후 조용히 바뀌지 않는다 — canonical ordering은 정규화이지 membership
+변경이 아니다. 현재 accepted 후보 전부 자동 수집, 최신·품질·confidence·교정 크기 기준 선택, 이전
+generation의 membership 상속, 경쟁 자동 해소는 모두 금지된다. **실패한 member만 제외하고 성공하는
+partial application은 없다.**
+
+**Human Authority (Confirmed, MG-11…MG-13):** 네 사실은 분리된 채로 남는다 — 사람이 미디어로 timing을
+확인함 / 시스템에 유효한 Accepted authority가 있음 / 후보가 이번 집합에 포함됨 / 결과 revision이
+downstream 대상으로 선택됨. 어느 하나가 다른 것을 성립시키지 않는다. generation은 **모든 member**의
+현재 Human Authority와 applicability를 검증하고, 각 member의 authorizing decision은 **릴리스된
+current-authority 경로에서 파생**된다 — 호출자가 과거 Accepted Decision을 지정해 현재 Reject를 우회하는
+입력은 존재하지 않는다. member들의 authorizing decision은 **하나의 일관된 authority snapshot**으로
+고정되고, 결과는 그때 소비한 구체적인 Decision identity들을 provenance로 보존한다. 검사와 persist 사이에
+member의 현재 authorizing Decision identity, member의 Accepted 여부, 관련 current Raw Transcript 선택,
+적용에 필요한 source snapshot의 정합성 중 하나라도 바뀌면 **전체 stale failure**다. 다른 Decision으로
+조용히 재결합하거나 자동 rebase·retarget하지 않는다. **corrected-revision selection 일치 조건은 새로
+추가하지 않는다**(V-4가 요구하지 않는다).
+
+**Same-Source Competition (Confirmed, MG-14…MG-15):** 같은 source segment를 대상으로 하는 두 후보를 한
+집합에 넣으면 **명시적 conflict로 거부**된다. 제안 구간이 우연히 같아도 서로 다른 authority 사실이므로
+자동으로 합치지 않는다. **저장소에 경쟁 후보가 존재한다는 사실만으로 명시적으로 지명한 하나의 적용을
+막지 않으며**, 한 후보를 포함하는 행위가 다른 후보를 Reject로 바꾸지도 않는다. latest-wins·first-wins·
+confidence-wins는 도입하지 않는다.
+
+**Ordering and Combined Validation (Confirmed, MG-16…MG-18):** 네 순서를 구분한다 — 호출자 입력 순서,
+canonical membership 직렬화 순서, base transcript의 source segment 순서, 결과 revision의 segment 순서.
+**canonical membership 순서는 base Raw Transcript의 source segment ordinal**이며, 이는 source ordering
+및 결과 snapshot 순서와의 일관성 때문이지 다른 안정적 정렬이 비결정적이어서가 아니다. 하나의 base와
+하나의 member authority set은 **입력 순서와 무관하게 같은 적용 내용과 같은 identity로 수렴**하며,
+identity는 교정된 timestamp 값·벽시계·DB 반환 순서·실행 완료 순서에 의존하지 않는다.
+
+**개별 admission의 유효성이 aggregate의 유효성을 함의하지 않는다.** §17 TC-7은 제안을 **원본** Raw
+Transcript 이웃과 비교하므로, 개별로는 admit 가능한 두 교정이 함께 적용되면 충돌할 수 있다. 따라서
+모든 replacement를 반영한 **complete snapshot 전체**를 릴리스된 구조 제약 — 순서, 양수 duration,
+비겹침 — 으로 재검증한다. §14 A-10의 구조 어휘와 릴리스된 `PATCH-0039` ε를 재사용하며 **새 tolerance나
+임계값을 만들지 않고**, 릴리스된 계약이 허용하는 맞닿음을 새로 금지하지도 않는다. 결합 유효성 실패는
+**전체 요청을 거부**한다 — clamp·trim·평균·재추정으로 사람이 승인한 timing을 바꾸지 않는다.
+
+**Atomicity (Confirmed, MG-19…MG-20):** 하나의 성공 단위는 membership과 authority snapshot 확정, member별
+applicability 검증, complete aggregate 검증, 필요한 신규 replacement, Corrected Revision, **완전한**
+member provenance를 가진 generation record, revision membership을 포함한다. 부분 성공은 거부되며 무엇이
+실패했는지 명시된다. **all-or-nothing은 이번 요청이 새로 만드는 결과에 적용된다** — 실패 시 이미
+존재하던 generation·revision·공유 replacement·다른 revision의 membership·기존 Human Decision과 선택은
+그대로 보존된다. 기존 계약에 따른 실패 audit 기록과 부분적으로 성공한 domain result는 구분되며, 이
+소절은 새 audit persistence 계약을 만들지 않는다.
+
+**Identity (Confirmed, MG-21…MG-23):** **N=1**이고 후보와 authorizing Decision이 릴리스된 single-candidate
+경로와 같으면 **릴리스된 identity를 그대로 사용한다.** 그 anchor의 generation과 revision이 이미 존재하면
+동일한 guard와 integrity 검증을 거쳐 재사용하고, 없으면 legacy 경로가 만들었을 identity로 생성한다.
+과거 identity·기록·replay 의미는 재계산되지 않는다. **N≥2**는 base Raw Transcript와 canonical member
+authority set으로 identity가 정해지며, 각 member가 자신의 후보 identity와 구체적인 authorizing Decision
+identity를 함께 기여한다. 같은 membership이라도 authorizing Decision이 다르면 다른 anchor이고, member를
+더하거나 빼는 것도 다른 anchor다. entity identity·content fingerprint·authorization provenance·실행 시도
+identity는 계속 구분되며, 결과 내용이 같다는 이유로 서로 다른 Human Authority 이력을 합치지 않는다(V-8).
+
+**Replacement Identity and Verified Reuse (Confirmed, MG-24…MG-25):** replacement identity는 member별
+**(후보, authorizing Decision)** anchor에서 파생된다. 따라서 같은 member는 `{A, B}`에서도 `{A, C}`에서도
+**같은 replacement**를 기여하고, A의 legacy singleton generation과도 공유한다. authorizing Decision이
+달라지면 replacement identity도 달라진다. 그 identity의 replacement가 이미 존재하면 **완전한 canonical
+payload와 source lineage**를 이번 generation의 기대값과 대조한다 — 일치하면 기존 entity를 변경하지 않고
+재사용하고, 불일치하면 **integrity failure로 전체 generation을 거부**한다. 덮어쓰기·삭제·조용한 재사용은
+없다. 한 segment가 여러 revision에서 참조될 수 있다는 구조적 사실과, **재사용을 검증 후에만 허용한다는
+계약**은 다른 것이다.
+
+**Complete-Result Integrity (Confirmed, MG-29):** 저장된 결과를 REUSED로 반환하는 것은 **다음 다섯 조건을
+모두 충족할 때만** 허용된다. 이 기준은 한 번 정의되고 재사용이 허용되는 모든 지점에서 참조된다.
+
+1. **Generation anchor** — 저장된 anchor가 이번 요청에서 파생된 anchor와 같고 base Raw Transcript 관계가
+   정합적이다. singleton은 릴리스된 single-candidate identity encoding을 유지하고, N≥2는 canonical member
+   authority set과 일치한다.
+2. **완전한 member authority provenance** — 기대한 모든 후보가 이번 요청이 고정한 구체적 authorizing
+   Decision과 함께 존재하고, 누락·추가·중복이 없으며, 다른 후보나 Decision에 묶인 member가 없고,
+   canonical membership 순서가 같다. legacy singleton은 기존 단수 관계에서 파생하여 이를 충족한다.
+3. **source→replacement 대응** — 각 member의 source segment와 replacement identity가 기대한 쌍과 같고,
+   각 replacement의 canonical payload와 source lineage가 정합적이다. 개별로는 올바른 replacement가 다른
+   member에 붙어 있으면 불일치다.
+4. **complete revision의 ordered membership** — 저장된 revision이 기대한 complete snapshot을 표현한다.
+   미변경 source segment가 릴리스된 순서로 참조되고, 교정된 각 위치가 기대한 replacement를 기대한 자리에
+   담는다. 내용이 같아도 segment identity가 다르거나, 기대한 replacement들이 다른 membership이나 순서로
+   배치되어 있으면 **불일치**다.
+5. **canonical content와 lineage** — 릴리스된 content 검증이 그대로 적용된다.
+
+**일치하는 content fingerprint는 조건 1~4를 대체하지 않는다.** 릴리스된 fingerprint는 content identity를
+담고 segment entity identity를 의도적으로 제외하므로, member authority set·source→replacement 대응·
+ordered membership이 달라도 같을 수 있다. **content 동등성 검증과 provenance 정합성 검증은 별개의
+검사**이며, 릴리스된 fingerprint recipe는 변경되지 않고 provenance를 그 안에 넣지 않는다. 불일치는 전체
+generation을 거부하고, 저장된 결과를 덮어쓰거나 삭제하거나 관계를 고쳐 성공시키지 않으며, 누락된
+provenance를 만들어내거나 legacy record를 backfill해 재사용을 성사시키지 않는다.
+
+**Replay and Concurrency (Confirmed, MG-26…MG-31):** operation은 정확히 셋뿐이다 — (A) 과거 immutable
+generation·revision을 identity로 **조회**, (B) 현재 authority 기준의 **generation 요청**, (C) 유효한 동일
+anchor 요청의 **중복·동시 실행**. **별도의 historical exact-replay operation을 도입하지 않으며**,
+idempotency token·replay API·과거 Decision을 지정하는 입력도 추가하지 않는다.
+
+- **조회**는 후보의 현재 authority가 Reject여도 가능하다. 다만 **현재 generation 또는 selection 권한을
+  부여하지 않는다.**
+- **generation 요청**은 current-authority/applicability guard를 **먼저** 통과해야 한다. member 하나라도
+  Rejected 또는 Undecided면 **과거 generation의 존재 여부와 무관하게 전체가 거부된다.** 과거 결과가
+  있다는 이유로 guard를 건너뛰지 않는다.
+- guard를 통과한 동일 anchor 요청은, 저장된 결과가 없으면 정상 신규 generation이고, 있으면 위
+  complete-result integrity를 충족할 때만 REUSED다. 충족하지 못하면 integrity failure다.
+- **재Accept**: Reject 뒤 재Accept하면 새 current Decision에서 파생된 anchor를 쓴다. 이는 과거 anchor의
+  replay가 아니다. 그 새 anchor의 결과가 이미 있으면 위 재사용 규칙이 적용된다.
+- **동시 요청**: 동일 anchor의 유효한 동시 요청은 하나의 결과로 수렴한다. persistence collision 이후
+  저장된 결과를 다시 읽을 때도 **위와 동일한 complete-result integrity 기준**을 적용한다 — collision
+  경로가 pre-persist 조회보다 약한 검사를 쓰지 않는다. 불일치는 수렴이 아니라 integrity failure다.
+  **collision 처리와 기존 결과 재사용은 authority·applicability·staleness 경계를 우회하는 경로가 되어서는
+  안 되며**, 이미 그 경계를 통과한 요청에만 적용된다.
+
+**Downstream (Confirmed, MG-38):** generation은 selection을 수행하지 않는다. subtitle pipeline이 후보를
+다시 조회해 교정을 덧붙이지 않고, §20이나 subtitle 단계에서 여러 revision을 병합하지 않으며, 기존
+subtitle·SRT artifact를 자동으로 재작성하지 않고, SRT 파일 직접 편집을 해결 경로로 만들지 않는다. 새
+aggregate가 명시적으로 선택된 뒤 릴리스된 downstream 경로가 그 complete revision을 소비한다. 기존
+subtitle merge/split·time representation·serialization 계약은 보존되며, 성공을 source segment와 cue의
+1:1 대응이나 cue 개수로 표현하지 않는다.
+
+**Deferred (이후 milestone):** text 전용 multi-candidate aggregation·text/timing 혼합 집합·같은 source
+segment의 text+timing composition(`PATCH-0048` gate 유지)·revision-on-revision chaining·§20 또는 subtitle
+단계의 revision merge·same-source conflict 자동 해소·batch approval entity·자동 timing 교정·drift/anchor
+gap/readability 임계값·provider timing refinement. placeholder는 도입하지 않는다.
+
+**Canonical Invariants (Confirmed):** (1) aggregation은 timing 전용이고, 하나의 Raw Transcript 위에서,
+서로 다른 source segment를 대상으로 하며, segment당 후보는 하나다. (2) member 집합은 명시적으로
+열거되고, 빈 입력과 중복은 거부되며, 자동 발견·ranking·latest·상속된 membership이 없다. (3) 모든
+member의 현재 Human Authority를 검증하고, authorizing Decision들을 하나의 snapshot으로 고정해 provenance로
+보존한다. (4) 한 segment의 경쟁 후보는 집합 안에서 거부되고 결코 합쳐지지 않으며, 저장된 경쟁자가
+무엇도 막지 않고 하나를 지명하는 행위가 다른 것을 reject하지 않는다. (5) canonical 순서는 base
+transcript의 source segment ordinal이고 identity는 입력 순서와 무관하다. (6) 결과 complete snapshot을
+릴리스된 구조 제약으로 재검증하며 새 tolerance가 없고, 실패는 전체를 거부하고 사람이 승인한 timing을
+조정하지 않는다. (7) generation은 새로 만드는 결과에 대해 all-or-nothing이며 이미 존재하던 것을
+보존한다. (8) singleton은 릴리스된 identity를 쓰고 릴리스된 결과를 재사용하며, N≥2는 base와 canonical
+member authority set에서 identity를 파생한다. (9) replacement identity는 member별이고 aggregate 간·legacy
+singleton과 공유되며, 재사용은 완전한 검증 이후에만 허용되고 그 밖에는 integrity failure다. (10) 모든
+재사용 — replacement, persist 전에 발견한 저장된 generation, collision 이후 다시 읽은 저장된 generation —
+은 하나의 complete-result integrity 기준 아래에서만 허용되며, 일치하는 content fingerprint가 anchor·member
+provenance·source→replacement 대응·ordered revision membership을 대체하지 않는다. (11) operation은 조회,
+guard를 거친 generation, 동일 anchor 중복 실행뿐이며 historical exact-replay는 없다. (12) Reject 상태의
+조회는 어떤 authority도 부여하지 않고, generation guard는 결코 건너뛰지 않는다. (13) §20은 revision
+하나를 선택하고, applicability는 모든 member의 현재 Accepted를 요구하며, Decision-identity 일치 조건은
+추가되지 않는다. (14) member의 이후 Reject는 revision·provenance·선택 record를 보존하고, 이후 재Accept는
+authorizing 참조를 재작성하지 않는다. (15) 릴리스된 text single-candidate 경로·`041`·§21 소비 경계는
+변경되지 않는다.
 
 > **후속 결정 note (`PATCH-0047`):** 위 V-1…V-14는 그대로 유효하다. V-5의 "text 교정만 지원한다"와
 > 생성기가 `start`/`end`를 source segment에서 복사하는 것은 **후보가 text를 제안하기 때문**이며
@@ -1907,6 +2112,27 @@ revision·sequence)이다. (6) 동일 대상 재요청은 reused, 다른 대상�
 >   *출발*하며 이 문장은 어느 구조인지만 지목한다.
 > - **`041`은 개정되지 않는다**(TC-14). Subtitle Time Representation은 source segment를 재-timing할
 >   authority를 얻지 않으며 `PATCH-0046` TD-14가 그대로 선다.
+
+> **후속 결정 note (`PATCH-0049`):** **선택 행위는 바뀌지 않는다** — §20은 여전히 revision **하나**를
+> 명시적으로 선택하며 merge layer가 되지 않는다. 바뀌는 것은 S2-8/S2-9가 전제하던 **후보 개수**다
+> (normative extension of cardinality only).
+>
+> - **S2-8 write-time eligibility / S2-9 applicability**: 여러 교정을 담은 revision은 ① parent Raw
+>   Transcript가 관련 intake의 current Raw 선택이고 ② **모든** member 후보의 현재 §18 authority가
+>   **Accepted**일 때 적용 가능하다. 릴리스된 단수 "후보" 조건이 member 전체로 확장될 뿐이다.
+> - **현재 Accepted Decision identity와 generation 당시 authorizing Decision identity의 일치는 새로운
+>   선택 조건으로 추가하지 않는다.** 릴리스된 single-candidate 계약은 현재 Accepted authority만
+>   요구하며, 일치를 요구하면 기존 동작을 소급 변경하게 된다. V-11이 이미 분리한 대로, 저장소 무결성
+>   검증은 기록된 authorizing Accepted Decision과 member provenance를 확인하고, 후보가 현재 Rejected
+>   라는 사실만으로 과거 revision을 손상된 record로 취급하지 않는다.
+> - **member가 이후 Reject되면**: revision과 authorizing provenance는 보존되고, persist된 선택 record는
+>   자동으로 삭제·변경되지 않으며, 릴리스된 effective resolution과 소비 경계가 inapplicability를
+>   처리한다. 조용한 raw fallback이나 자동 재선택은 없다.
+> - **이후 재Accept되면**: 다른 적용 조건도 충족될 때 과거 aggregate가 다시 applicable해질 수 있다.
+>   과거 authorizing Decision 참조는 **새 Decision으로 재작성하지 않는다.** 신규 generation 요청은 새
+>   current Decision의 anchor를 사용한다.
+> - **S2-14의 deferred 중 un-defer되는 것은 이번 timing aggregate뿐이다**(normative extension, narrow).
+>   revision chaining·§20 또는 subtitle 단계의 merge·복수 revision 동시 선택은 그대로 Deferred다.
 
 ## 21. Effective Transcript Consumption Boundary (First Slice)
 
