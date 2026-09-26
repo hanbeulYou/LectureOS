@@ -208,7 +208,7 @@ class CorrectedRevisionGenerationQuery(Protocol):
 class TimingCorrectionGenerationQuery(Protocol):
     """The `PATCH-0047` sibling generation relation, consulted only when the text one has no binding."""
 
-    def get_by_revision(self, revision_id: TranscriptRevisionId): ...
+    def view_by_revision(self, revision_id: TranscriptRevisionId): ...
 
     def candidate(self, candidate_id): ...
 
@@ -249,10 +249,17 @@ class _RevisionLineage:
     its timing. The released S2-8 eligibility facts — the revision's parent raw transcript and its
     candidate's current `§18` authority — exist for both kinds, so they are resolved here through the
     kind's own generation relation and decision history, and the released rules then apply unchanged.
+
+    A generation may apply more than one timing candidate (`PATCH-0049`), so the released singular
+    "candidate" fact generalises to the generation's complete member set: the revision is applicable
+    when **every** member's current `§18` authority is Accepted (MG-33). A text generation and a
+    legacy timing singleton carry exactly one member, so their behaviour is unchanged. Agreement
+    between a member's *current* Accepted Decision identity and the Decision that authorized the
+    generation is deliberately **not** a condition (MG-34).
     """
 
     parent_raw_transcript_id: TranscriptId
-    candidate_id: object
+    candidate_ids: tuple
     decisions: object  # the decision query owning this candidate kind
 
 
@@ -309,7 +316,7 @@ class CorrectedRevisionSelectionService:
             return (
                 _RevisionLineage(
                     parent_raw_transcript_id=generation.parent_raw_transcript_id,
-                    candidate_id=generation.correction_candidate_id,
+                    candidate_ids=(generation.correction_candidate_id,),
                     decisions=self._decisions,
                 ),
                 admission.transcript_source_intake_id,
@@ -326,23 +333,36 @@ class CorrectedRevisionSelectionService:
 
         if self._timing_generations is None or self._timing_decisions is None:
             return None
-        generation = self._timing_generations.get_by_revision(revision_id)
+        generation = self._timing_generations.view_by_revision(revision_id)
         if generation is None:
             return None
-        candidate = self._timing_generations.candidate(
-            generation.timing_correction_candidate_id
-        )
-        if candidate is None:
+        # Every member must resolve; the intake is the one they share (MG-2 guarantees it is one).
+        intake_id = None
+        for member in generation.members:
+            candidate = self._timing_generations.candidate(
+                member.timing_correction_candidate_id
+            )
+            if candidate is None:
+                raise CorrectedRevisionSelectionError(
+                    "corrected revision lineage is incomplete: its timing candidate is missing"
+                )
+            if intake_id is None:
+                intake_id = candidate.transcript_source_intake_id
+            elif candidate.transcript_source_intake_id != intake_id:
+                raise CorrectedRevisionSelectionError(
+                    "corrected revision lineage is inconsistent: its members span different intakes"
+                )
+        if intake_id is None:
             raise CorrectedRevisionSelectionError(
-                "corrected revision lineage is incomplete: its timing candidate is missing"
+                "corrected revision lineage is incomplete: its generation carries no member"
             )
         return (
             _RevisionLineage(
                 parent_raw_transcript_id=generation.parent_raw_transcript_id,
-                candidate_id=generation.timing_correction_candidate_id,
+                candidate_ids=generation.candidate_ids,
                 decisions=self._timing_decisions,
             ),
-            candidate.transcript_source_intake_id,
+            intake_id,
         )
 
     def _lineage_for(self, revision_id: TranscriptRevisionId) -> "_RevisionLineage":
@@ -352,7 +372,7 @@ class CorrectedRevisionSelectionService:
         if generation is not None:
             return _RevisionLineage(
                 parent_raw_transcript_id=generation.parent_raw_transcript_id,
-                candidate_id=generation.correction_candidate_id,
+                candidate_ids=(generation.correction_candidate_id,),
                 decisions=self._decisions,
             )
         timing = self._timing_lineage(revision_id)
@@ -372,9 +392,12 @@ class CorrectedRevisionSelectionService:
             return SelectionApplicability(
                 applicable=False, reason="parent_raw_transcript_not_current"
             )
-        decision = lineage.decisions.get_current(lineage.candidate_id)
-        if decision is None or decision.kind is not DecisionKind.ACCEPT:
-            return SelectionApplicability(applicable=False, reason="candidate_not_accepted")
+        # Every member must be currently Accepted — one Rejected member makes the whole aggregate
+        # inapplicable (MG-33). No Decision-identity agreement condition is added (MG-34).
+        for candidate_id in lineage.candidate_ids:
+            decision = lineage.decisions.get_current(candidate_id)
+            if decision is None or decision.kind is not DecisionKind.ACCEPT:
+                return SelectionApplicability(applicable=False, reason="candidate_not_accepted")
         return SelectionApplicability(applicable=True)
 
     # -- authority commands -------------------------------------------------------------------------

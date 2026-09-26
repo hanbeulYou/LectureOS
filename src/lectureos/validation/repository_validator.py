@@ -1327,7 +1327,176 @@ def _check_timing_correction(connection: sqlite3.Connection) -> list[Diagnostic]
                 "corrected revision is bound to both a text and a timing generation",
             )
 
+    _check_timing_correction_aggregate_generation(connection, _flag)
     return diagnostics
+
+
+def _check_timing_correction_aggregate_generation(connection, _flag) -> None:
+    """The `PATCH-0049` aggregate relations: complete member provenance and single ownership.
+
+    Findings are reported through the caller's ``_flag`` closure, which owns the diagnostics list.
+    """
+
+    if not _table_exists(
+        connection, "timing_correction_revision_aggregate_generations"
+    ) or not _table_exists(connection, "timing_correction_revision_generation_members"):
+        return
+
+    # Dangling references — also foreign-key enforced; checked for defense in depth.
+    for table, target, column, code, message in (
+        ("timing_correction_revision_aggregate_generations", "corrected_transcript_revisions",
+         "corrected_revision_id", "TIMING_CORRECTION_AGGREGATE_DANGLING_REVISION",
+         "aggregate timing generation references a missing corrected transcript revision"),
+        ("timing_correction_revision_aggregate_generations", "raw_transcripts",
+         "parent_raw_transcript_id", "TIMING_CORRECTION_AGGREGATE_DANGLING_PARENT",
+         "aggregate timing generation references a missing parent raw transcript"),
+        ("timing_correction_revision_generation_members",
+         "timing_correction_revision_aggregate_generations", "aggregate_generation_id",
+         "TIMING_CORRECTION_MEMBER_DANGLING_GENERATION",
+         "generation member references a missing aggregate generation"),
+        ("timing_correction_revision_generation_members", "timing_correction_candidates",
+         "timing_correction_candidate_id", "TIMING_CORRECTION_MEMBER_DANGLING_CANDIDATE",
+         "generation member references a missing timing correction candidate"),
+        ("timing_correction_revision_generation_members",
+         "timing_correction_candidate_decisions", "authorizing_decision_id",
+         "TIMING_CORRECTION_MEMBER_DANGLING_DECISION",
+         "generation member references a missing authorizing decision"),
+    ):
+        if not _table_exists(connection, target):
+            continue
+        for row in connection.execute(
+            f"""
+            SELECT t.rowid
+            FROM {table} t
+            LEFT JOIN {target} r ON t.{column} = r.identity
+            WHERE r.identity IS NULL
+            ORDER BY t.rowid
+            """
+        ).fetchall():
+            _flag(code, table, str(row[0]), message)
+
+    # The member count the header declares must equal the provenance actually stored — an aggregate
+    # with a missing or extra member is incomplete provenance, not a smaller aggregate (MG-19).
+    for (identity,) in connection.execute(
+        """
+        SELECT g.identity
+        FROM timing_correction_revision_aggregate_generations g
+        WHERE g.member_count <> (
+                SELECT COUNT(*) FROM timing_correction_revision_generation_members m
+                WHERE m.aggregate_generation_id = g.identity)
+        ORDER BY g.identity
+        """
+    ).fetchall():
+        _flag(
+            "TIMING_CORRECTION_AGGREGATE_INCOMPLETE_MEMBERSHIP",
+            "timing_correction_revision_aggregate_generations",
+            identity,
+            "aggregate generation member count does not match its stored member provenance",
+        )
+
+    # Canonical member ordinals are a dense sequence from 0 — the stored ordering is the contract.
+    for (identity,) in connection.execute(
+        """
+        SELECT g.identity
+        FROM timing_correction_revision_aggregate_generations g
+        WHERE EXISTS (
+                SELECT 1 FROM timing_correction_revision_generation_members m
+                WHERE m.aggregate_generation_id = g.identity
+                  AND (m.member_ordinal < 0 OR m.member_ordinal >= g.member_count))
+        ORDER BY g.identity
+        """
+    ).fetchall():
+        _flag(
+            "TIMING_CORRECTION_AGGREGATE_BROKEN_ORDER",
+            "timing_correction_revision_aggregate_generations",
+            identity,
+            "aggregate generation member ordinals are not a dense canonical sequence",
+        )
+
+    if _table_exists(connection, "timing_correction_candidate_decisions"):
+        for (identity,) in connection.execute(
+            """
+            SELECT m.aggregate_generation_id
+            FROM timing_correction_revision_generation_members m
+            JOIN timing_correction_candidate_decisions d
+                ON d.identity = m.authorizing_decision_id
+            WHERE d.kind <> 'accept'
+               OR d.timing_correction_candidate_id <> m.timing_correction_candidate_id
+            ORDER BY m.aggregate_generation_id
+            """
+        ).fetchall():
+            _flag(
+                "TIMING_CORRECTION_AGGREGATE_UNAUTHORIZED",
+                "timing_correction_revision_aggregate_generations",
+                identity,
+                "a member's authorizing decision is not an Accept belonging to that member's candidate",
+            )
+
+    if _table_exists(connection, "transcript_segments"):
+        for (identity,) in connection.execute(
+            """
+            SELECT m.aggregate_generation_id
+            FROM timing_correction_revision_generation_members m
+            JOIN transcript_segments s ON s.identity = m.replacement_segment_id
+            WHERE s.replaces_segment_id IS NULL
+               OR s.replaces_segment_id <> m.replaced_segment_id
+            ORDER BY m.aggregate_generation_id
+            """
+        ).fetchall():
+            _flag(
+                "TIMING_CORRECTION_AGGREGATE_BROKEN_REPLACEMENT",
+                "timing_correction_revision_aggregate_generations",
+                identity,
+                "a member's replacement segment does not declare that member's replaced segment",
+            )
+
+    if _table_exists(connection, "corrected_transcript_revision_segments"):
+        for (identity,) in connection.execute(
+            """
+            SELECT g.identity
+            FROM timing_correction_revision_aggregate_generations g
+            WHERE EXISTS (
+                    SELECT 1 FROM timing_correction_revision_generation_members m
+                    WHERE m.aggregate_generation_id = g.identity
+                      AND (NOT EXISTS (
+                            SELECT 1 FROM corrected_transcript_revision_segments r
+                            WHERE r.transcript_revision_id = g.corrected_revision_id
+                              AND r.transcript_segment_id = m.replacement_segment_id)
+                           OR EXISTS (
+                            SELECT 1 FROM corrected_transcript_revision_segments r
+                            WHERE r.transcript_revision_id = g.corrected_revision_id
+                              AND r.transcript_segment_id = m.replaced_segment_id)))
+            ORDER BY g.identity
+            """
+        ).fetchall():
+            _flag(
+                "TIMING_CORRECTION_AGGREGATE_BROKEN_MEMBERSHIP",
+                "timing_correction_revision_aggregate_generations",
+                identity,
+                "revision must carry every member's replacement segment and no replaced source",
+            )
+
+    # A revision has exactly one canonical generation owner — across all three relations.
+    for owner_table, column in (
+        ("timing_correction_revision_generations", "corrected_revision_id"),
+        ("corrected_revision_generations", "corrected_revision_id"),
+    ):
+        if not _table_exists(connection, owner_table):
+            continue
+        for (identity,) in connection.execute(
+            f"""
+            SELECT g.identity
+            FROM timing_correction_revision_aggregate_generations g
+            JOIN {owner_table} o ON o.{column} = g.corrected_revision_id
+            ORDER BY g.identity
+            """
+        ).fetchall():
+            _flag(
+                "TIMING_CORRECTION_AGGREGATE_OWNERSHIP_COLLISION",
+                "timing_correction_revision_aggregate_generations",
+                identity,
+                "corrected revision is bound to more than one canonical generation owner",
+            )
 
 
 def _check_corrected_revision_selection(
@@ -1403,6 +1572,21 @@ def _check_corrected_revision_selection(
                         ON tc.identity = tg.timing_correction_candidate_id
                     WHERE tg.corrected_revision_id = s.corrected_revision_id
                       AND tc.transcript_source_intake_id = s.transcript_source_intake_id)"""
+            if _table_exists(
+                connection, "timing_correction_revision_aggregate_generations"
+            ):
+                # `PATCH-0049`: an aggregate revision's context comes from its members, which MG-2
+                # guarantees share one intake.
+                timing_clause += """
+              AND NOT EXISTS (
+                    SELECT 1
+                    FROM timing_correction_revision_aggregate_generations ag
+                    JOIN timing_correction_revision_generation_members m
+                        ON m.aggregate_generation_id = ag.identity
+                    JOIN timing_correction_candidates tc2
+                        ON tc2.identity = m.timing_correction_candidate_id
+                    WHERE ag.corrected_revision_id = s.corrected_revision_id
+                      AND tc2.transcript_source_intake_id = s.transcript_source_intake_id)"""
         for (identity,) in connection.execute(
             f"""
             SELECT s.identity

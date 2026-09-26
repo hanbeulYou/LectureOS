@@ -107,7 +107,7 @@ class SQLiteSchemaVersionTwoTests(unittest.TestCase):
     def test_new_initializer_contains_complete_version_two_foundation(self) -> None:
         connection = initialize_sqlite_database(self.database_path)
         try:
-            self.assertEqual(SQLITE_SCHEMA_VERSION, 54)
+            self.assertEqual(SQLITE_SCHEMA_VERSION, 55)
             self.assertEqual(
                 connection.execute("SELECT version FROM schema_metadata").fetchone(),
                 (SQLITE_SCHEMA_VERSION,),

@@ -62,7 +62,7 @@ _UNTOUCHED = (
 
 _ADDITION_BLOCKS = tuple(
     (level, getattr(sqlite_lifecycle, f"_V{level}_ADDITION_STATEMENTS"))
-    for level in range(2, 55)
+    for level in range(2, SQLITE_SCHEMA_VERSION + 1)
 )
 
 
@@ -99,8 +99,9 @@ class SQLiteSchemaVersionFiftyFourTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
 
-    def test_schema_version_is_fifty_four(self) -> None:
-        self.assertEqual(SQLITE_SCHEMA_VERSION, 54)
+    def test_v54_remains_a_supported_released_version(self) -> None:
+        # v54 is no longer the latest; it must stay reachable and supported (superseded, not removed).
+        self.assertLessEqual(54, SQLITE_SCHEMA_VERSION)
         self.assertIn(54, sqlite_lifecycle._SUPPORTED_SCHEMA_VERSIONS)
 
     def test_fresh_database_initializes_with_v54_tables(self) -> None:
@@ -236,7 +237,9 @@ class SQLiteSchemaVersionFiftyFourTests(unittest.TestCase):
 
         before = _snapshot(fixture.connection)
         fixture.connection.close()
-        migrate_sqlite_database(fixture.database_path, 54)  # no-op at the target version
+        migrate_sqlite_database(
+            fixture.database_path, SQLITE_SCHEMA_VERSION
+        )  # no-op at the current version
         connection = open_sqlite_database(fixture.database_path)
         try:
             self.assertEqual(before, _snapshot(connection))
@@ -287,11 +290,13 @@ class SQLiteSchemaVersionFiftyFourTests(unittest.TestCase):
         initialize_sqlite_database(self.database_path).close()
         with self.assertRaises(PersistenceError):
             migrate_sqlite_database(self.database_path, 53)
+        with self.assertRaises(PersistenceError):
+            migrate_sqlite_database(self.database_path, 54)
 
     def test_unsupported_target_is_rejected(self) -> None:
         initialize_sqlite_database(self.database_path).close()
         with self.assertRaises(PersistenceError):
-            migrate_sqlite_database(self.database_path, 55)
+            migrate_sqlite_database(self.database_path, SQLITE_SCHEMA_VERSION + 1)
 
     def test_every_released_version_chains_to_v54_preserving_data(self) -> None:
         # Migration compatibility: every released schema version reaches v54 through the supported

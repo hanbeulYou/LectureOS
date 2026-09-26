@@ -9,8 +9,12 @@ One CLI over an existing repository (identities only — never media paths):
   (**not ranked**; no candidate is labelled "best");
 * ``decide`` — record one explicit human ``accept``/``reject`` over one timing candidate. **Reject is a
   normal, complete judgement** meaning "the source timing is correct", not an error;
-* ``generate`` — explicitly apply one currently Accepted timing candidate into one immutable corrected
-  revision. The revision is **not** selected as current; selection stays an explicit separate act;
+* ``generate`` — explicitly apply an **explicitly named set** of currently Accepted timing candidates
+  into one immutable corrected revision (`PATCH-0049`). Repeat ``--candidate`` to name more than one;
+  each must target a different source segment of the same Raw Transcript. Naming one candidate is a
+  singleton and keeps the released identity exactly. Nothing is discovered, ranked, or inherited: an
+  accepted candidate you do not name simply does not participate. The revision is **not** selected as
+  current; selection stays an explicit separate act;
 * ``inspect`` — print one Raw Transcript segment's canonical snapshot (identity, ordinal, text, current
   interval, and its neighbours' intervals) so a person can author a proposal without opening the
   database by hand. Read-only, and it proposes no interval.
@@ -24,6 +28,7 @@ Invocation (src layout)::
     PYTHONPATH=src python3 -m lectureos.timing_correction_cli list --intake <id> --database <db>
     PYTHONPATH=src python3 -m lectureos.timing_correction_cli decide --candidate <id> --kind accept --reviewer <who> --database <db>
     PYTHONPATH=src python3 -m lectureos.timing_correction_cli generate --candidate <id> --database <db>
+    PYTHONPATH=src python3 -m lectureos.timing_correction_cli generate --candidate <id> --candidate <id> --database <db>
     PYTHONPATH=src python3 -m lectureos.timing_correction_cli inspect --raw-transcript <id> --segment <id> --database <db>
 """
 
@@ -248,22 +253,27 @@ def _run_decide(args) -> int:
 
 
 def _run_generate(args) -> int:
+    # The caller enumerates the members explicitly; repeating `--candidate` names a set. Nothing is
+    # discovered, ranked, or inherited, and an unnamed accepted candidate never joins (MG-7/MG-9).
+    candidate_ids = tuple(args.candidate)
     connection, service = _open(
         args.database, compose_sqlite_timing_correction_revision_generation_service
     )
     try:
-        result = service.generate(candidate_id=args.candidate)
+        result = service.generate_set(candidate_ids=candidate_ids)
     finally:
         connection.close()
-    generation = result.generation
+    view = result.view
     print(f"{result.outcome} corrected revision {result.revision.identity.value}")
-    print(f"generation: {generation.identity.value}")
-    print(f"authorizing decision: {generation.authorizing_decision_id.value}")
-    print(
-        f"replaced segment: {generation.replaced_segment_id.value} -> "
-        f"{generation.replacement_segment_id.value}"
-    )
-    print("segment text is preserved exactly; only the interval changed")
+    print(f"generation: {view.identity.value} ({len(view.members)} member(s))")
+    for member in view.members:
+        print(f"  [{member.member_ordinal}] candidate: {member.timing_correction_candidate_id.value}")
+        print(f"      authorizing decision: {member.authorizing_decision_id.value}")
+        print(
+            f"      replaced segment: {member.replaced_segment_id.value} -> "
+            f"{member.replacement_segment_id.value}"
+        )
+    print("segment text is preserved exactly; only the intervals changed")
     print("the revision was NOT selected as current (selection is an explicit separate act)")
     return 0
 
@@ -304,9 +314,13 @@ def _parser() -> argparse.ArgumentParser:
     decide.set_defaults(handler=_run_decide)
 
     generate = subparsers.add_parser(
-        "generate", help="apply one currently accepted timing candidate into a corrected revision"
+        "generate",
+        help=(
+            "apply an explicitly named set of currently accepted timing candidates into one "
+            "corrected revision (repeat --candidate to name more than one)"
+        ),
     )
-    generate.add_argument("--candidate", required=True)
+    generate.add_argument("--candidate", required=True, action="append")
     generate.add_argument("--database", required=True)
     generate.set_defaults(handler=_run_generate)
 

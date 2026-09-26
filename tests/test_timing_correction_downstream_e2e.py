@@ -233,7 +233,7 @@ class TimingCorrectionDownstreamTests(unittest.TestCase):
             [],
         )
         self.assertEqual(report.health.value, "healthy")
-        self.assertEqual(report.schema_version, 54)
+        self.assertEqual(report.schema_version, 55)
 
 
 if __name__ == "__main__":  # pragma: no cover

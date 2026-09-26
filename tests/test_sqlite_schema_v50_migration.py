@@ -17,7 +17,7 @@ V50_TABLES = {"lecture_analysis_edit_candidates"}
 
 _ADDITION_BLOCKS = tuple(
     (level, getattr(sqlite_lifecycle, f"_V{level}_ADDITION_STATEMENTS"))
-    for level in range(2, 55)
+    for level in range(2, SQLITE_SCHEMA_VERSION + 1)
 )
 
 
@@ -111,7 +111,7 @@ class SQLiteSchemaVersionFiftyTests(unittest.TestCase):
     def test_unsupported_target_is_rejected(self) -> None:
         initialize_sqlite_database(self.database_path).close()
         with self.assertRaises(PersistenceError):
-            migrate_sqlite_database(self.database_path, 55)
+            migrate_sqlite_database(self.database_path, SQLITE_SCHEMA_VERSION + 1)
 
     def test_downgrade_is_rejected(self) -> None:
         initialize_sqlite_database(self.database_path).close()

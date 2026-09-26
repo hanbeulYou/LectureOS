@@ -50,6 +50,43 @@ _REQUIRED_VERSION = 54
 _UNAVAILABLE = (
     "Timing Correction Revision Generation persistence requires SQLite schema version 54"
 )
+_AGGREGATE_REQUIRED_VERSION = 55
+_AGGREGATE_UNAVAILABLE = (
+    "Multi-candidate Timing Correction Revision Generation persistence requires SQLite schema "
+    "version 55"
+)
+
+_AGGREGATE_SELECT = (
+    "SELECT identity, corrected_revision_id, parent_raw_transcript_id, member_count, "
+    "content_fingerprint FROM timing_correction_revision_aggregate_generations"
+)
+_MEMBER_SELECT = (
+    "SELECT member_ordinal, timing_correction_candidate_id, authorizing_decision_id, "
+    "replaced_segment_id, replacement_segment_id "
+    "FROM timing_correction_revision_generation_members "
+    "WHERE aggregate_generation_id = ? ORDER BY member_ordinal"
+)
+
+_REPLACEMENT_SELECT = (
+    "SELECT transcript_id, source_timeline_id, text, source_order, start, end, "
+    "speaker_label, confidence, uncertainty, replaces_segment_id "
+    "FROM transcript_segments WHERE identity = ?"
+)
+
+
+def _expected_replacement_row(segment: TranscriptSegment) -> tuple[object, ...]:
+    return (
+        segment.transcript_id.value,
+        segment.source_timeline_id.value if segment.source_timeline_id else None,
+        segment.text,
+        segment.source_order,
+        segment.start,
+        segment.end,
+        segment.speaker_label,
+        segment.confidence,
+        segment.uncertainty,
+        segment.replaces_segment_id.value if segment.replaces_segment_id else None,
+    )
 
 _SELECT_COLUMNS = (
     "SELECT identity, corrected_revision_id, timing_correction_candidate_id, "
@@ -67,7 +104,7 @@ def _require_version(connection: sqlite3.Connection) -> int:
 
 class SQLiteTimingCorrectionGenerationRepository:
     def __init__(self, connection: sqlite3.Connection) -> None:
-        _require_version(connection)
+        self._schema_version = _require_version(connection)
         self._connection = connection
 
     def get(
@@ -80,6 +117,66 @@ class SQLiteTimingCorrectionGenerationRepository:
     ) -> "TimingCorrectionRevisionGeneration | None":
         # Well-defined: the schema enforces UNIQUE(corrected_revision_id).
         return self._one("corrected_revision_id", revision_id.value)
+
+    # -- normalised projection (legacy singleton rows are derived, never back-filled) ----------------
+
+    def view(self, identity: TimingCorrectionRevisionGenerationId):
+        """One generation read uniformly, whichever relation physically owns it (MG-21)."""
+
+        from lectureos.application.timing_correction_revision_generation import (
+            view_of_singleton,
+        )
+
+        singleton = self.get(identity)
+        if singleton is not None:
+            return view_of_singleton(singleton)
+        return self._aggregate_view("identity", identity.value)
+
+    def view_by_revision(self, revision_id: TranscriptRevisionId):
+        from lectureos.application.timing_correction_revision_generation import (
+            view_of_singleton,
+        )
+
+        singleton = self.get_by_revision(revision_id)
+        if singleton is not None:
+            return view_of_singleton(singleton)
+        return self._aggregate_view("corrected_revision_id", revision_id.value)
+
+    def _aggregate_view(self, column: str, value: str):
+        if not self._aggregate_available():
+            return None
+        from lectureos.application.timing_correction_revision_generation import (
+            TimingCorrectionRevisionAggregateGeneration,
+            view_of_aggregate,
+        )
+
+        try:
+            row = self._connection.execute(
+                f"{_AGGREGATE_SELECT} WHERE {column} = ?", (value,)
+            ).fetchone()
+            if row is None:
+                return None
+            members = self._connection.execute(_MEMBER_SELECT, (row[0],)).fetchall()
+        except sqlite3.Error as error:
+            raise PersistenceError(
+                f"could not read Timing Correction Revision Generation: {error}"
+            ) from error
+        if len(members) != row[3]:
+            raise PersistenceError(
+                "aggregate timing generation member count does not match its stored members"
+            )
+        return view_of_aggregate(
+            TimingCorrectionRevisionAggregateGeneration(
+                identity=TimingCorrectionRevisionGenerationId(row[0]),
+                corrected_revision_id=TranscriptRevisionId(row[1]),
+                parent_raw_transcript_id=TranscriptId(row[2]),
+                members=tuple(_restore_member(member) for member in members),
+                content_fingerprint=row[4],
+            )
+        )
+
+    def _aggregate_available(self) -> bool:
+        return self._schema_version >= _AGGREGATE_REQUIRED_VERSION
 
     def revision(
         self, revision_id: TranscriptRevisionId
@@ -135,6 +232,7 @@ class SQLiteTimingCorrectionGenerationCommandPersistence:
         revision: CorrectedTranscriptRevision,
         replacement_segment: TranscriptSegment,
         result: DomainResultReference,
+        revalidate=None,
     ) -> None:
         if self._schema_version < _REQUIRED_VERSION:
             raise SchemaFeatureUnavailableError(_UNAVAILABLE)
@@ -142,6 +240,10 @@ class SQLiteTimingCorrectionGenerationCommandPersistence:
         try:
             self._connection.execute("BEGIN IMMEDIATE")
             transaction_started = True
+            if revalidate is not None:
+                # The caller's authority snapshot is re-derived INSIDE the write transaction, so the
+                # guard cannot be overtaken between verification and persist (MG-13).
+                revalidate()
             _validate_linkage(generation, revision, replacement_segment, result)
             if (
                 self._exists("identity", generation.identity.value)
@@ -149,12 +251,12 @@ class SQLiteTimingCorrectionGenerationCommandPersistence:
                     "corrected_revision_id", generation.corrected_revision_id.value
                 )
                 or self._revision_exists(revision.identity)
-                or self._segment_exists(replacement_segment.identity)
+                or self._revision_owned_elsewhere(revision.identity)
             ):
                 raise PersistenceIdentityCollisionError(
                     "Timing Correction Revision Generation records already exist"
                 )
-            _insert_transcript_segment(self._connection, replacement_segment)
+            self._write_replacement(replacement_segment)
             _insert_corrected_transcript_revision(self._connection, revision)
             _insert_domain_result_reference_record(self._connection, result)
             self._connection.execute(
@@ -194,11 +296,154 @@ class SQLiteTimingCorrectionGenerationCommandPersistence:
             self._rollback(transaction_started)
             raise
 
+    def persist_timing_correction_aggregate_generation(
+        self,
+        *,
+        generation,
+        revision: CorrectedTranscriptRevision,
+        replacement_segments: tuple[TranscriptSegment, ...],
+        result: DomainResultReference,
+        revalidate=None,
+    ) -> None:
+        """One atomic v55 transaction for a two-or-more-member generation.
+
+        Every new record — each new replacement segment, the revision and its ordered membership, the
+        domain result, the aggregate header and its **complete** member provenance — commits together
+        or not at all. Replacement segments that already exist are reused only after verification
+        (MG-25); nothing existing is ever updated, deleted, or repaired.
+        """
+
+        if self._schema_version < _AGGREGATE_REQUIRED_VERSION:
+            raise SchemaFeatureUnavailableError(_AGGREGATE_UNAVAILABLE)
+        transaction_started = False
+        try:
+            self._connection.execute("BEGIN IMMEDIATE")
+            transaction_started = True
+            if revalidate is not None:
+                revalidate()
+            _validate_aggregate_linkage(
+                generation, revision, replacement_segments, result
+            )
+            if (
+                self._aggregate_exists("identity", generation.identity.value)
+                or self._aggregate_exists(
+                    "corrected_revision_id", generation.corrected_revision_id.value
+                )
+                or self._exists("identity", generation.identity.value)
+                or self._exists(
+                    "corrected_revision_id", generation.corrected_revision_id.value
+                )
+                or self._revision_exists(revision.identity)
+                or self._revision_owned_elsewhere(revision.identity)
+            ):
+                raise PersistenceIdentityCollisionError(
+                    "Timing Correction Revision Generation records already exist"
+                )
+            for segment in replacement_segments:
+                self._write_replacement(segment)
+            _insert_corrected_transcript_revision(self._connection, revision)
+            _insert_domain_result_reference_record(self._connection, result)
+            self._connection.execute(
+                """
+                INSERT INTO timing_correction_revision_aggregate_generations(
+                    identity, corrected_revision_id, parent_raw_transcript_id,
+                    member_count, content_fingerprint
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    generation.identity.value,
+                    generation.corrected_revision_id.value,
+                    generation.parent_raw_transcript_id.value,
+                    len(generation.members),
+                    generation.content_fingerprint,
+                ),
+            )
+            self._connection.executemany(
+                """
+                INSERT INTO timing_correction_revision_generation_members(
+                    aggregate_generation_id, member_ordinal, timing_correction_candidate_id,
+                    authorizing_decision_id, replaced_segment_id, replacement_segment_id
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        generation.identity.value,
+                        member.member_ordinal,
+                        member.timing_correction_candidate_id.value,
+                        member.authorizing_decision_id.value,
+                        member.replaced_segment_id.value,
+                        member.replacement_segment_id.value,
+                    )
+                    for member in generation.members
+                ],
+            )
+            self._connection.execute("COMMIT")
+        except PersistenceError:
+            self._rollback(transaction_started)
+            raise
+        except sqlite3.IntegrityError as error:
+            self._rollback(transaction_started)
+            raise PersistenceIdentityCollisionError(
+                f"Timing Correction Revision Generation already exists: {error}"
+            ) from error
+        except sqlite3.Error as error:
+            self._rollback(transaction_started)
+            raise PersistenceError(
+                f"could not persist Timing Correction Revision Generation: {error}"
+            ) from error
+        except Exception:
+            self._rollback(transaction_started)
+            raise
+
+    def _write_replacement(self, segment: TranscriptSegment) -> None:
+        """Insert a new replacement, or reuse an existing one only after verifying it (MG-25).
+
+        A replacement's identity is per-``(candidate, authorizing Decision)``, so the same member
+        contributes the same entity to ``{A, B}``, to ``{A, C}``, and to A's legacy singleton. An
+        existing entity whose canonical payload or source lineage differs is an integrity failure that
+        refuses the whole generation — never an overwrite and never a silent reuse.
+        """
+
+        stored = self._connection.execute(
+            _REPLACEMENT_SELECT, (segment.identity.value,)
+        ).fetchone()
+        if stored is None:
+            _insert_transcript_segment(self._connection, segment)
+            return
+        if tuple(stored) != _expected_replacement_row(segment):
+            raise PersistenceError(
+                "an existing replacement segment does not match this generation's expected canonical "
+                f"payload or source lineage ({segment.identity.value}): the whole generation is refused"
+            )
+
     def _exists(self, column: str, value: str) -> bool:
         return (
             self._connection.execute(
                 f"SELECT 1 FROM timing_correction_revision_generations WHERE {column} = ?",
                 (value,),
+            ).fetchone()
+            is not None
+        )
+
+    def _aggregate_exists(self, column: str, value: str) -> bool:
+        if self._schema_version < _AGGREGATE_REQUIRED_VERSION:
+            return False
+        return (
+            self._connection.execute(
+                "SELECT 1 FROM timing_correction_revision_aggregate_generations "
+                f"WHERE {column} = ?",
+                (value,),
+            ).fetchone()
+            is not None
+        )
+
+    def _revision_owned_elsewhere(self, identity: TranscriptRevisionId) -> bool:
+        """A revision has exactly one canonical generation owner across every generation relation."""
+
+        return (
+            self._connection.execute(
+                "SELECT 1 FROM corrected_revision_generations WHERE corrected_revision_id = ?",
+                (identity.value,),
             ).fetchone()
             is not None
         )
@@ -260,6 +505,61 @@ def _validate_linkage(
         raise PersistenceError("domain result kind must be corrected_transcript_revision")
     if len(result.upstream_results) != 1:
         raise PersistenceError("revision domain result requires exactly one upstream result")
+
+
+def _validate_aggregate_linkage(
+    generation,
+    revision: CorrectedTranscriptRevision,
+    replacement_segments: tuple[TranscriptSegment, ...],
+    result: DomainResultReference,
+) -> None:
+    if generation.corrected_revision_id != revision.identity:
+        raise PersistenceError("generation revision identity must match the revision")
+    if revision.parent_raw_transcript_id != generation.parent_raw_transcript_id:
+        raise PersistenceError("revision parent must match the generation parent")
+    if revision.correction_candidate_ids != ():
+        raise PersistenceError(
+            "a timing-corrected revision must reference no text correction candidate"
+        )
+    if len(replacement_segments) != len(generation.members):
+        raise PersistenceError(
+            "an aggregate generation must carry one replacement segment per member"
+        )
+    supplied = {segment.identity: segment for segment in replacement_segments}
+    for member in generation.members:
+        segment = supplied.get(member.replacement_segment_id)
+        if segment is None:
+            raise PersistenceError(
+                "a member's replacement segment was not supplied to the transaction"
+            )
+        if segment.replaces_segment_id != member.replaced_segment_id:
+            raise PersistenceError(
+                "replacement segment must replace the member's replaced segment"
+            )
+        if segment.identity not in revision.segment_ids:
+            raise PersistenceError("revision must reference every replacement segment")
+        if member.replaced_segment_id in revision.segment_ids:
+            raise PersistenceError("revision must not still reference a replaced segment")
+    if result.identity != revision.domain_result_id:
+        raise PersistenceError("domain result identity must match the revision")
+    if result.kind != "corrected_transcript_revision":
+        raise PersistenceError("domain result kind must be corrected_transcript_revision")
+    if len(result.upstream_results) != 1:
+        raise PersistenceError("revision domain result requires exactly one upstream result")
+
+
+def _restore_member(row: tuple[object, ...]):
+    from lectureos.application.timing_correction_revision_generation import (
+        TimingCorrectionGenerationMember,
+    )
+
+    return TimingCorrectionGenerationMember(
+        member_ordinal=row[0],
+        timing_correction_candidate_id=TimingCorrectionCandidateId(row[1]),
+        authorizing_decision_id=TimingCorrectionCandidateDecisionId(row[2]),
+        replaced_segment_id=TranscriptSegmentId(row[3]),
+        replacement_segment_id=TranscriptSegmentId(row[4]),
+    )
 
 
 def _restore(row: tuple[object, ...]) -> "TimingCorrectionRevisionGeneration":

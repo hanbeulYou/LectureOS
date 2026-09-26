@@ -7,8 +7,8 @@ from pathlib import Path
 
 from .errors import PersistenceError, UnsupportedSchemaVersionError
 
-SQLITE_SCHEMA_VERSION = 54
-_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54)
+SQLITE_SCHEMA_VERSION = 55
+_SUPPORTED_SCHEMA_VERSIONS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55)
 
 _V1_TABLE_STATEMENTS = (
     """CREATE TABLE schema_metadata (
@@ -1721,6 +1721,41 @@ _V53_ADDITION_STATEMENTS = (
 # released text-correction family. `correction_candidates.proposed_text` is TEXT NOT NULL and K-2
 # rejects a no-op, so a timing proposal cannot ride the released candidate; nothing here alters,
 # widens, or reinterprets any released correction relation.
+_V55_ADDITION_STATEMENTS = (
+    """CREATE TABLE timing_correction_revision_aggregate_generations (
+    identity TEXT PRIMARY KEY,
+    corrected_revision_id TEXT NOT NULL,
+    parent_raw_transcript_id TEXT NOT NULL,
+    member_count INTEGER NOT NULL CHECK (member_count >= 2),
+    content_fingerprint TEXT NOT NULL CHECK (length(content_fingerprint) = 64),
+    UNIQUE (corrected_revision_id),
+    FOREIGN KEY (corrected_revision_id)
+        REFERENCES corrected_transcript_revisions(identity),
+    FOREIGN KEY (parent_raw_transcript_id) REFERENCES raw_transcripts(identity)
+)""",
+    """CREATE TABLE timing_correction_revision_generation_members (
+    aggregate_generation_id TEXT NOT NULL,
+    member_ordinal INTEGER NOT NULL CHECK (member_ordinal >= 0),
+    timing_correction_candidate_id TEXT NOT NULL,
+    authorizing_decision_id TEXT NOT NULL,
+    replaced_segment_id TEXT NOT NULL,
+    replacement_segment_id TEXT NOT NULL,
+    PRIMARY KEY (aggregate_generation_id, member_ordinal),
+    UNIQUE (aggregate_generation_id, timing_correction_candidate_id),
+    UNIQUE (aggregate_generation_id, replaced_segment_id),
+    UNIQUE (aggregate_generation_id, replacement_segment_id),
+    CHECK (replaced_segment_id <> replacement_segment_id),
+    FOREIGN KEY (aggregate_generation_id)
+        REFERENCES timing_correction_revision_aggregate_generations(identity),
+    FOREIGN KEY (timing_correction_candidate_id)
+        REFERENCES timing_correction_candidates(identity),
+    FOREIGN KEY (authorizing_decision_id)
+        REFERENCES timing_correction_candidate_decisions(identity),
+    FOREIGN KEY (replaced_segment_id) REFERENCES transcript_segments(identity),
+    FOREIGN KEY (replacement_segment_id) REFERENCES transcript_segments(identity)
+)""",
+)
+
 _V54_ADDITION_STATEMENTS = (
     """CREATE TABLE timing_correction_candidates (
     identity TEXT PRIMARY KEY,
@@ -3212,6 +3247,25 @@ _V54_EXPECTED_COLUMNS = {
     ),
 }
 
+_V55_EXPECTED_COLUMNS = {
+    **_V54_EXPECTED_COLUMNS,
+    "timing_correction_revision_aggregate_generations": (
+        ("identity", "TEXT", 0, 1),
+        ("corrected_revision_id", "TEXT", 1, 0),
+        ("parent_raw_transcript_id", "TEXT", 1, 0),
+        ("member_count", "INTEGER", 1, 0),
+        ("content_fingerprint", "TEXT", 1, 0),
+    ),
+    "timing_correction_revision_generation_members": (
+        ("aggregate_generation_id", "TEXT", 1, 1),
+        ("member_ordinal", "INTEGER", 1, 2),
+        ("timing_correction_candidate_id", "TEXT", 1, 0),
+        ("authorizing_decision_id", "TEXT", 1, 0),
+        ("replaced_segment_id", "TEXT", 1, 0),
+        ("replacement_segment_id", "TEXT", 1, 0),
+    ),
+}
+
 def initialize_sqlite_database(database_path: str | Path) -> sqlite3.Connection:
     """Create the latest schema for a new path; validate existing databases."""
 
@@ -3250,7 +3304,7 @@ def migrate_sqlite_database(
 ) -> None:
     """Explicitly perform one approved migration step or validate a no-op target."""
 
-    if target_version not in (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54):
+    if target_version not in (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55):
         raise PersistenceError(f"unsupported SQLite migration target: {target_version}")
     path = _validate_database_path(database_path)
     if not path.is_file():
@@ -3419,6 +3473,9 @@ def migrate_sqlite_database(
         if current_version == 53 and target_version == 54:
             _migrate_v53_to_v54(connection)
             return
+        if current_version == 54 and target_version == 55:
+            _migrate_v54_to_v55(connection)
+            return
         raise PersistenceError(
             f"unsupported SQLite migration: {current_version} to {target_version}"
         )
@@ -3520,6 +3577,7 @@ def _initialize_latest_schema(connection: sqlite3.Connection) -> None:
             *_V52_ADDITION_STATEMENTS,
             *_V53_ADDITION_STATEMENTS,
             *_V54_ADDITION_STATEMENTS,
+            *_V55_ADDITION_STATEMENTS,
         ):
             connection.execute(statement)
         connection.execute(
@@ -4184,6 +4242,34 @@ def _migrate_v36_to_v37(connection: sqlite3.Connection) -> None:
         raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
 
 
+def _migrate_v54_to_v55(connection: sqlite3.Connection) -> None:
+    """v54 → v55: strictly additive (040 §19 Multi-Candidate Timing Correction, `PATCH-0049` MG-21/MG-22).
+
+    Adds only the two aggregate generation relations. Every released row keeps its identity, columns,
+    constraints and meaning — in particular the released singleton relation
+    `timing_correction_revision_generations` is **not** altered, re-keyed, widened, or back-filled with
+    member rows: a released single-candidate generation stays exactly where it is and is *derived* as a
+    one-member generation at read time (MG-21). The aggregate header is constrained to
+    ``member_count >= 2``, so the two representations can never claim the same cardinality.
+    """
+
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        for statement in _V55_ADDITION_STATEMENTS:
+            connection.execute(statement)
+        connection.execute(
+            "UPDATE schema_metadata SET version = 55 WHERE singleton = 1"
+        )
+        _validate_initialized_connection(connection)
+        _commit(connection)
+    except PersistenceError:
+        _rollback(connection)
+        raise
+    except sqlite3.Error as error:
+        _rollback(connection)
+        raise PersistenceError(f"could not migrate SQLite schema: {error}") from error
+
+
 def _migrate_v53_to_v54(connection: sqlite3.Connection) -> None:
     """v53 → v54: strictly additive (040 §17 Human Timing Correction Candidate, `PATCH-0047` TC-19).
 
@@ -4592,6 +4678,7 @@ def _validate_schema_shape(connection: sqlite3.Connection, version: int) -> None
         52: _V52_EXPECTED_COLUMNS,
         53: _V53_EXPECTED_COLUMNS,
         54: _V54_EXPECTED_COLUMNS,
+        55: _V55_EXPECTED_COLUMNS,
     }[version]
     for table, expected in expected_columns.items():
         actual = tuple(

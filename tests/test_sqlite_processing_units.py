@@ -41,7 +41,7 @@ class SQLiteLifecycleTests(unittest.TestCase):
             connection = initialize_sqlite_database(path)
             try:
                 self.assertTrue(path.is_file())
-                self.assertEqual(SQLITE_SCHEMA_VERSION, 54)
+                self.assertEqual(SQLITE_SCHEMA_VERSION, 55)
                 self.assertEqual(
                     connection.execute(
                         "SELECT version FROM schema_metadata WHERE singleton = 1"
