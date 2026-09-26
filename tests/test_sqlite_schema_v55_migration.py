@@ -102,6 +102,99 @@ def table_sql(connection: sqlite3.Connection, table: str) -> str:
     ).fetchone()[0]
 
 
+# Representative released start versions for the migrated/fresh equivalence check: the first
+# release, the v37/v38 boundary, and the two most recent single steps. The complete 1…54 chain is
+# exercised for data preservation by `test_every_released_version_chains_to_v55_preserving_data`.
+_EQUIVALENCE_START_VERSIONS = (1, 37, 53, 54)
+
+
+def schema_snapshot(connection: sqlite3.Connection) -> dict:
+    """Read the logical schema actually persisted in a database.
+
+    Everything compared is read back from SQLite metadata — never from the DDL constants — so
+    the snapshot describes what a path *produced*, not what it intended. Physical storage details
+    (root pages, list positions) are dropped; logical ones (column order, types, nullability,
+    defaults, primary keys, index columns and order, uniqueness, foreign keys, and the verbatim
+    stored definition SQL — which carries CHECK and UNIQUE constraints) are kept.
+    """
+
+    objects = connection.execute(
+        "SELECT type, name, tbl_name, sql FROM sqlite_master "
+        "WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name"
+    ).fetchall()
+    tables = {}
+    for kind, name, _table, _sql in objects:
+        if kind != "table":
+            continue
+        tables[name] = {
+            "columns": [
+                tuple(row)  # (cid, name, type, notnull, dflt_value, pk) in declaration order
+                for row in connection.execute(f"PRAGMA table_info({name})").fetchall()
+            ],
+            "foreign_keys": sorted(
+                tuple(row)  # (id, seq, table, from, to, on_update, on_delete, match)
+                for row in connection.execute(f"PRAGMA foreign_key_list({name})").fetchall()
+            ),
+            "indexes": sorted(
+                (
+                    index_name,
+                    unique,
+                    origin,
+                    partial,
+                    [
+                        tuple(row)  # (seqno, cid, name) in index-column order
+                        for row in connection.execute(
+                            f"PRAGMA index_info({index_name})"
+                        ).fetchall()
+                    ],
+                )
+                for _seq, index_name, unique, origin, partial in connection.execute(
+                    f"PRAGMA index_list({name})"
+                ).fetchall()
+            ),
+        }
+    return {
+        "version": connection.execute("SELECT version FROM schema_metadata").fetchone()[0],
+        "objects": [tuple(row) for row in objects],
+        "tables": tables,
+    }
+
+
+def schema_differences(migrated: dict, fresh: dict) -> list[str]:
+    """Name every logical difference between two snapshots, or return an empty list."""
+
+    differences = []
+    if migrated["version"] != fresh["version"]:
+        differences.append(
+            f"schema version: migrated={migrated['version']} fresh={fresh['version']}"
+        )
+    migrated_objects = {(kind, name): row for kind, name, *row in migrated["objects"]}
+    fresh_objects = {(kind, name): row for kind, name, *row in fresh["objects"]}
+    for key in sorted(migrated_objects.keys() - fresh_objects.keys()):
+        differences.append(f"{key[0]} {key[1]!r}: only in migrated database")
+    for key in sorted(fresh_objects.keys() - migrated_objects.keys()):
+        differences.append(f"{key[0]} {key[1]!r}: only in fresh database")
+    for key in sorted(migrated_objects.keys() & fresh_objects.keys()):
+        if migrated_objects[key] != fresh_objects[key]:
+            differences.append(f"{key[0]} {key[1]!r}: stored definition differs")
+    for table in sorted(migrated["tables"].keys() & fresh["tables"].keys()):
+        for aspect in ("columns", "foreign_keys", "indexes"):
+            if migrated["tables"][table][aspect] != fresh["tables"][table][aspect]:
+                differences.append(
+                    f"table {table!r} {aspect}: migrated={migrated['tables'][table][aspect]!r} "
+                    f"fresh={fresh['tables'][table][aspect]!r}"
+                )
+    return differences
+
+
+def snapshot_at(path: Path) -> dict:
+    connection = sqlite3.connect(path)
+    try:
+        return schema_snapshot(connection)
+    finally:
+        connection.close()
+
+
 class SQLiteSchemaVersionFiftyFiveTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
@@ -267,6 +360,86 @@ class SQLiteSchemaVersionFiftyFiveTests(unittest.TestCase):
                     )
                 finally:
                     connection.close()
+
+    def test_migrated_schema_is_equivalent_to_fresh_initialization(self) -> None:
+        # OI-3: a database that reaches v55 through the supported migration chain and a database
+        # initialized directly at v55 must describe the same logical schema. Data preservation is
+        # asserted separately (above); a fresh database carries no legacy seed rows.
+        fresh_path = Path(self.temporary_directory.name) / "fresh.sqlite3"
+        initialize_sqlite_database(fresh_path).close()
+        fresh = snapshot_at(fresh_path)
+        self.assertEqual(fresh["version"], 55)
+        # The snapshot must describe a real schema, not an empty or hollow reading.
+        self.assertTrue(V55_TABLES.issubset(fresh["tables"]))
+        self.assertTrue(any(table["indexes"] for table in fresh["tables"].values()))
+        self.assertTrue(any(table["foreign_keys"] for table in fresh["tables"].values()))
+        for start in _EQUIVALENCE_START_VERSIONS:
+            with self.subTest(start=start):
+                migrated_path = (
+                    Path(self.temporary_directory.name) / f"migrated-from-v{start}.sqlite3"
+                )
+                create_legacy_database(migrated_path, start)
+                for target in range(start + 1, SQLITE_SCHEMA_VERSION + 1):
+                    migrate_sqlite_database(migrated_path, target)
+                migrated = snapshot_at(migrated_path)
+                self.assertEqual(migrated["version"], 55)
+                self.assertEqual(schema_differences(migrated, fresh), [])
+                self.assertEqual(migrated, fresh)
+
+    def test_schema_equivalence_detects_an_index_present_on_one_side_only(self) -> None:
+        # Negative control: the comparison must fail on a real mismatch, and name it.
+        fresh_path = Path(self.temporary_directory.name) / "fresh.sqlite3"
+        initialize_sqlite_database(fresh_path).close()
+        migrated_path = Path(self.temporary_directory.name) / "migrated.sqlite3"
+        create_legacy_database(migrated_path, 54)
+        migrate_sqlite_database(migrated_path, 55)
+        self.assertEqual(
+            schema_differences(snapshot_at(migrated_path), snapshot_at(fresh_path)), []
+        )
+
+        probe = sqlite3.connect(migrated_path)
+        probe.execute("CREATE INDEX probe_only_in_migrated ON processing_units(purpose)")
+        probe.commit()
+        probe.close()
+
+        differences = schema_differences(snapshot_at(migrated_path), snapshot_at(fresh_path))
+        self.assertNotEqual(differences, [])
+        self.assertTrue(
+            any(
+                "probe_only_in_migrated" in line and "only in migrated" in line
+                for line in differences
+            ),
+            differences,
+        )
+        self.assertTrue(
+            any(line.startswith("table 'processing_units' indexes") for line in differences),
+            differences,
+        )
+
+    def test_schema_equivalence_detects_a_column_present_on_one_side_only(self) -> None:
+        # Negative control on the column axis: an extra nullable column on the fresh side only.
+        fresh_path = Path(self.temporary_directory.name) / "fresh.sqlite3"
+        initialize_sqlite_database(fresh_path).close()
+        migrated_path = Path(self.temporary_directory.name) / "migrated.sqlite3"
+        create_legacy_database(migrated_path, 54)
+        migrate_sqlite_database(migrated_path, 55)
+
+        probe = sqlite3.connect(fresh_path)
+        probe.execute("ALTER TABLE processing_units ADD COLUMN probe_only_in_fresh TEXT")
+        probe.commit()
+        probe.close()
+
+        differences = schema_differences(snapshot_at(migrated_path), snapshot_at(fresh_path))
+        self.assertNotEqual(differences, [])
+        self.assertIn("table 'processing_units': stored definition differs", differences)
+        self.assertTrue(
+            any(
+                line.startswith("table 'processing_units' columns")
+                and "probe_only_in_fresh" in line
+                for line in differences
+            ),
+            differences,
+        )
 
     def test_migration_failure_rolls_back_to_the_previous_version(self) -> None:
         create_legacy_database(self.database_path, 54)

@@ -503,14 +503,6 @@ class SQLiteTimingCorrectionGenerationCommandPersistence:
             is not None
         )
 
-    def _segment_exists(self, identity: TranscriptSegmentId) -> bool:
-        return (
-            self._connection.execute(
-                "SELECT 1 FROM transcript_segments WHERE identity = ?", (identity.value,)
-            ).fetchone()
-            is not None
-        )
-
     def _rollback(self, transaction_started: bool) -> None:
         if transaction_started and self._connection.in_transaction:
             try:
