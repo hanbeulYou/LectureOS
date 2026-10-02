@@ -3523,3 +3523,26 @@ timeline with unbroken ordinals, the run completed reporting `execution mode: re
 segments were admitted, the checkpoint was deleted on success, validation reported `healthy` at
 schema v53, and a third run took the canonical `reused` path without consulting the checkpoint. All
 three CP-8 paths are proven on real media. The complete 3,479-test suite passes.
+
+## Same-Source Text + Timing Composition (PATCH-0050)
+
+- Record: `148_SAME_SOURCE_TEXT_TIMING_COMPOSITION.md`
+- Blueprint: `docs/040` §19 subsection *Same-Source Text + Timing Composition* (TX-1…TX-39), §17/§20
+  `PATCH-0050` notes; `docs/030` §6.2 two-role clause (Blueprint 0.8, 2026-10-01)
+- Status: **IMPLEMENTED — uncommitted working tree at the time of this entry**; runtime verified on
+  synthetic fixtures and on a copy of the C014-03 human-verified evidence repository
+- Selected persistence: schema **v55 → v56**, one additive relation
+  `same_source_composition_generations` (single owner of the two-role provenance; UNIQUE over the full
+  authority anchor and over the revision), single-step migration, no back-fill
+- Entry point: `python3 -m lectureos.same_source_composition_cli generate --text-candidate <id>
+  --timing-candidate <id> --database <db>`
+
+One explicit pair request applies one currently Accepted text candidate and one currently Accepted
+timing candidate on the same original source segment into one composed replacement inside one
+complete immutable revision. `§20` resolves the composed lineage role by role (text store for the
+text role, timing store for the timing role), both candidate histories list the composition, the
+released text and timing writers refuse a revision a composition owns, and the validator checks the
+relation plus single ownership across all four generation kinds. On the C014-03 evidence copy the
+delivered SRT changed exactly one cue (#2225), carrying the corrected text and the corrected interval
+together, with 2,369 cues byte-identical. Mixed sets across sources, batches, chaining, automatic
+resolution and selection-layer merge remain Deferred.
