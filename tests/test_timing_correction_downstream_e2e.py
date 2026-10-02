@@ -30,6 +30,7 @@ from lectureos.composition import (
     compose_sqlite_timing_correction_decision_service,
     compose_sqlite_timing_correction_revision_generation_service,
 )
+from lectureos.persistence import SQLITE_SCHEMA_VERSION
 from lectureos.validation import validate_database
 
 # `tests/` is not a package, so a single-module invocation does not put it on sys.path the way
@@ -233,7 +234,7 @@ class TimingCorrectionDownstreamTests(unittest.TestCase):
             [],
         )
         self.assertEqual(report.health.value, "healthy")
-        self.assertEqual(report.schema_version, 55)
+        self.assertEqual(report.schema_version, SQLITE_SCHEMA_VERSION)
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -248,6 +248,16 @@ class SQLiteTimingCorrectionGenerationRepository:
                     f"{identity}"
                 )
             views.append(view)
+        # `PATCH-0050` TX-36: the timing candidate's history also lists every same-source
+        # composition it was applied in, carrying the text role's provenance as well — querying
+        # from one role never truncates the other.
+        from .same_source_composition_generation import SQLiteSameSourceCompositionRepository
+
+        views.extend(
+            SQLiteSameSourceCompositionRepository(
+                self._connection
+            ).generations_for_timing_candidate(candidate_id)
+        )
         return tuple(sorted(views, key=lambda view: view.identity.value))
 
     def _one(
@@ -484,7 +494,13 @@ class SQLiteTimingCorrectionGenerationCommandPersistence:
         )
 
     def _revision_owned_elsewhere(self, identity: TranscriptRevisionId) -> bool:
-        """A revision has exactly one canonical generation owner across every generation relation."""
+        """A revision has exactly one canonical generation owner across every generation relation.
+
+        The text relation and, since `PATCH-0050`, the same-source composition relation are both
+        consulted, so a timing writer can never adopt a revision a composition already owns (TX-21).
+        """
+
+        from .same_source_composition_generation import revision_owned_by_composition
 
         return (
             self._connection.execute(
@@ -492,7 +508,7 @@ class SQLiteTimingCorrectionGenerationCommandPersistence:
                 (identity.value,),
             ).fetchone()
             is not None
-        )
+        ) or revision_owned_by_composition(self._connection, identity)
 
     def _revision_exists(self, identity: TranscriptRevisionId) -> bool:
         return (

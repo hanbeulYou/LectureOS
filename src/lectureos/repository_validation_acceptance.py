@@ -20,7 +20,7 @@ from lectureos.application.identities import EditExportAssemblyId
 from lectureos.composition import compose_sqlite_edit_export_assembly_service
 from lectureos.edit_export_assembly_acceptance import _seed_representations
 from lectureos.execution.identities import DomainResultId, SourceTimelineId
-from lectureos.persistence import initialize_sqlite_database
+from lectureos.persistence import SQLITE_SCHEMA_VERSION, initialize_sqlite_database
 from lectureos.subtitle_intake_acceptance import TIMELINE_ID, _build_persisted_readiness
 from lectureos.validation import validate_database
 
@@ -83,7 +83,7 @@ def run_repository_validation_acceptance() -> dict:
             and healthy_report.ok
             and healthy_report.error_count == 0
             and healthy_report.warning_count == 0
-            and healthy_report.schema_version == 55
+            and healthy_report.schema_version == SQLITE_SCHEMA_VERSION
             and healthy_report.objects_checked > 0
         )
 

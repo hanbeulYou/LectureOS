@@ -1327,7 +1327,226 @@ def _check_timing_correction(connection: sqlite3.Connection) -> list[Diagnostic]
                 "corrected revision is bound to both a text and a timing generation",
             )
 
+    if _table_exists(connection, "same_source_composition_generations"):
+        for (identity,) in connection.execute(
+            """
+            SELECT g.identity
+            FROM timing_correction_revision_generations g
+            JOIN same_source_composition_generations c
+                ON c.corrected_revision_id = g.corrected_revision_id
+            ORDER BY g.identity
+            """
+        ).fetchall():
+            _flag(
+                "TIMING_CORRECTION_GENERATION_KIND_COLLISION",
+                "timing_correction_revision_generations",
+                identity,
+                "corrected revision is bound to both a timing generation and a composition",
+            )
+
     _check_timing_correction_aggregate_generation(connection, _flag)
+    diagnostics.extend(_check_same_source_composition(connection))
+    return diagnostics
+
+
+def _check_same_source_composition(connection: sqlite3.Connection) -> list[Diagnostic]:
+    """Integrity of the `PATCH-0050` same-source composition relation (040 §19 TX-18…TX-22).
+
+    Integrity only: a composition must bind two roles of the right kinds, each authorized by an
+    Accept belonging to its own candidate, both targeting one original source of the base, carrying
+    one composed replacement the revision references in place of the source, and owning its revision
+    alone across all four generation kinds. Current applicability (a later Reject, a Raw switch) is
+    query semantics, never corruption.
+    """
+
+    table = "same_source_composition_generations"
+    if not _table_exists(connection, table):
+        return []
+    diagnostics: list[Diagnostic] = []
+
+    def _flag(code: str, identity: str, message: str) -> None:
+        diagnostics.append(
+            Diagnostic(
+                code=code,
+                severity=Severity.ERROR,
+                location=f"{table}:{identity}",
+                message=message,
+            )
+        )
+
+    for target, column, code, message in (
+        ("corrected_transcript_revisions", "corrected_revision_id",
+         "SAME_SOURCE_COMPOSITION_DANGLING_REVISION",
+         "composition references a missing corrected transcript revision"),
+        ("raw_transcripts", "parent_raw_transcript_id",
+         "SAME_SOURCE_COMPOSITION_DANGLING_PARENT",
+         "composition references a missing parent raw transcript"),
+        ("transcript_segments", "replaced_segment_id",
+         "SAME_SOURCE_COMPOSITION_DANGLING_SOURCE",
+         "composition references a missing replaced source segment"),
+        ("transcript_segments", "replacement_segment_id",
+         "SAME_SOURCE_COMPOSITION_DANGLING_REPLACEMENT",
+         "composition references a missing composed replacement segment"),
+        ("correction_candidates", "text_correction_candidate_id",
+         "SAME_SOURCE_COMPOSITION_DANGLING_TEXT_CANDIDATE",
+         "composition references a missing text correction candidate"),
+        ("correction_candidate_decisions", "text_authorizing_decision_id",
+         "SAME_SOURCE_COMPOSITION_DANGLING_TEXT_DECISION",
+         "composition references a missing text authorizing decision"),
+        ("timing_correction_candidates", "timing_correction_candidate_id",
+         "SAME_SOURCE_COMPOSITION_DANGLING_TIMING_CANDIDATE",
+         "composition references a missing timing correction candidate"),
+        ("timing_correction_candidate_decisions", "timing_authorizing_decision_id",
+         "SAME_SOURCE_COMPOSITION_DANGLING_TIMING_DECISION",
+         "composition references a missing timing authorizing decision"),
+    ):
+        if not _table_exists(connection, target):
+            continue
+        for (identity,) in connection.execute(
+            f"""
+            SELECT c.identity
+            FROM {table} c
+            LEFT JOIN {target} r ON c.{column} = r.identity
+            WHERE r.identity IS NULL
+            ORDER BY c.identity
+            """
+        ).fetchall():
+            _flag(code, identity, message)
+
+    # Each role's authorizing Decision must be an Accept that belongs to that role's candidate.
+    for (identity,) in connection.execute(
+        f"""
+        SELECT c.identity
+        FROM {table} c
+        LEFT JOIN correction_candidate_decisions d ON d.identity = c.text_authorizing_decision_id
+        WHERE d.identity IS NOT NULL
+          AND (d.correction_candidate_id <> c.text_correction_candidate_id OR d.kind <> 'accept')
+        ORDER BY c.identity
+        """
+    ).fetchall():
+        _flag(
+            "SAME_SOURCE_COMPOSITION_TEXT_UNAUTHORIZED",
+            identity,
+            "text role must be authorized by an Accept decision belonging to its own text candidate",
+        )
+    if _table_exists(connection, "timing_correction_candidate_decisions"):
+        for (identity,) in connection.execute(
+            f"""
+            SELECT c.identity
+            FROM {table} c
+            LEFT JOIN timing_correction_candidate_decisions d
+                ON d.identity = c.timing_authorizing_decision_id
+            WHERE d.identity IS NOT NULL
+              AND (d.timing_correction_candidate_id <> c.timing_correction_candidate_id
+                   OR d.kind <> 'accept')
+            ORDER BY c.identity
+            """
+        ).fetchall():
+            _flag(
+                "SAME_SOURCE_COMPOSITION_TIMING_UNAUTHORIZED",
+                identity,
+                "timing role must be authorized by an Accept decision belonging to its own timing candidate",
+            )
+
+    # Both roles target the composition's one original source, on the composition's base.
+    if _table_exists(connection, "timing_correction_candidates"):
+        for (identity,) in connection.execute(
+            f"""
+            SELECT c.identity
+            FROM {table} c
+            JOIN correction_candidates t ON t.identity = c.text_correction_candidate_id
+            JOIN timing_correction_candidates m ON m.identity = c.timing_correction_candidate_id
+            WHERE t.segment_id <> c.replaced_segment_id
+               OR m.segment_id <> c.replaced_segment_id
+               OR t.transcript_id <> c.parent_raw_transcript_id
+               OR m.raw_transcript_id <> c.parent_raw_transcript_id
+            ORDER BY c.identity
+            """
+        ).fetchall():
+            _flag(
+                "SAME_SOURCE_COMPOSITION_SOURCE_MISMATCH",
+                identity,
+                "both roles must target the composition's replaced source segment on its parent raw transcript",
+            )
+
+    # The composed replacement replaces the source, and the revision carries it in the source's place.
+    for (identity,) in connection.execute(
+        f"""
+        SELECT c.identity
+        FROM {table} c
+        JOIN transcript_segments s ON s.identity = c.replacement_segment_id
+        WHERE s.replaces_segment_id IS NULL OR s.replaces_segment_id <> c.replaced_segment_id
+           OR s.start IS NULL OR s.end IS NULL
+        ORDER BY c.identity
+        """
+    ).fetchall():
+        _flag(
+            "SAME_SOURCE_COMPOSITION_BROKEN_REPLACEMENT",
+            identity,
+            "composed replacement must declare the replaced source as its lineage and carry timing",
+        )
+    for (identity,) in connection.execute(
+        f"""
+        SELECT c.identity
+        FROM {table} c
+        WHERE NOT EXISTS (
+                SELECT 1 FROM corrected_transcript_revision_segments m
+                WHERE m.transcript_revision_id = c.corrected_revision_id
+                  AND m.transcript_segment_id = c.replacement_segment_id)
+           OR EXISTS (
+                SELECT 1 FROM corrected_transcript_revision_segments m
+                WHERE m.transcript_revision_id = c.corrected_revision_id
+                  AND m.transcript_segment_id = c.replaced_segment_id)
+        ORDER BY c.identity
+        """
+    ).fetchall():
+        _flag(
+            "SAME_SOURCE_COMPOSITION_BROKEN_MEMBERSHIP",
+            identity,
+            "revision must carry the composed replacement segment and not its replaced source",
+        )
+
+    # The released text-only candidate reference carries exactly the applied text candidate (TX-19).
+    for (identity,) in connection.execute(
+        f"""
+        SELECT c.identity
+        FROM {table} c
+        WHERE (SELECT COUNT(*) FROM corrected_transcript_revision_candidates r
+               WHERE r.transcript_revision_id = c.corrected_revision_id) <> 1
+           OR NOT EXISTS (
+                SELECT 1 FROM corrected_transcript_revision_candidates r
+                WHERE r.transcript_revision_id = c.corrected_revision_id
+                  AND r.correction_candidate_id = c.text_correction_candidate_id)
+        ORDER BY c.identity
+        """
+    ).fetchall():
+        _flag(
+            "SAME_SOURCE_COMPOSITION_BROKEN_CANDIDATE_REFERENCE",
+            identity,
+            "composed revision must reference exactly its applied text correction candidate",
+        )
+
+    # A revision has exactly one canonical generation owner — across all four relations.
+    for owner_table in (
+        "corrected_revision_generations",
+        "timing_correction_revision_generations",
+        "timing_correction_revision_aggregate_generations",
+    ):
+        if not _table_exists(connection, owner_table):
+            continue
+        for (identity,) in connection.execute(
+            f"""
+            SELECT c.identity
+            FROM {table} c
+            JOIN {owner_table} o ON o.corrected_revision_id = c.corrected_revision_id
+            ORDER BY c.identity
+            """
+        ).fetchall():
+            _flag(
+                "SAME_SOURCE_COMPOSITION_OWNERSHIP_COLLISION",
+                identity,
+                "corrected revision is bound to more than one canonical generation owner",
+            )
     return diagnostics
 
 
@@ -1476,10 +1695,11 @@ def _check_timing_correction_aggregate_generation(connection, _flag) -> None:
                 "revision must carry every member's replacement segment and no replaced source",
             )
 
-    # A revision has exactly one canonical generation owner — across all three relations.
+    # A revision has exactly one canonical generation owner — across all four relations.
     for owner_table, column in (
         ("timing_correction_revision_generations", "corrected_revision_id"),
         ("corrected_revision_generations", "corrected_revision_id"),
+        ("same_source_composition_generations", "corrected_revision_id"),
     ):
         if not _table_exists(connection, owner_table):
             continue

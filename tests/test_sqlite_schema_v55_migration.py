@@ -187,6 +187,13 @@ def schema_differences(migrated: dict, fresh: dict) -> list[str]:
     return differences
 
 
+def migrate_to_current(path: Path, start: int) -> None:
+    """Walk the supported single-step chain from ``start`` to the current version."""
+
+    for target in range(start + 1, SQLITE_SCHEMA_VERSION + 1):
+        migrate_sqlite_database(path, target)
+
+
 def snapshot_at(path: Path) -> dict:
     connection = sqlite3.connect(path)
     try:
@@ -203,8 +210,9 @@ class SQLiteSchemaVersionFiftyFiveTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
 
-    def test_schema_version_is_fifty_five(self) -> None:
-        self.assertEqual(SQLITE_SCHEMA_VERSION, 55)
+    def test_v55_remains_a_supported_released_version(self) -> None:
+        # v55 is no longer the latest; it must stay reachable and supported (superseded, not removed).
+        self.assertLessEqual(55, SQLITE_SCHEMA_VERSION)
         self.assertIn(55, sqlite_lifecycle._SUPPORTED_SCHEMA_VERSIONS)
 
     def test_fresh_database_initializes_with_v55_tables(self) -> None:
@@ -351,7 +359,7 @@ class SQLiteSchemaVersionFiftyFiveTests(unittest.TestCase):
                         connection.execute(
                             "SELECT version FROM schema_metadata"
                         ).fetchone()[0],
-                        55,
+                        SQLITE_SCHEMA_VERSION,
                     )
                     self.assertTrue(V55_TABLES.issubset(table_names(connection)))
                     self.assertEqual(
@@ -362,13 +370,14 @@ class SQLiteSchemaVersionFiftyFiveTests(unittest.TestCase):
                     connection.close()
 
     def test_migrated_schema_is_equivalent_to_fresh_initialization(self) -> None:
-        # OI-3: a database that reaches v55 through the supported migration chain and a database
-        # initialized directly at v55 must describe the same logical schema. Data preservation is
+        # OI-3: a database that reaches the CURRENT version through the supported migration chain
+        # (via v55) and a database initialized directly must describe the same logical schema. The
+        # v54 -> v55 step itself is exercised above; this guards the whole chain as it grows. Data preservation is
         # asserted separately (above); a fresh database carries no legacy seed rows.
         fresh_path = Path(self.temporary_directory.name) / "fresh.sqlite3"
         initialize_sqlite_database(fresh_path).close()
         fresh = snapshot_at(fresh_path)
-        self.assertEqual(fresh["version"], 55)
+        self.assertEqual(fresh["version"], SQLITE_SCHEMA_VERSION)
         # The snapshot must describe a real schema, not an empty or hollow reading.
         self.assertTrue(V55_TABLES.issubset(fresh["tables"]))
         self.assertTrue(any(table["indexes"] for table in fresh["tables"].values()))
@@ -382,7 +391,7 @@ class SQLiteSchemaVersionFiftyFiveTests(unittest.TestCase):
                 for target in range(start + 1, SQLITE_SCHEMA_VERSION + 1):
                     migrate_sqlite_database(migrated_path, target)
                 migrated = snapshot_at(migrated_path)
-                self.assertEqual(migrated["version"], 55)
+                self.assertEqual(migrated["version"], SQLITE_SCHEMA_VERSION)
                 self.assertEqual(schema_differences(migrated, fresh), [])
                 self.assertEqual(migrated, fresh)
 
@@ -392,7 +401,7 @@ class SQLiteSchemaVersionFiftyFiveTests(unittest.TestCase):
         initialize_sqlite_database(fresh_path).close()
         migrated_path = Path(self.temporary_directory.name) / "migrated.sqlite3"
         create_legacy_database(migrated_path, 54)
-        migrate_sqlite_database(migrated_path, 55)
+        migrate_to_current(migrated_path, 54)
         self.assertEqual(
             schema_differences(snapshot_at(migrated_path), snapshot_at(fresh_path)), []
         )
@@ -422,7 +431,7 @@ class SQLiteSchemaVersionFiftyFiveTests(unittest.TestCase):
         initialize_sqlite_database(fresh_path).close()
         migrated_path = Path(self.temporary_directory.name) / "migrated.sqlite3"
         create_legacy_database(migrated_path, 54)
-        migrate_sqlite_database(migrated_path, 55)
+        migrate_to_current(migrated_path, 54)
 
         probe = sqlite3.connect(fresh_path)
         probe.execute("ALTER TABLE processing_units ADD COLUMN probe_only_in_fresh TEXT")

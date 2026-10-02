@@ -1,6 +1,8 @@
 import contextlib
 import io
 import json
+
+from lectureos.persistence import SQLITE_SCHEMA_VERSION
 import sqlite3
 import tempfile
 import unittest
@@ -58,7 +60,7 @@ class ValidateCliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         document = json.loads(out)
         self.assertEqual(document["health"], "healthy")
-        self.assertEqual(document["schema_version"], 55)
+        self.assertEqual(document["schema_version"], SQLITE_SCHEMA_VERSION)
         self.assertIn("diagnostics", document)
 
     def test_missing_database_exits_one(self) -> None:

@@ -109,6 +109,13 @@ from lectureos.application.timing_correction_candidate_decision import (
 from lectureos.application.timing_correction_revision_generation import (
     TimingCorrectionRevisionGenerationService,
 )
+from lectureos.application.same_source_composition_generation import (
+    SameSourceCompositionGenerationService,
+)
+from lectureos.persistence.same_source_composition_generation import (
+    SQLiteSameSourceCompositionCommandPersistence,
+    SQLiteSameSourceCompositionRepository,
+)
 from lectureos.persistence.timing_correction_candidate import (
     SQLiteTimingCorrectionCandidateCommandPersistence,
     SQLiteTimingCorrectionCandidateRepository,
@@ -799,10 +806,13 @@ def compose_sqlite_corrected_revision_selection_service(
     persistence = SQLiteCorrectedRevisionSelectionCommandPersistence(connection)
     # `PATCH-0047` §20 note: selection is correction-kind-agnostic, so the sibling timing lineage is
     # wired in beside the released one. Text revisions resolve exactly as before.
+    # `PATCH-0050` §20 note: a same-source composition revision resolves through its own
+    # two-role generation relation; text and timing revisions resolve exactly as before.
     return CorrectedRevisionSelectionService(
         intakes, generations, admissions, decisions, raw_selections, selections, persistence,
         timing_generation_query=SQLiteTimingCorrectionGenerationRepository(connection),
         timing_decision_query=SQLiteTimingCorrectionDecisionRepository(connection),
+        composition_query=SQLiteSameSourceCompositionRepository(connection),
     )
 
 
@@ -864,6 +874,40 @@ def compose_sqlite_timing_correction_revision_generation_service(
     persistence = SQLiteTimingCorrectionGenerationCommandPersistence(connection)
     return TimingCorrectionRevisionGenerationService(
         candidates, decisions, selections, raw_transcripts, segments, generations, persistence
+    )
+
+
+def compose_sqlite_same_source_composition_generation_service(
+    connection: sqlite3.Connection,
+) -> SameSourceCompositionGenerationService:
+    """Build Same-Source Text + Timing Composition generation on one caller connection (040 §19, PATCH-0050).
+
+    Explicitly applies one currently Accepted text candidate and one currently Accepted timing
+    candidate on the same original source segment into one composed replacement inside one immutable
+    CorrectedTranscriptRevision. Each role's authority is read from its own decision store. Read-only
+    over candidates, decisions, raw transcript, segments and the current Raw selection; the revision
+    is never selected as current and no subtitle work runs.
+    """
+
+    admissions = SQLiteCorrectionCandidateAdmissionRepository(connection)
+    text_decisions = SQLiteCorrectionCandidateDecisionRepository(connection)
+    timing_candidates = SQLiteTimingCorrectionCandidateRepository(connection)
+    timing_decisions = SQLiteTimingCorrectionDecisionRepository(connection)
+    selections = SQLiteRawTranscriptSelectionRepository(connection)
+    raw_transcripts = SQLiteRawTranscriptRepository(connection)
+    segments = SQLiteTranscriptSegmentRepository(connection)
+    compositions = SQLiteSameSourceCompositionRepository(connection)
+    persistence = SQLiteSameSourceCompositionCommandPersistence(connection)
+    return SameSourceCompositionGenerationService(
+        admissions,
+        text_decisions,
+        timing_candidates,
+        timing_decisions,
+        selections,
+        raw_transcripts,
+        segments,
+        compositions,
+        persistence,
     )
 
 

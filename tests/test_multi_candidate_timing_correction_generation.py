@@ -37,6 +37,7 @@ from lectureos.composition import (
     compose_sqlite_timing_correction_revision_generation_service,
 )
 from lectureos.persistence import (
+    SQLITE_SCHEMA_VERSION,
     SQLiteCorrectedTranscriptRevisionRepository,
     SQLiteTranscriptSegmentRepository,
     open_sqlite_database,
@@ -748,7 +749,7 @@ class MultiCandidateTimingGenerationTests(unittest.TestCase):
             revision_id=result.revision.identity.value, reviewer="reviewer:kim"
         )
         report = validate_repository(self.connection)
-        self.assertEqual(report.schema_version, 55)
+        self.assertEqual(report.schema_version, SQLITE_SCHEMA_VERSION)
         self.assertEqual([d.code for d in report.diagnostics], [])
 
     def test_incomplete_member_provenance_is_reported_as_corruption(self) -> None:

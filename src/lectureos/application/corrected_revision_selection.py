@@ -221,6 +221,12 @@ class CorrectionCandidateAdmissionQuery(Protocol):
     def get_by_candidate(self, candidate_id): ...
 
 
+class SameSourceCompositionQuery(Protocol):
+    """The `PATCH-0050` composition relation, consulted when neither single-kind relation binds."""
+
+    def get_by_revision(self, revision_id: TranscriptRevisionId): ...
+
+
 class CorrectionCandidateDecisionQuery(Protocol):
     def get_current(self, candidate_id): ...
 
@@ -256,11 +262,26 @@ class _RevisionLineage:
     legacy timing singleton carry exactly one member, so their behaviour is unchanged. Agreement
     between a member's *current* Accepted Decision identity and the Decision that authorized the
     generation is deliberately **not** a condition (MG-34).
+
+    A same-source composition (`PATCH-0050`) binds **two roles of different kinds** — a text
+    candidate judged by the text decision store and a timing candidate judged by the timing one —
+    so the lineage carries each member with the decision query that owns its kind, never one store
+    for both (TX-32). Single-kind lineages are the degenerate case with one store throughout.
     """
 
     parent_raw_transcript_id: TranscriptId
-    candidate_ids: tuple
-    decisions: object  # the decision query owning this candidate kind
+    members: tuple  # ((candidate_id, decision query owning that candidate's kind), ...)
+
+    @property
+    def candidate_ids(self) -> tuple:
+        return tuple(candidate_id for candidate_id, _ in self.members)
+
+
+def _single_kind_lineage(parent_raw_transcript_id, candidate_ids, decisions) -> "_RevisionLineage":
+    return _RevisionLineage(
+        parent_raw_transcript_id=parent_raw_transcript_id,
+        members=tuple((candidate_id, decisions) for candidate_id in candidate_ids),
+    )
 
 
 class CorrectedRevisionSelectionService:
@@ -277,6 +298,7 @@ class CorrectedRevisionSelectionService:
         persistence: AtomicCorrectedRevisionSelectionPersistence | None = None,
         timing_generation_query: "TimingCorrectionGenerationQuery | None" = None,
         timing_decision_query: "TimingCorrectionDecisionQuery | None" = None,
+        composition_query: "SameSourceCompositionQuery | None" = None,
     ) -> None:
         self._intakes = intake_query
         self._generations = generation_query
@@ -289,6 +311,9 @@ class CorrectedRevisionSelectionService:
         # revision simply has no resolvable lineage, exactly as before this capability existed.
         self._timing_generations = timing_generation_query
         self._timing_decisions = timing_decision_query
+        # `PATCH-0050`: optional for the same reason; a composed revision has a resolvable lineage
+        # only when the composition relation is wired in.
+        self._compositions = composition_query
 
     # -- context resolution -------------------------------------------------------------------------
 
@@ -314,19 +339,22 @@ class CorrectedRevisionSelectionService:
                     "corrected revision lineage is incomplete: its candidate admission is missing"
                 )
             return (
-                _RevisionLineage(
-                    parent_raw_transcript_id=generation.parent_raw_transcript_id,
-                    candidate_ids=(generation.correction_candidate_id,),
-                    decisions=self._decisions,
+                _single_kind_lineage(
+                    generation.parent_raw_transcript_id,
+                    (generation.correction_candidate_id,),
+                    self._decisions,
                 ),
                 admission.transcript_source_intake_id,
             )
         timing = self._timing_lineage(revision_id)
-        if timing is None:
+        if timing is not None:
+            return timing
+        composition = self._composition_lineage(revision_id)
+        if composition is None:
             raise CorrectedRevisionSelectionError(
                 "unknown corrected revision: no generation binding exists for this identity"
             )
-        return timing
+        return composition
 
     def _timing_lineage(self, revision_id: TranscriptRevisionId):
         """The `PATCH-0047` sibling lineage, when this revision came from a timing correction."""
@@ -357,10 +385,52 @@ class CorrectedRevisionSelectionService:
                 "corrected revision lineage is incomplete: its generation carries no member"
             )
         return (
+            _single_kind_lineage(
+                generation.parent_raw_transcript_id,
+                generation.candidate_ids,
+                self._timing_decisions,
+            ),
+            intake_id,
+        )
+
+    def _composition_lineage(self, revision_id: TranscriptRevisionId):
+        """The `PATCH-0050` two-role lineage, when this revision came from a same-source composition.
+
+        The text role resolves its intake through the candidate's admission and its authority through
+        the text decision store; the timing role resolves its authority through the timing decision
+        store. Both roles must be currently Accepted for the revision to be applicable (TX-32).
+        """
+
+        if self._compositions is None or self._timing_decisions is None:
+            return None
+        generation = self._compositions.get_by_revision(revision_id)
+        if generation is None:
+            return None
+        admission = self._admissions.get_by_candidate(generation.text_correction_candidate_id)
+        if admission is None:
+            raise CorrectedRevisionSelectionError(
+                "corrected revision lineage is incomplete: its text candidate admission is missing"
+            )
+        intake_id = admission.transcript_source_intake_id
+        if self._timing_generations is not None:
+            timing_candidate = self._timing_generations.candidate(
+                generation.timing_correction_candidate_id
+            )
+            if timing_candidate is None:
+                raise CorrectedRevisionSelectionError(
+                    "corrected revision lineage is incomplete: its timing candidate is missing"
+                )
+            if timing_candidate.transcript_source_intake_id != intake_id:
+                raise CorrectedRevisionSelectionError(
+                    "corrected revision lineage is inconsistent: its roles span different intakes"
+                )
+        return (
             _RevisionLineage(
                 parent_raw_transcript_id=generation.parent_raw_transcript_id,
-                candidate_ids=generation.candidate_ids,
-                decisions=self._timing_decisions,
+                members=(
+                    (generation.text_correction_candidate_id, self._decisions),
+                    (generation.timing_correction_candidate_id, self._timing_decisions),
+                ),
             ),
             intake_id,
         )
@@ -370,17 +440,20 @@ class CorrectedRevisionSelectionService:
 
         generation = self._generations.get_by_revision(revision_id)
         if generation is not None:
-            return _RevisionLineage(
-                parent_raw_transcript_id=generation.parent_raw_transcript_id,
-                candidate_ids=(generation.correction_candidate_id,),
-                decisions=self._decisions,
+            return _single_kind_lineage(
+                generation.parent_raw_transcript_id,
+                (generation.correction_candidate_id,),
+                self._decisions,
             )
         timing = self._timing_lineage(revision_id)
-        if timing is None:
+        if timing is not None:
+            return timing[0]
+        composition = self._composition_lineage(revision_id)
+        if composition is None:
             raise CorrectedRevisionSelectionError(
                 "selected corrected revision has no generation binding (repository integrity failure)"
             )
-        return timing[0]
+        return composition[0]
 
     # -- applicability (shared derivation; never mutates history) ----------------------------------
 
@@ -394,8 +467,8 @@ class CorrectedRevisionSelectionService:
             )
         # Every member must be currently Accepted — one Rejected member makes the whole aggregate
         # inapplicable (MG-33). No Decision-identity agreement condition is added (MG-34).
-        for candidate_id in lineage.candidate_ids:
-            decision = lineage.decisions.get_current(candidate_id)
+        for candidate_id, decisions in lineage.members:
+            decision = decisions.get_current(candidate_id)
             if decision is None or decision.kind is not DecisionKind.ACCEPT:
                 return SelectionApplicability(applicable=False, reason="candidate_not_accepted")
         return SelectionApplicability(applicable=True)

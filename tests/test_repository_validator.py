@@ -9,7 +9,7 @@ from lectureos.application.identities import EditExportAssemblyId
 from lectureos.composition import compose_sqlite_edit_export_assembly_service
 from lectureos.edit_export_assembly_acceptance import _seed_representations
 from lectureos.execution.identities import DomainResultId, SourceTimelineId
-from lectureos.persistence import initialize_sqlite_database
+from lectureos.persistence import SQLITE_SCHEMA_VERSION, initialize_sqlite_database
 from lectureos.subtitle_intake_acceptance import TIMELINE_ID, _build_persisted_readiness
 from lectureos.validation import (
     RepositoryHealth,
@@ -75,7 +75,7 @@ class RepositoryValidatorTests(unittest.TestCase):
         self.assertTrue(report.ok)
         self.assertEqual(report.error_count, 0)
         self.assertEqual(report.warning_count, 0)
-        self.assertEqual(report.schema_version, 55)
+        self.assertEqual(report.schema_version, SQLITE_SCHEMA_VERSION)
         self.assertGreater(report.objects_checked, 0)
 
     def test_validator_does_not_mutate_the_database(self) -> None:

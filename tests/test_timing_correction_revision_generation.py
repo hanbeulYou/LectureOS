@@ -364,7 +364,12 @@ class TimingCorrectionRevisionGenerationTests(unittest.TestCase):
         return candidate
 
     def test_competing_corrections_are_never_composed(self) -> None:
-        """TC-18: each accepted correction yields its own revision; nothing merges them."""
+        """TC-18: the text-only and timing-only paths each yield their own revision and never merge.
+
+        `PATCH-0050` adds an *explicit* same-source composition as a separate generation kind; it
+        does not change this: neither single-kind path composes on its own, and no sibling pair is
+        ever composed automatically (Canonical Invariant 16).
+        """
 
         text = self._accepted_text_candidate()
         timing = self._accepted()

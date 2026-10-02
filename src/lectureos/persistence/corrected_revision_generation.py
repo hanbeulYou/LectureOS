@@ -108,7 +108,20 @@ class SQLiteCorrectedRevisionGenerationRepository:
             raise PersistenceError(
                 f"could not list Corrected Revision Generations: {error}"
             ) from error
-        return tuple(_restore(row) for row in rows)
+        # `PATCH-0050` TX-36: a text candidate's history also lists every same-source composition it
+        # was applied in, with both roles' provenance intact. Each generation appears once, and the
+        # combined list keeps the released stable ordering by generation identity.
+        from .same_source_composition_generation import SQLiteSameSourceCompositionRepository
+
+        compositions = SQLiteSameSourceCompositionRepository(
+            self._connection
+        ).generations_for_text_candidate(candidate_id)
+        return tuple(
+            sorted(
+                (*(_restore(row) for row in rows), *compositions),
+                key=lambda generation: generation.identity.value,
+            )
+        )
 
 
 class SQLiteCorrectedRevisionGenerationCommandPersistence:
@@ -140,6 +153,7 @@ class SQLiteCorrectedRevisionGenerationCommandPersistence:
                 or self._exists("corrected_revision_id", generation.corrected_revision_id.value)
                 or self._revision_exists(revision.identity)
                 or self._segment_exists(replacement_segment.identity)
+                or self._revision_owned_elsewhere(revision.identity)
             ):
                 raise PersistenceIdentityCollisionError(
                     "Corrected Revision Generation records already exist"
@@ -209,6 +223,36 @@ class SQLiteCorrectedRevisionGenerationCommandPersistence:
             ).fetchone()
             is not None
         )
+
+    def _revision_owned_elsewhere(self, identity: TranscriptRevisionId) -> bool:
+        """A revision has exactly one canonical generation owner across every generation kind.
+
+        The timing singleton, timing aggregate and same-source composition relations are consulted
+        when they exist (schema-gated), so the released text writer can never adopt a revision one of
+        them owns (`PATCH-0050` TX-21). On schemas predating those relations nothing changes.
+        """
+
+        for relation in (
+            "timing_correction_revision_generations",
+            "timing_correction_revision_aggregate_generations",
+            "same_source_composition_generations",
+        ):
+            if (
+                self._connection.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (relation,)
+                ).fetchone()
+                is None
+            ):
+                continue
+            if (
+                self._connection.execute(
+                    f"SELECT 1 FROM {relation} WHERE corrected_revision_id = ?",
+                    (identity.value,),
+                ).fetchone()
+                is not None
+            ):
+                return True
+        return False
 
     def _rollback(self, transaction_started: bool) -> None:
         if transaction_started and self._connection.in_transaction:

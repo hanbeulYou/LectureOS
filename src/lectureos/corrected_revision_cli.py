@@ -28,6 +28,9 @@ from typing import Sequence
 from lectureos.application.corrected_revision_generation import (
     CorrectedRevisionGenerationError,
 )
+from lectureos.application.same_source_composition_generation import (
+    SameSourceCompositionGeneration,
+)
 from lectureos.composition import (
     compose_sqlite_corrected_revision_generation_service,
 )
@@ -91,6 +94,15 @@ def _run_list(args) -> int:
         connection.close()
     print(f"corrected revision generations for candidate {args.candidate}: {len(generations)}")
     for generation in generations:
+        if isinstance(generation, SameSourceCompositionGeneration):
+            # A same-source composition (`PATCH-0050`): both roles are shown, never just this one.
+            print(
+                f"  {generation.corrected_revision_id.value}  composition "
+                f"text-authorized-by={generation.text_authorizing_decision_id.value} "
+                f"timing-candidate={generation.timing_correction_candidate_id.value} "
+                f"timing-authorized-by={generation.timing_authorizing_decision_id.value}"
+            )
+            continue
         print(
             f"  {generation.corrected_revision_id.value}  "
             f"authorized-by={generation.authorizing_decision_id.value}"

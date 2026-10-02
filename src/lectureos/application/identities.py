@@ -222,6 +222,13 @@ class TimingCorrectionRevisionGenerationId(OpaqueIdentity):
     pass
 
 
+# 040 §19 Same-Source Text + Timing Composition (`PATCH-0050`): the fourth generation kind, a distinct
+# type so a composition record can never stand in for a text or timing generation.
+@dataclass(frozen=True, slots=True)
+class SameSourceCompositionGenerationId(OpaqueIdentity):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class EffectiveTranscriptConsumptionId(OpaqueIdentity):
     pass
