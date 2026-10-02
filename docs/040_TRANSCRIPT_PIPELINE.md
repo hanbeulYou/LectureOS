@@ -1,8 +1,8 @@
 # 040_TRANSCRIPT_PIPELINE
 
 - Status: Draft
-- Version: Blueprint 0.7
-- Last Updated: 2026-09-23
+- Version: Blueprint 0.8
+- Last Updated: 2026-10-01
 - Layer: L1 — Pipeline
 - Depends On:
   - `000_MANIFESTO.md`
@@ -38,6 +38,7 @@
   - `../patches/PATCH-0047-human-transcript-timing-correction-boundary.md`
   - `../patches/PATCH-0048-timing-correction-composition-rationale-correction.md`
   - `../patches/PATCH-0049-multi-candidate-timing-correction-revision-generation.md`
+  - `../patches/PATCH-0050-same-source-text-timing-composition.md`
 
 ## Purpose
 
@@ -1600,12 +1601,34 @@ persist된 segment와의 정확한 일치를 요구한다. K-3의 text snapshot�
 >   revision을 병합할 수 없다. §20은 persist된 revision **하나**를 선택할 뿐 내용을 파생하지 않는다.
 > - **composition과 chaining은 계속 Deferred**이며 그 Product Decision의 gate는
 >   **`MORE_EVIDENCE_REQUIRED`**다(`implementation/140`). 실제 사례 1건이면 다시 열린다.
+>   (이 중 **동일 source segment의 text 1 + timing 1 explicit pair composition**은 이후 `PATCH-0050`으로
+>   해소되었다 — 아래 `PATCH-0050` note. chaining과 그 밖의 composition은 그대로 Deferred다.)
 > - **기존 record는 정상 immutable history다**(RC-7). `PATCH-0047` 아래 만들어진 교정·결정·sibling
 >   revision·Final Selection·SRT Artifact·Materialization은 유효하며 재해석·재파생·미완 표시·합성 대기로
 >   취급되지 않고 backfill되지 않는다. 한 segment에 sibling revision이 둘 존재하는 것은 **결함이 아니라
 >   올바른 상태**다.
 > - **동작·스키마·구현은 바뀌지 않는다**(RC-8). `SQLITE_SCHEMA_VERSION`은 **54**로 유지되고 relation·
 >   column·제약·migration은 어느 것도 변경되지 않는다.
+
+> **후속 결정 note (`PATCH-0050`):** 위 `PATCH-0048` note가 요구한 실제 사례가 확보되었다 — 한 사람이
+> **같은 Raw Transcript의 같은 source segment**에 대해 text 교정 후보와 timing 교정 후보를 각각 작성하고
+> 릴리스된 admission·§18 경로로 **Accept**했으며, 두 교정이 같은 발화를 가리키고 교정 text가 교정 구간
+> 안의 발화임을 확인했다(`PATCH-0050` Evidence; 평가용 사본에 기록). 그 evidence 위에서 RC-4가 부재라고
+> 지적한 canonical composition rule을 §19의 **Same-Source Text + Timing Composition** 소절(TX-1…TX-39)이
+> 정의한다.
+>
+> - **gate의 범위 한정 해소.** composition Product Decision의 gate는 **동일 original source에 대한
+>   Accepted text 후보 1개 + timing 후보 1개의 explicit pair composition**에 한해 해소되었다. 이 범위 밖 —
+>   text 전용 aggregation, 서로 다른 source의 text/timing 혼합 집합, 여러 pair의 batch, segment
+>   삭제/분할/병합, revision-on-revision chaining, same-role 경쟁의 자동 해소, 자동 후보 발견·ranking·조합
+>   선택, §20 또는 subtitle 단계의 merge, 자동 text/timing 교정 — 는 **그대로 Deferred**이며 각자의 gate를
+>   갖는다.
+> - **TC-18의 결론과 RC-1/RC-6의 금지는 그대로 선다.** §17은 여전히 어떤 교정도 합성하지 않는다. 합성은
+>   §19 generation의 **명시적 pair 요청**으로만 일어나며, 자동 합성·구현이 고른 순서·latest-wins·자동
+>   retarget·§20 merge는 어느 경로에서도 금지된다. 한 segment에 sibling revision 둘이 존재하는 상태는
+>   계속 올바른 상태이고, 기존 sibling pair는 자동으로 compose되거나 backfill되지 않는다(RC-7).
+> - **계약 승인과 runtime 지원은 다르다.** 이 note는 제품 계약의 상태를 말한다. 구현·additive
+>   persistence 확장·migration·E2E는 별도 milestone의 일이며, 이 note가 그것을 완료로 만들지 않는다.
 
 **Schema (Confirmed, TC-19):** 진화는 **strictly additive**이며 세 sibling relation(timing 후보, 그 결정,
 그 generation record)을 더한다. 기존 correction relation의 column·제약·의미는 유지되고 어느 것도
@@ -1625,7 +1648,8 @@ VAD·word timestamp·forced alignment·energy alignment·어떤 refinement 알�
 만들지 않는다.
 
 **Deferred (이후 milestone):** 자동 timing 제안·drift/anchor gap/readability 임계값·timing 편집 인터페이스·
-Modify·경쟁 교정 합성(TC-18)·릴리스 artifact 재생성 또는 무효화·발행/export 정책·refinement 메커니즘·
+Modify·경쟁 교정 합성(TC-18; 단, 동일 source의 text 1 + timing 1 explicit pair는 `PATCH-0050`이 §19에서
+열었고 그 밖의 합성은 Deferred)·릴리스 artifact 재생성 또는 무효화·발행/export 정책·refinement 메커니즘·
 timing 및 환각 진단 변경·readability 파라미터 변경. placeholder는 도입하지 않는다.
 
 **Canonical Invariants (Confirmed):** (1) timing 후보는 text 후보의 sibling이며 §17의 K-1…K-4 의미는
@@ -1634,11 +1658,13 @@ timing 및 환각 진단 변경·readability 파라미터 변경. placeholder는
 검사하고 acoustic 진실은 검사하지 않으며 어떤 임계값도 관여하지 않는다. (5) 인접 비겹침은 릴리스된
 `PATCH-0039` ε로 검사하고 새 tolerance를 만들지 않는다. (6) timing no-op은 거부되고 source timing
 snapshot이 staleness를 막는다. (7) §18의 accept/reject 의미는 그대로이며 rejection은 정상 결과이고 새
-상태가 없다. (8) 수락된 후보는 source text를 정확히 보존하고 제안 구간을 갖는 replacement segment를
-만든다. (9) corrected revision의 segment timing이 그 segment의 canonical 교정 timing이다. (10) identity는
-릴리스된 provenance 관용구를 따르고 새 hash 방식을 고정하지 않는다. (11) Raw Transcript는 불변이다.
-(12) 릴리스 artifact는 stale해지지 않고 자동 재선택·재생성되지 않는다. (13) 경쟁 교정 합성은 Deferred이며
-자동 합성과 구현이 고른 순서는 금지된다. (14) 스키마 진화는 strictly additive이고 backfill과 legacy
+상태가 없다. (8) 수락된 후보는 timing-only 적용에서 source text를 정확히 보존하고 제안 구간을 갖는
+replacement segment를 만든다(동일 source의 text+timing composition에서 text의 출처는 §19 `PATCH-0050`
+소절이 정한다). (9) corrected revision의 segment timing이 그 segment의 canonical 교정 timing이다.
+(10) identity는 릴리스된 provenance 관용구를 따르고 새 hash 방식을 고정하지 않는다. (11) Raw Transcript는
+불변이다. (12) 릴리스 artifact는 stale해지지 않고 자동 재선택·재생성되지 않는다. (13) 경쟁 교정 합성은
+§19 `PATCH-0050` 소절의 동일 source text 1 + timing 1 explicit pair를 제외하고 Deferred이며, 자동 합성과
+구현이 고른 순서는 어느 경로에서도 금지된다. (14) 스키마 진화는 strictly additive이고 backfill과 legacy
 추론이 없다. (15) provider refinement는 Deferred이고 메커니즘은 선택되지 않는다.
 
 > **후속 결정 note (`PATCH-0049`):** 위 TC-7의 개별 admission 검사는 **바뀌지 않는다.** 그것은 제안을
@@ -1755,6 +1781,9 @@ Revision Generation** binding record(v36)뿐이다.
 revision이 생기지 않으며(`Accepted ≠ Applied ≠ Current`) 생성은 **명시적으로 지명된 후보에 대해서만** 수행되는
 요청이다. text 교정은 정확히 **하나의** 후보를 지명한다(릴리스된 계약, 불변). timing 교정은 `PATCH-0049` 범위의
 **비어 있지 않은 명시적 집합**을 받으며, 단일 후보 입력은 singleton으로 해석되어 릴리스된 identity를 보존한다.
+세 번째 generation 종류인 **동일 source segment의 text + timing composition**(`PATCH-0050` 소절)은 text 후보
+**정확히 하나**와 timing 후보 **정확히 하나**를 **역할별로** 지명하는 explicit pair 요청이며, 이 세 경로는 서로를
+확장하지 않는다 — timing 집합은 text 후보를 받지 않고, text 경로와 timing 경로의 cardinality는 바뀌지 않는다.
 개수와 무관하게 apply-all/best/latest·암묵적 후보 발견·multiple-candidate merge·ranking·overlap 해소는 없다.
 
 **Eligibility (Confirmed, V-3):** 생성은 후보의 **현재** Human Authority(§18 파생)가 Accepted일 때만 허용된다.
@@ -1767,8 +1796,12 @@ source-text snapshot과 일치해야 한다. staleness는 application 수준 부
 
 **Deterministic Application (Confirmed, V-5):** 적용은 순수 결정적 변환이다: 후보 소유 segment의 text만 후보의
 proposed text로 **정확히** 대체하고(정규화·trim·구두점 재작성 없음) timing·순서·timeline 연결·speaker 메타데이터를
-보존하며 비변경 segment는 모두 그대로 참조한다. text 교정만 지원한다 — timing 교정·segment 삭제/분할/병합은 없다
-(admit된 모든 후보 kind는 단일 segment text 대체이며 빈 대체는 §17이 이미 거부).
+보존하며 비변경 segment는 모두 그대로 참조한다. 이 보존 규칙은 **text single-candidate 적용**에 대한 것이다 — 그
+경로는 text 교정만 지원하고 timing 교정·segment 삭제/분할/병합은 없다(admit된 모든 후보 kind는 단일 segment text
+대체이며 빈 대체는 §17이 이미 거부). timing 교정의 적용은 아래 `PATCH-0047` note(TC-12)와 `PATCH-0049` 소절이,
+동일 source의 text + timing composition은 `PATCH-0050` 소절이 정한다: composition에서 replacement의 text는 text 후보의
+승인값, 구간은 timing 후보의 승인값이며, V-5의 나머지 보존 규칙(순서·timeline 연결·speaker 메타데이터·비변경 segment
+참조)은 그대로 적용된다. segment 삭제/분할/병합은 어느 경로에도 없다.
 
 **Provenance Separation (Confirmed, V-6):** 교정 text의 출처는 후보/결정 lineage(human)이고 provider provenance는
 source segment에 남는다. 어느 쪽도 덮어쓰지 않으며 교정 segment에 provider confidence를 날조하지 않는다. canonical
@@ -1808,13 +1841,18 @@ membership + candidate 참조 + domain result + generation binding — 전부 �
 **Deferred (이후 milestone, V-14):** Current Corrected Revision Selection(GOAL-011)·multiple-candidate 적용/merge/
 구성·overlap 해소·revision-on-revision chaining·후보 ranking·자동 correction·LLM/문법/구두점 엔진·언어적 validation·
 mutable 편집·segment 삭제/분할/병합·timing 교정·subtitle 재생성·export 변경. placeholder는 도입하지 않는다.
+이 목록 중 이후 해제된 것은 다음뿐이다: Current Corrected Revision Selection(§20), timing 교정(`PATCH-0047`), timing
+전용·서로 다른 source의 multiple-candidate 적용(`PATCH-0049`), **동일 source의 text 1 + timing 1 explicit pair
+composition**(`PATCH-0050`). merge·그 밖의 구성·overlap 해소·ranking·chaining·삭제/분할/병합은 그대로 Deferred다.
 
 **Canonical Invariants (Confirmed):** (1) canonical CorrectedTranscriptRevision을 재사용하며 두 번째 표현이 없다.
 (2) 생성은 명시적이고 수락만으로 revision이 생기지 않는다. (3) revision에는 명시적으로 지명된 후보만 적용된다 —
-text는 정확히 하나, timing은 `PATCH-0049`가 정의하는 명시적 집합이며 N=1은 singleton이다. (4) 현재
+text는 정확히 하나, timing은 `PATCH-0049`가 정의하는 명시적 집합이며 N=1은 singleton이고, 동일 source
+composition은 `PATCH-0050`이 정의하는 text 1 + timing 1 explicit pair다. (4) 현재
 Accepted authority가 필수다(Undecided/Rejected 부적격). (5) 후보 lineage에 대한 구조적 적용 가능성이 필수이며
 staleness는 손상이 아니다. (6) 적용은 결정적이고 정확하며 비변경 내용·timing을 보존한다. (7) identity는
-anchor(candidate, authorizing decision)에서 결정적으로 파생된다. (8) revision은 특정 authorizing Accepted Decision을
+anchor(candidate, authorizing decision)에서 결정적으로 파생된다 — 집합은 canonical member authority set,
+composition은 역할 태그 anchor로 같은 원칙을 따른다. (8) revision은 특정 authorizing Accepted Decision을
 참조한다. (9) 동일 anchor 재요청은 재사용하고 다른 content는 conflict다. (10) 이후 Reject는 historical revision을
 무효화하지 않는다. (11) revision들은 공존하며 current 선택은 존재하지 않는다. (12) 생성은 atomic이고 상위 record를
 변경하지 않는다. (13) revision은 물리 파일이 아니다. (14) deferred 개념의 placeholder는 없다.
@@ -1842,7 +1880,27 @@ anchor(candidate, authorizing decision)에서 결정적으로 파생된다. (8) 
 >   보존된다.
 > - **V-14의 deferred 중 un-defer되는 것은 "multiple-candidate 적용" 하나뿐이며, 그것도 timing 전용·
 >   서로 다른 source segment에 한정된다**(normative extension, narrow). merge·구성·overlap 해소·
->   ranking·revision-on-revision chaining은 **그대로 Deferred**다.
+>   ranking·revision-on-revision chaining은 **그대로 Deferred**다. (동일 source의 text 1 + timing 1
+>   composition은 이후 `PATCH-0050`이 별도 소절로 열었다 — 이 timing 집합의 범위는 바뀌지 않는다.)
+
+> **후속 결정 note (`PATCH-0050`):** 위 V-1…V-14와 `PATCH-0049` note는 그대로 유효하다. 아래의
+> **Same-Source Text + Timing Composition** 소절이 여는 것은 **같은 source segment에 대한 text 후보 1개 +
+> timing 후보 1개의 explicit pair**뿐이며, text 경로와 timing 경로의 어느 규칙도 바꾸지 않는다.
+>
+> - **V-7/V-8**: composition의 anchor는 base Raw Transcript·original source segment·text 역할의
+>   (후보, authorizing Decision)·timing 역할의 (후보, authorizing Decision)로 **역할이 구분**되어 있고,
+>   generation·revision·composed replacement identity는 그 anchor에서 릴리스된 관용구로 파생된다.
+>   composed replacement는 기존 text-only/timing-only replacement와 **별개의 새 entity**이며, uniqueness는
+>   완전한 anchor에 대해 성립한다. entity identity와 content identity의 구분, content fingerprint recipe,
+>   legacy identity recipe는 바뀌지 않는다(normative extension).
+> - **V-9/V-10/V-11**: guard가 identity 파생과 기존 결과 조회보다 **먼저** 수행된다. 재사용과 충돌은 아래
+>   소절의 **두 역할 complete-result integrity**(anchor·역할별 provenance·source→replacement 대응·
+>   replacement payload와 lineage·ordered membership과 content)로 판정하며, content fingerprint 일치는
+>   그 조건을 대체하지 않고, collision 이후 경로에도 같은 기준이 적용된다. V-11의 조회 가능성은 generation
+>   명령을 guard에서 면제하지 않는다(clarification).
+> - **V-13**: atomicity는 이번 요청이 새로 만드는 결과 전체에 적용되며 text만 또는 timing만 적용한 부분
+>   결과는 없다. 실패 시 기존 후보·Decision·sibling revision·공유 replacement·다른 generation·선택은
+>   보존된다(clarification).
 
 ### Multi-Candidate Timing Correction Revision Generation (`PATCH-0049`)
 
@@ -1982,7 +2040,8 @@ subtitle merge/split·time representation·serialization 계약은 보존되며,
 1:1 대응이나 cue 개수로 표현하지 않는다.
 
 **Deferred (이후 milestone):** text 전용 multi-candidate aggregation·text/timing 혼합 집합·같은 source
-segment의 text+timing composition(`PATCH-0048` gate 유지)·revision-on-revision chaining·§20 또는 subtitle
+segment의 text+timing composition(동일 source의 text 1 + timing 1 explicit pair에 한해 `PATCH-0050`이 별도
+소절로 열었으며, 이 timing 집합은 timing 전용으로 유지된다)·revision-on-revision chaining·§20 또는 subtitle
 단계의 revision merge·same-source conflict 자동 해소·batch approval entity·자동 timing 교정·drift/anchor
 gap/readability 임계값·provider timing refinement. placeholder는 도입하지 않는다.
 
@@ -2017,6 +2076,9 @@ authorizing 참조를 재작성하지 않는다. (15) 릴리스된 text single-c
 >   **source segment의 text를 정확히** 싣고(A-11의 보존 요구, 재해석·정규화·trim 없음), 수락된 제안
 >   구간을 자신의 `start`/`end`로 가지며, `replaces_segment_id`가 자신의 source를 가리킨다. 새 revision
 >   aggregate도 새 revision 종류도 없다 — `CorrectedTranscriptRevision`을 릴리스된 그대로 사용한다.
+>   (source text 보존은 **timing-only** replacement에 대한 규칙이다. 동일 source의 text + timing
+>   composition(`PATCH-0050` 소절)의 replacement는 text를 text 후보의 승인값에서 취하며, 수락된 구간을
+>   `start`/`end`로 갖는 규칙과 `replaces_segment_id` 규칙은 그대로 적용된다.)
 > - sibling generation relation이 필요한 이유는 TC-10과 같은 foreign key 이유이며, candidate → decision →
 >   replaced segment → replacement segment → revision의 provenance 사슬을 보존한다.
 > - **identity는 릴리스된 provenance 관용구를 따르고 새 hash 방식을 계약하지 않는다**(TC-15).
@@ -2025,6 +2087,179 @@ authorizing 참조를 재작성하지 않는다. (15) 릴리스된 text single-c
 >   `replaced_segment_id <> replacement_segment_id` invariant가 특별 처리 없이 성립한다. 한 source
 >   segment에 대한 서로 다른 두 timing 제안은 두 후보이므로 두 identity다 — Blueprint는 그 **요구**를
 >   고정하고 파생은 릴리스된 관용구에 맡긴다.
+
+### Same-Source Text + Timing Composition (`PATCH-0050`)
+
+이 소절은 `PATCH-0050`으로 승인된 Architect/Product 결정(TX-1…TX-39)을 기록한다. 위 §19 generation의
+**세 번째 종류**이며, 릴리스된 text single-candidate 경로와 `PATCH-0047`/`PATCH-0049`의 timing 경로를 어느
+것도 바꾸지 않는다. 새 Human Authority·새 Decision kind·조합 approval entity·requester provenance·chaining·
+§20 merge·historical exact-replay·새 tolerance는 도입하지 않는다. 필요한 것은 strictly additive persistence
+확장이며 구현 시점에 설계된다.
+
+**Scope (Confirmed, TX-1…TX-4):** 하나의 **explicit pair 요청**이 **같은 Raw Transcript의 같은 original source
+segment**를 대상으로 하는 text 교정 후보 **정확히 하나**와 timing 교정 후보 **정확히 하나**를 지명하고, 두
+승인값을 **하나의 composed replacement segment**로 적용해 **하나의** complete immutable Corrected Revision을
+만든다. cardinality는 고정이다 — 역할 누락, 같은 역할의 후보 둘, 역할과 kind 불일치, 서로 다른 source를
+가리키는 후보는 거부된다. **역할은 호출자가 명시**하며 identity prefix·문자열 순서·내용에서 추측하지 않는다.
+지명되지 않은 같은 source의 경쟁 후보는 자동 포함·자동 선택되지 않고, 저장소에 경쟁자가 있다는 사실이 명시된
+pair를 막지 않으며, 한 후보를 지명하는 행위가 다른 후보의 Decision을 바꾸지 않는다(MG-14/MG-15 준용).
+segment 삭제·분할·병합, chaining, 서로 다른 source의 혼합 집합, 여러 pair의 batch, text 전용 aggregation은
+Deferred로 남는다. 비어 있지 않은 text 안의 표기·조사 수정은 text 교정이고, segment 제거는 교정이 아니다.
+
+**Explicit Pair Request and Human Authority (Confirmed, TX-5…TX-9):** 생성을 authorize하는 것은 **두 후보
+각각의 현재 Accepted authority**(§18 파생)와 **명시적 pair 요청**이다. 새 Decision kind·조합 approval
+record·pair 수준 확인 entity·requester provenance는 없다 — V-2의 "수락은 권한 부여이고 생성은 적용이다"를
+pair cardinality에 적용한 것이며, `PATCH-0049` MG-11이 집합에 적용한 것과 같다. **explicit pair 요청의
+의미**는 "이 두 교정을 공통 original source에 **함께** 적용하라"는 사람의 명시적 적용 요청이다: 정확한 text
+후보와 timing 후보를 identity로 지명할 뿐, 두 Accept가 하지 않은 주장을 더하지 않고, 호출자 대신 pair를
+고르지 않으며, §18 Human Decision으로 기록되지 않는다. 각 역할의 authorizing Decision은 **요청 시점의 current
+Accepted Decision에서 파생**되고, 호출자가 과거 Decision을 지정해 현재 Reject를 우회하는 입력은 없다. **두
+Accept로 충분한 이유**: 두 후보는 같은 canonical segment에 anchor되고(K-1, TC-6) segment가 의미의 단위이므로,
+text Accept는 "이 segment의 text는 X다"를, timing Accept는 "이 segment의 발화는 [s, e]에 있다"를 각각
+승인한다. composed 내용은 두 payload로 완전히 결정되며 composition은 어떤 값도 발명하지 않고 세 번째 주장을
+만들지 않는다. segment의 발화 밖 음성을 전사한 text 후보는 text-only 경로에서도 이미 결함 있는 후보이며, 그것을
+Accept한 것은 개별 authority의 오류이지 composition 고유의 위험이 아니다. pair를 다시 결정하게 하는 것은 §18이
+이미 결정한 것을 재결정하는 일이다. **맥락은 guard가 아니다**: 두 교정을 같은 검토자가, 같은 청취에서, 같은
+시점에 판단했는지는 evidence의 맥락일 뿐 계약 조건이 아니며, same-reviewer·same-session·same-time 검사는
+추가되지 않는다.
+
+**Applicability and Field Ownership (Confirmed, TX-10…TX-13):** 두 후보는 같은 intake에 속하고 같은 Raw
+Transcript의 같은 canonical source segment를 대상으로 해야 하며, 그 Raw Transcript는 intake의 **current Raw
+선택**이어야 한다(V-4, MG-1). text 후보의 source-text snapshot은 stored segment text와 **정확히**(K-3, V-4),
+timing 후보의 source-interval snapshot은 stored interval과 릴리스된 ε 아래에서(TC-9) 일치해야 하고, 두 현재
+authority가 모두 Accepted여야 한다. 각 후보는 **자신이 실제로 가진 snapshot**으로 검사한다 — cross-kind
+snapshot을 요구·발명·backfill하지 않는다. **부분집합 규칙은 없다**: 교정 구간이 원본 구간 안에 들어야 한다는
+제약은 두지 않으며, 릴리스된 TC-6(finite, `start >= 0`, `end > start`)과 TC-7(**원본** Raw 이웃과 비겹침,
+릴리스된 ε 안의 맞닿음 허용)이 그대로 지배한다. **composed replacement의 필드 소유**: `text`는 text 후보의
+승인된 `proposed_text` 그대로, `start`/`end`는 timing 후보의 승인된 제안 구간 그대로,
+`transcript_id`·`source_timeline_id`·`source_order`·`speaker_label`은 두 릴리스 경로와 같이 original source
+segment에서 가져오며, `replaces_segment_id`는 original source다. `confidence`·`uncertainty`는 두 릴리스
+경로와 같이 **싣지 않고 날조하지 않는다**(V-6). 어떤 값도 text-only 또는 timing-only replacement에서 상속하지
+않으며 두 역할 사이에 실행 순서는 없다. 어느 후보의 source snapshot도 다른 쪽 교정값으로 rewrite되지 않고, 어느
+후보도 replacement로 retarget되지 않으며, Raw Transcript·두 후보·두 Decision은 생성으로 변경되지 않는다.
+
+**Identity (Confirmed, TX-14…TX-17):** composition anchor는 **역할이 명시된** 네 요소 — base Raw Transcript,
+original source segment, text 역할의 (후보, authorizing Decision), timing 역할의 (후보, authorizing Decision) —
+이며, 호출자가 두 후보를 나열한 순서·벽시계·교정값·DB 반환 순서에 의존하지 않는다. composition generation·
+revision·composed replacement의 identity는 이 anchor에서 릴리스된 V-7 관용구로 결정적으로 파생된다. 기존
+text-only/timing-only replacement identity는 **재사용하지 않는다** — composed replacement는 **새 entity**이고
+기존 replacement의 payload는 바뀌지 않는다. content fingerprint recipe와 모든 legacy identity recipe는
+불변이다. **authority 조합이 entity를 구분한다**: text와 구간이 같아도 authorizing Decision 조합이 다르면 다른
+entity이며(V-8, MG-23) content로 병합되지 않는다. 후보 하나를 공유하되 다른 역할이나 어느 쪽 Decision이 다른
+두 pair는 서로 다른 composed replacement를 만든다 — composed replacement는 payload가 두 역할에 의존하므로
+timing member의 replacement가 aggregate 간에 공유되는 방식(MG-24)으로 공유되지 않는다. **uniqueness의 의미**:
+uniqueness는 **완전한 anchor**(두 후보와 두 authorizing Decision)에 대해 성립하며 후보 pair만에 대해서가
+아니므로, 어느 후보의 Reject 후 재Accept는 새 anchor가 되어 새 결과를 만들 수 있다(MG-30). 하나의 revision은
+정확히 하나의 composition generation을 갖는다.
+
+**Provenance and Canonical Ownership (Confirmed, TX-18…TX-22):** composition generation이 **두 역할의 적용
+provenance를 소유**한다 — base Raw Transcript, original source segment, text 후보와 그 historical authorizing
+Decision, timing 후보와 그 historical authorizing Decision, composed replacement, canonical content
+fingerprint. 후보의 source snapshot은 후보 record를 통해 추적하며 두 번째 canonical owner로 복제하지 않는다.
+revision의 `correction_candidate_ids`는 **릴리스된 text 전용 의미를 유지**하여 적용된 text 후보 하나를 담는다 —
+그것은 composition의 authority provenance가 아니고, timing identity를 결코 담지 않으며, timing 역할의
+provenance는 composition generation에만 있다. revision의 **순서 있는 segment membership**(비변경 source
+segment를 identity로, composed replacement를 source의 위치에)과 generation의 **두 역할 provenance**는 서로
+다른 관계로 기록·검증된다(`docs/030` §6.2의 방향). **cardinality와 단일 ownership**: 하나의 revision은 text
+single-candidate·timing single-candidate·timing aggregate·same-source composition **네 종류 전체에 걸쳐**
+정확히 하나의 canonical generation owner를 갖는다. 하나의 composition은 text 역할 정확히 하나와 timing 역할
+정확히 하나를 가지며 둘 다 같은 original source와 같은 composed replacement에 묶인다. ownership 충돌은 어디서
+나타나든 integrity 결함이다. 릴리스된 timing member relation은 text identity를 담도록 넓혀지지 않고, composition을
+한 source의 두 timing member로 위장하지 않는다 — composition provenance는 additive persistence 확장이 담는다.
+
+**Validation and Atomicity (Confirmed, TX-23…TX-26):** 다섯 책임을 구분한다 — (1) 개별 admission(후보가
+존재할 때 이미 완료), (2) 현재 applicability, (3) authorization, (4) composed segment의 구조 유효성(finite,
+양수 duration, 원본 이웃과 릴리스된 ε 아래 비겹침), (5) complete 결과 snapshot의 구조 유효성(모든 segment에
+대한 순서·양수 duration·비겹침, MG-18 어휘). 새 tolerance·임계값은 없으며, 승인값을 clamp·trim·평균·재전사하여
+통과시키지 않는다. 요청은 두 authorizing Decision identity, 두 Accepted 상태, current Raw 선택, 두 source
+snapshot을 **하나의 snapshot**으로 고정하고(MG-12), persist 전에 write transaction 안에서 전부 재검증한다
+(MG-13). 어느 하나라도 바뀌면 전체 stale failure이며 다른 Decision으로 조용히 재결합·rebase·retarget하지
+않는다. **all-or-nothing**은 이번 요청이 새로 만드는 결과 — anchor, composed replacement, revision, ordered
+membership, candidate 참조, domain result, composition generation record — 에 적용되며, text만 또는 timing만
+적용한 부분 결과는 결코 성공으로 반환되지 않는다. 실패 시 기존 후보·Decision·sibling revision·공유
+replacement·다른 generation·선택은 보존된다(MG-19/MG-20). 거부는 다섯 책임 중 무엇이 어느 역할에서 실패했는지
+명시한다.
+
+**Replay and Complete-Result Integrity (Confirmed, TX-27…TX-30):** operation은 정확히 셋이다 — (A) 과거
+immutable composition의 identity 조회(현재 generation·selection authority를 부여하지 않음), (B) 현재 authority
+기준의 generation 요청(applicability·authorization guard를 **먼저** 통과해야 하며, 어느 후보라도 현재 Rejected
+또는 Undecided면 **과거 결과의 존재와 무관하게** 거부), (C) 유효한 동일 anchor의 중복·동시 요청(하나의 결과로
+수렴). historical exact-replay operation·idempotency token·과거 Decision 입력은 도입하지 않는다(MG-26…MG-31).
+**재사용 기준**: 저장된 결과는 persist 전 조회와 collision 이후 재조회 **모두에서** 다음을 **전부** 충족할 때만
+REUSED다 — (1) 저장된 anchor와 base가 이번 요청에서 파생한 anchor와 같다; (2) 두 역할의 complete authority
+provenance가 일치한다 — 기대한 text 후보와 그 authorizing Decision, 기대한 timing 후보와 그 authorizing
+Decision이 있고, 누락·추가·역할 간 교환·다른 후보에의 결합이 없다; (3) source→composed replacement 대응이
+일치하고 replacement의 complete canonical payload(text, 구간, 승계 필드, lineage)가 기대와 같다; (4) revision의
+ordered membership이 일치한다 — 비변경 source가 릴리스된 순서로, composed replacement가 source의 위치에 있다;
+(5) 릴리스된 canonical content·lineage 검증을 통과한다(MG-29의 두 역할 확장). **fingerprint는 대체하지
+않는다**: content fingerprint 일치는 조건 (1)~(4)를 면제하지 않는다 — 릴리스된 fingerprint는 설계상 entity
+identity를 제외하므로 교환된 역할, 잘못된 Decision, 잘못 배치된 replacement를 보지 못한다. 불일치는 integrity
+failure이며, 저장된 결과를 overwrite·repair·재연결·backfill하여 재사용을 성사시키지 않고, collision 경로는 결코
+persist 전 경로보다 약한 검사를 쓰지 않는다. **재Accept는 새 anchor다**: 어느 후보의 Reject 뒤 Accept가 있으면
+새 generation 요청은 새 current Decision들에서 파생한 anchor를 쓰며 과거 anchor의 replay가 아니고, 새 anchor의
+결과가 이미 있으면 위 재사용 기준이 적용된다.
+
+**Selection and Lifecycle (Confirmed, TX-31…TX-35):** §20은 여전히 revision **하나**를 선택한다. composed
+revision은 선택 가능한 revision이 하나 더 생긴 것이며, 선택은 text-only와 timing-only sibling을 병합하지 않고
+내용을 파생하지 않는다(MG-32, RC-6). composed revision은 ① parent Raw Transcript가 intake의 current Raw
+선택이고 ② text 후보**와** timing 후보의 현재 §18 authority가 **모두** Accepted일 때 applicable하다(MG-33의
+두 역할 확장). 현재 Accepted Decision identity와 generation 당시 authorizing Decision identity의 일치는 조건이
+**아니며**(MG-34) 어떤 릴리스 경로에도 더 강한 조건을 소급 적용하지 않는다. **어느 역할의 Reject**: 과거
+composed revision과 authorizing 참조는 불변으로 조회 가능하고, 같은 후보들로의 새 generation은 거부되며, 새
+selection은 거부되고, 기존 persist된 selection record는 삭제·변경되지 않으며, 릴리스된 effective resolution과
+소비 경계가 inapplicability를 보고하고, 조용한 raw fallback·자동 재선택·나머지 역할만의 조용한 적용은 없다.
+기존 subtitle/SRT artifact는 손대지 않는다. **재Accept**: 다른 applicability 조건이 성립하면 과거 composed
+revision은 다시 applicable해질 수 있고 그 authorizing 참조는 새 Decision으로 재작성되지 않으며, 새 generation
+요청은 새 anchor를 쓴다. **current Raw 변경**: 릴리스된 parent-not-current 의미가 그대로 적용된다 — revision은
+history로 남고 parent가 current가 아닌 동안 새 선택과 effective 소비에 inapplicable하다.
+
+**History (Confirmed, TX-36…TX-37):** text 후보의 history와 timing 후보의 history는 각각 그 후보가 참여한
+composition generation을 기존 singleton·aggregate 항목과 함께 포함한다. generation은 후보당 한 번 반환되고,
+한 역할에서 조회해도 다른 역할의 provenance를 자르지 않는다. 현재 Reject·current Raw 변경·inapplicable
+상태는 historical composition을 숨기지 않으며, history는 repair·backfill을 하지 않는다. 새 UI나 일반 검색
+기능을 뜻하지 않는다.
+
+**Downstream and Quality Limit (Confirmed, TX-38…TX-39):** generation은 revision에서 멈춘다 — selection을
+하지 않고 subtitle/SRT 단계를 실행하지 않으며 artifact를 재작성하지 않는다. 명시적 §20 선택 이후 릴리스된
+downstream이 그 complete revision을 다른 revision과 똑같이 소비하며, subtitle pipeline이 후보를 재수집하거나
+composition을 대신 수행하지 않는다. §21과 `041`은 바뀌지 않는다(MG-38). **품질 한계**: runtime은 identity·
+authority·snapshot·구조 유효성을 검증한다. 승인된 text가 실제로 말한 것인지, 승인된 구간이 실제로 말한
+위치인지는 **검증하지 않으며 검증할 수 없다** — 그 대응은 두 개별 Accept와 그 뒤의 검토가 정확한 만큼만
+정확하다. 모델 B를 택한 이유는 composition이 두 Accept 너머의 주장을 더하지 않기 때문이지, 의미적 위험이
+없기 때문이 아니다. 추가적인 사람 검토 — 예컨대 text 후보를 작성할 때 그 segment의 timing 후보를 보여 주고 그
+반대도 하는 review 도구 — 는 통상의 가치를 유지하며 도구에 추가될 수 있으나, 여기서 canonical authority record로
+만들지는 않는다. 실사례 한 건은 필요성과 형태를 확립할 뿐 모든 종류의 text 교정의 composability를 확립하지
+않으며, 이 소절은 위 Scope 너머로 일반화하지 않는다.
+
+**Deferred (이후 milestone):** text 전용 multi-candidate aggregation·**서로 다른** source segment에 걸친
+text/timing 혼합 집합·여러 composition pair의 batch·segment 삭제/분할/병합·revision-on-revision chaining·자동
+후보 발견·pair 선택·conflict 해소·§20 또는 subtitle 단계의 merge·자동 text/timing 교정·새 임계값이나 tolerance·
+provider timing refinement. 릴리스된 timing `generate_set`은 timing 전용으로 남으며 text identity를 받는 것으로
+재해석되지 않는다. placeholder는 도입하지 않는다.
+
+**Canonical Invariants (Confirmed):** (1) same-source composition은 intake의 current Raw Transcript의 original
+source segment 정확히 하나에 Accepted text 후보 정확히 하나와 Accepted timing 후보 정확히 하나를 적용한다.
+(2) authorization은 두 후보의 현재 Accepted authority와 explicit pair 요청이며, 조합 approval entity·Decision
+kind·requester provenance는 없다. (3) 역할은 명시적이고 순서·prefix·내용에서 추측하지 않으며, 누락·중복·불일치
+역할은 거부된다. (4) composed replacement는 text가 text 후보의 승인값이고 구간이 timing 후보의 승인값인 새
+entity이며, 승계 필드는 릴리스된 source 보존 규칙을 따르고 confidence·uncertainty는 날조되지 않는다.
+(5) identity는 역할 태그 anchor(base, source, text 후보 + Decision, timing 후보 + Decision)에서 파생되고,
+uniqueness는 그 완전한 anchor에 대해 성립하며, authority 조합이 다르면 내용이 같아도 다른 entity다.
+(6) composition generation이 두 역할의 적용 provenance의 단일 canonical owner이며, 하나의 revision은 네 종류
+전체에 걸쳐 하나의 generation owner를 갖는다. (7) revision의 `correction_candidate_ids`는 릴리스된 text 전용
+의미를 유지하고 timing identity를 담지 않는다. (8) applicability는 각 후보 자신의 snapshot을 쓰고, cross-kind
+snapshot은 요구·backfill되지 않으며, 교정 구간은 원본의 부분집합일 필요가 없고, 릴리스된 TC-6/TC-7/ε가
+지배한다. (9) generation은 새로 만드는 것에 대해 all-or-nothing이고, 단일 역할의 부분 성공이 없으며, 기존
+record는 실패를 견딘다. (10) 재사용과 collision 이후 읽기는 같은 complete-result integrity 기준을 적용하고,
+fingerprint 일치는 provenance·mapping·membership 검사를 면제하지 않으며, 불일치는 repair되지 않는 integrity
+failure다. (11) operation은 조회, 현재 authority 기준 generation, 유효한 중복 요청의 수렴뿐이며 historical
+exact-replay는 없다. (12) §20은 revision 하나를 선택하고, composed revision은 parent Raw가 current이고 두
+역할의 현재 authority가 Accepted일 때 applicable하며, Decision-identity 일치는 조건이 아니다. (13) Reject는
+history와 기존 선택을 보존하고 새 generation·selection을 거부하며, 조용한 fallback·재선택·단일 역할 적용을
+일으키지 않고, 재Accept는 authorizing 참조를 재작성하지 않는다. (14) 두 후보 kind의 history는 composition
+참여를 완전하게 read-only로 노출한다. (15) generation은 selection·subtitle·SRT 작업을 하지 않으며 §21과
+`041`은 불변이다. (16) text single-candidate·timing single-candidate·timing aggregate 경로와 그 identity·
+verified reuse·record·history는 불변이고, 기존 sibling pair는 자동 compose·backfill되지 않는다.
 
 ## 20. Current Corrected Revision Selection and Effective Transcript Resolution (First Slice)
 
@@ -2089,7 +2324,9 @@ Revision A 엔티티는 rejected/superseded/inactive로 표시되지 않으며 �
 
 **Deferred (이후 milestone, S2-14):** downstream 통합(validation/subtitle/review/export의 resolver 전환)·revision
 생성/ranking/추천·자동 선택/fallback·multi-candidate revision·revision chaining·mutable annotation·workflow/발행/승인
-status·review UI. placeholder는 도입하지 않는다.
+status·review UI. placeholder는 도입하지 않는다. 이 중 multi-candidate revision은 timing aggregate(`PATCH-0049`)와
+동일 source의 text 1 + timing 1 composition revision(`PATCH-0050`)에 한해 선택 대상으로 해제되었으며, chaining·
+§20 또는 subtitle 단계의 merge·복수 revision 동시 선택은 그대로 Deferred다.
 
 **Canonical Invariants (Confirmed):** (1) Revision 존재 ≠ 선택 ≠ 적용 가능성 ≠ effective 해석. (2) currentness는
 명시적이며 자동 promotion이 없다. (3) Raw fallback은 명시적 authority이고 가짜 revision이 아니며 history 부재와
@@ -2133,6 +2370,31 @@ revision·sequence)이다. (6) 동일 대상 재요청은 reused, 다른 대상�
 >   current Decision의 anchor를 사용한다.
 > - **S2-14의 deferred 중 un-defer되는 것은 이번 timing aggregate뿐이다**(normative extension, narrow).
 >   revision chaining·§20 또는 subtitle 단계의 merge·복수 revision 동시 선택은 그대로 Deferred다.
+
+> **후속 결정 note (`PATCH-0050`):** **선택 행위는 바뀌지 않는다** — §20은 여전히 revision **하나**를
+> 명시적으로 선택하며 merge layer가 되지 않는다. 더해지는 것은 §19 `PATCH-0050` 소절의 **same-source
+> text + timing composition revision**이 선택 대상이 된다는 것과, 그 **lineage**의 해석이다(normative
+> extension of lineage only).
+>
+> - **lineage**: composed revision의 generation binding은 text relation·timing relation과 별개인
+>   composition generation을 통해 해석된다. 그 applicability 사실 — parent Raw Transcript, 그리고 text
+>   역할과 timing 역할 **두** 후보의 현재 §18 authority — 는 그 generation의 두 역할 provenance에서
+>   파생되며, 릴리스된 S2-8/S2-9 규칙이 그대로 적용된다.
+> - **S2-8 write-time eligibility / S2-9 applicability**: composed revision은 ① parent Raw Transcript가
+>   관련 intake의 current Raw 선택이고 ② text 후보**와** timing 후보의 현재 §18 authority가 **모두**
+>   Accepted일 때 적용 가능하다. 현재 Accepted Decision identity와 generation 당시 authorizing Decision
+>   identity의 일치는 `PATCH-0049` note와 같은 이유로 조건으로 추가하지 않는다.
+> - **어느 역할의 후보가 이후 Reject되면**: revision과 두 역할의 authorizing provenance는 보존되고, persist된
+>   선택 record는 자동으로 삭제·변경되지 않으며, 릴리스된 effective resolution과 소비 경계가 inapplicability를
+>   처리한다. 조용한 raw fallback·자동 재선택·나머지 역할만의 조용한 적용은 없다. 기존 subtitle/SRT
+>   artifact는 손대지 않는다.
+> - **이후 재Accept되면**: 다른 적용 조건도 충족될 때 과거 composed revision이 다시 applicable해질 수 있다.
+>   과거 authorizing Decision 참조는 **새 Decision으로 재작성하지 않는다.** 신규 generation 요청은 새
+>   current Decision 조합의 anchor를 사용한다.
+> - **current Raw 선택이 바뀌면**: 릴리스된 parent-not-current 의미가 그대로 적용된다.
+> - **S2-14의 deferred 중 이번에 해제되는 것은 same-source composition revision의 선택뿐이다**(normative
+>   extension, narrow). revision chaining·§20 또는 subtitle 단계의 merge·복수 revision 동시 선택은 그대로
+>   Deferred다. §21과 `041`의 소비 책임은 변경되지 않는다.
 
 ## 21. Effective Transcript Consumption Boundary (First Slice)
 
