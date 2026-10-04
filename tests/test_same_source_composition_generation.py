@@ -622,10 +622,11 @@ class IdentityAndIntegrityTests(_Base):
             "UPDATE corrected_transcript_revision_segments SET ordinal = 1 WHERE transcript_revision_id = ? AND ordinal = 99",
             (revision_id,),
         )
-        with self.assertRaises(Exception) as raised:
+        # The membership is still dense and references the right entities, so the released reader
+        # loads it; complete-result integrity (TX-28 condition 4) is what refuses the wrong order.
+        with self.assertRaises(CompositionIntegrityError) as raised:
             self._compose(text, timing)
-        # Either the released reader refuses the broken membership first, or integrity does; never reuse.
-        self.assertNotIsInstance(raised.exception, AssertionError)
+        self.assertIn("ordered segment membership", str(raised.exception))
 
     def test_different_content_under_the_same_anchor_is_a_conflict_not_an_overwrite(self) -> None:
         text, timing = self._text(), self._timing()

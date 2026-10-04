@@ -38,7 +38,7 @@ order, wall clock, or database return order (MG-16/MG-17).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from lectureos.execution.identities import (
     DomainResultId,
@@ -71,6 +71,9 @@ from .timing_correction_candidate_decision import (
     TimingCorrectionDecisionError,
     require_canonical_timing_candidate_id,
 )
+
+if TYPE_CHECKING:  # pragma: no cover - typing only; the composition module imports this one
+    from .same_source_composition_generation import SameSourceCompositionGeneration
 
 TIMING_CORRECTION_GENERATION_IDENTITY_PREFIX = "timing-correction-revision-generation"
 _DOMAIN_RESULT_PREFIX = "domain-result:corrected-revision"
@@ -299,7 +302,7 @@ class TimingCorrectionGenerationQuery(Protocol):
 
     def generations_for_candidate(
         self, candidate_id
-    ) -> "tuple[TimingCorrectionGenerationView, ...]": ...
+    ) -> "tuple[TimingCorrectionGenerationView | SameSourceCompositionGeneration, ...]": ...
 
     def view(self, identity) -> "TimingCorrectionGenerationView | None": ...
 
@@ -914,9 +917,12 @@ class TimingCorrectionRevisionGenerationService:
 
     def generations_for_candidate(
         self, candidate_id: str
-    ) -> "tuple[TimingCorrectionGenerationView, ...]":
-        """This candidate's complete generation history: its singleton **and** every aggregate it is
-        a member of.
+    ) -> "tuple[TimingCorrectionGenerationView | SameSourceCompositionGeneration, ...]":
+        """This candidate's complete generation history: its singleton, every aggregate it is a
+        member of, **and** every same-source composition (`PATCH-0050`) it was applied in.
+
+        Compositions are returned as `SameSourceCompositionGeneration` records carrying both roles'
+        provenance; they are never projected onto a one-member timing view.
 
         A malformed identity is rejected as before; a well-formed identity with no history — whether
         the candidate exists or not — returns an empty tuple, exactly as the released query did. This

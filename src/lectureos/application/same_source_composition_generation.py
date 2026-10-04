@@ -226,7 +226,13 @@ def derive_composition_digest(
 
 @dataclass(frozen=True, slots=True)
 class _AuthoritySnapshot:
-    """The one consistent authority/applicability state the request is anchored to (TX-24)."""
+    """The authority/applicability facts a request fixes as its anchor (TX-24).
+
+    These are gathered by sequential reads on the caller's autocommit connection — not by one
+    database read transaction. What makes them a *consistent* anchor for a new result is the
+    revalidation that `_require_snapshot_unchanged` performs inside the write transaction, which
+    compares the current state against exactly these fixed values before anything is persisted.
+    """
 
     intake_id: object
     raw_transcript: object
@@ -278,7 +284,11 @@ class SameSourceCompositionGenerationService:
         #    variation (TX-2).
         text_identity, timing_identity = self._require_roles(text_candidate_id, timing_candidate_id)
 
-        # 2+3. One consistent authority/applicability snapshot over both roles (TX-10, TX-24).
+        # 2+3. Fix the request's authority/applicability anchor over both roles (TX-10, TX-24).
+        #    These are sequential reads; for a NEW result they are re-verified inside the write
+        #    transaction (step 8). A reused result (steps 7 and the collision branch) is not
+        #    re-read under a transaction: it consumes the authority as read by the guard here, and
+        #    is accepted only under complete-result integrity (TX-28).
         snapshot = self._snapshot(text_identity, timing_identity)
         source = snapshot.source_segment
         raw_transcript = snapshot.raw_transcript
@@ -421,6 +431,15 @@ class SameSourceCompositionGenerationService:
         return text_identity, timing_identity
 
     def _snapshot(self, text_identity, timing_identity) -> "_AuthoritySnapshot":
+        """Resolve both roles' candidates, current Accepted Decisions, the current Raw selection and the
+        source segment, and check each role with the snapshot it actually carries (TX-10).
+
+        Each role's current authority is read from its own Decision store. The reads are sequential
+        and not wrapped in a read transaction; the values returned here become the fixed anchor that
+        `_require_snapshot_unchanged` re-verifies inside the write transaction before a new result is
+        persisted. Nothing here re-derives or replaces an anchor once fixed.
+        """
+
         admission = self._admissions.get_by_candidate(text_identity)
         if admission is None:
             raise SameSourceCompositionError(
@@ -524,8 +543,12 @@ class SameSourceCompositionGenerationService:
     def _require_snapshot_unchanged(self, snapshot: "_AuthoritySnapshot") -> None:
         """Re-derive the fixed facts inside the write transaction; any movement fails the request (TX-24).
 
-        The comparison is against the Decision identities fixed at request time — a different
-        Accepted Decision is a different authority anchor and is refused, never silently adopted.
+        Called by the persistence layer after ``BEGIN IMMEDIATE`` on the same connection, so the
+        comparison and the write see one consistent database state. The comparison is against the
+        Decision identities fixed at request time — a different Accepted Decision (Accept → Reject →
+        Accept) is a different authority anchor and is refused, never silently adopted. This runs only
+        on the path that persists a new result; reuse of an existing result is governed by
+        complete-result integrity instead.
         """
 
         current_selection = self._selections.get_current(snapshot.intake_id)

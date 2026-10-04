@@ -103,8 +103,9 @@ def table_sql(connection: sqlite3.Connection, table: str) -> str:
 
 
 # Representative released start versions for the migrated/fresh equivalence check: the first
-# release, the v37/v38 boundary, and the two most recent single steps. The complete 1…54 chain is
-# exercised for data preservation by `test_every_released_version_chains_to_v55_preserving_data`.
+# release, the v37/v38 boundary, and the two single steps that lead into v55. The complete chain from
+# every released version to the CURRENT schema version is exercised for data preservation by
+# `test_every_released_version_chains_to_the_current_version_preserving_data`.
 _EQUIVALENCE_START_VERSIONS = (1, 37, 53, 54)
 
 
@@ -344,9 +345,10 @@ class SQLiteSchemaVersionFiftyFiveTests(unittest.TestCase):
         with self.assertRaises(PersistenceError):
             migrate_sqlite_database(self.database_path, SQLITE_SCHEMA_VERSION + 1)
 
-    def test_every_released_version_chains_to_v55_preserving_data(self) -> None:
-        # Migration compatibility: every released schema version reaches v55 through the supported
-        # single-step chain, with no row rewritten and no meaning mutated.
+    def test_every_released_version_chains_to_the_current_version_preserving_data(self) -> None:
+        # Migration compatibility: every released schema version reaches the CURRENT schema version
+        # (passing through v55) via the supported single-step chain, with no row rewritten and no
+        # meaning mutated. The v54 -> v55 step itself is asserted at target 55 by the tests above.
         for start in range(1, SQLITE_SCHEMA_VERSION):
             with self.subTest(start=start):
                 path = Path(self.temporary_directory.name) / f"chain-v{start}.sqlite3"
@@ -370,10 +372,12 @@ class SQLiteSchemaVersionFiftyFiveTests(unittest.TestCase):
                     connection.close()
 
     def test_migrated_schema_is_equivalent_to_fresh_initialization(self) -> None:
-        # OI-3: a database that reaches the CURRENT version through the supported migration chain
-        # (via v55) and a database initialized directly must describe the same logical schema. The
-        # v54 -> v55 step itself is exercised above; this guards the whole chain as it grows. Data preservation is
-        # asserted separately (above); a fresh database carries no legacy seed rows.
+        # OI-3, now at the CURRENT schema version: a database that reaches it through the supported
+        # migration chain (passing through v55) and a database initialized directly at it must
+        # describe the same logical schema. This is not a v55-to-v55 comparison — a fresh v55 is no
+        # longer producible by the released initializer — and the v54 -> v55 step is asserted
+        # separately above. Data preservation is asserted separately; a fresh database carries no
+        # legacy seed rows.
         fresh_path = Path(self.temporary_directory.name) / "fresh.sqlite3"
         initialize_sqlite_database(fresh_path).close()
         fresh = snapshot_at(fresh_path)
@@ -396,7 +400,8 @@ class SQLiteSchemaVersionFiftyFiveTests(unittest.TestCase):
                 self.assertEqual(migrated, fresh)
 
     def test_schema_equivalence_detects_an_index_present_on_one_side_only(self) -> None:
-        # Negative control: the comparison must fail on a real mismatch, and name it.
+        # Negative control at the current version: the comparison must fail on a real mismatch, and
+        # name it.
         fresh_path = Path(self.temporary_directory.name) / "fresh.sqlite3"
         initialize_sqlite_database(fresh_path).close()
         migrated_path = Path(self.temporary_directory.name) / "migrated.sqlite3"
